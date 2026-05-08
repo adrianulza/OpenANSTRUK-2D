@@ -1,0 +1,1031 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPENANSTRUK Landing Page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blueprint: #0b2550;
+      --blueprint-mid: #0e2d60;
+      --blueprint-line: rgba(180,210,255,0.55);
+      --blueprint-line-dim: rgba(180,210,255,0.18);
+      --blueprint-text: #d4e8ff;
+      --cream: #f5f2eb;
+      --cream-dark: #ede9df;
+      --ink: #0f1a2e;
+      --ink-mid: #2d3d52;
+      --ink-dim: #6b7a8d;
+      --cyan: oklch(0.72 0.15 200);
+      --red-bright: oklch(60% 0.22 25);
+      --ff-serif: 'DM Serif Display', Georgia, serif;
+      --ff-sans: 'DM Sans', sans-serif;
+      --ff-mono: 'DM Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--ff-sans);
+      background: var(--blueprint);
+      color: var(--blueprint-text);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* â”€â”€ GLOBAL BLUEPRINT GRID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--blueprint-line-dim) 1px, transparent 1px),
+        linear-gradient(90deg, var(--blueprint-line-dim) 1px, transparent 1px),
+        linear-gradient(rgba(180,210,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,210,255,0.04) 1px, transparent 1px);
+      background-position: 0 12px;
+      background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* â”€â”€ NAV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 50px 0 10px;
+      background: var(--blueprint);
+      border-bottom: 1px solid rgba(180,210,255,0.12);
+    }
+
+    .wordmark {
+      font-family: var(--ff-mono);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: var(--blueprint-text);
+      text-decoration: none;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-right: auto;
+    }
+    .wordmark-rule {
+      width: 20px;
+      height: 1px;
+      background: var(--blueprint-line);
+    }
+
+    .nav-links {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(212,232,255,0.5);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--blueprint-text); }
+    .nav-gh {
+      color: var(--blueprint-text) !important;
+      border: 1px solid rgba(180,210,255,0.25);
+      padding: 5px 14px;
+      border-radius: 2px;
+      transition: background 0.2s !important;
+    }
+    .nav-gh:hover { background: rgba(180,210,255,0.08) !important; }
+
+    /* â”€â”€ HERO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    .hero {
+      background: transparent;
+      min-height: 102vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 100px 52px 80px;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .hero-left {
+      position: relative;
+      z-index: 1;
+      max-width: 5000px;
+    }
+
+    .hero-title {
+      font-family: var(--ff-serif);
+      font-size: clamp(20px, 50vw, 50px);
+      font-weight: 400;
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      color: #e8f3ff;
+      margin-bottom: 53px;
+    }
+    .hero-title em {
+      font-style: italic;
+      font-size: 0.7em;
+      background: var(--cyan);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-title emp {
+      font-style: italic;
+      font-size: 0.7em;
+      background: #d4e8ffb4;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 16px;
+      line-height: 1.7;
+      color: rgba(180,210,255,0.55);
+      max-width: 1000px;
+      margin: 0 auto 38px;
+    }
+    .hero-sub em {
+      font-style: italic;
+      background: linear-gradient(90deg, oklch(0.68 0.10 240), oklch(0.72 0.14 200), oklch(0.78 0.16 180));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub emp {
+      font-style: italic;
+      font-weight: bolder;
+      background: rgba(180,210,255,0.55);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-blueprint {
+      position: relative;
+      top: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 36px;
+      background: rgba(180,210,255,0.12);
+      border: 1px solid rgba(180,210,255,0.35);
+      color: var(--blueprint-text);
+      font-family: var(--ff-mono);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border-radius: 2px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .btn-blueprint:hover {
+      background: rgba(180,210,255,0.2);
+      border-color: rgba(180,210,255,0.55);
+    }
+
+    /* â”€â”€ SECTIONS (shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    .section-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 120px 52px;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-top: 1px solid rgba(180,210,255,0.1);
+    }
+
+    .section-label {
+      font-family: var(--ff-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(180,210,255,0.4);
+      margin-bottom: 52px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .section-label::before {
+      content: '';
+      display: block;
+      width: 32px; height: 1px;
+      background: rgba(180,210,255,0.3);
+    }
+
+    /* â”€â”€ SOFTWARE / ALBUM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    .carousel-section {
+      background: transparent;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .carousel-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 120px 52px;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* header row + album/features row */
+    .sw-layout {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      grid-template-areas:
+        "label      label"
+        "title      title"
+        "desc       ."
+        "album      features";
+      column-gap: 30px;
+      row-gap: 20px;
+      align-items: start;
+    }
+
+    .sw-label {
+      grid-area: label;
+      margin-bottom: 32px;
+    }
+
+    .sw-title {
+      grid-area: title;
+      margin-bottom: 32px;
+    }
+
+    .sw-desc {
+      grid-area: desc;
+      margin-bottom: 20px;
+    }
+
+    .sw-album {
+      grid-area: album;
+    }
+
+    .sw-features-col {
+      grid-area: features;
+    }
+
+    .sw-label-header {
+      grid-column: 1 / -1;
+      margin-bottom: 32px;
+    }
+
+    /* â”€â”€ Album (left column) â”€â”€ */
+    .sw-album {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .album-main {
+      position: relative;
+      width: 100%;
+      padding-bottom: 66.67%;
+      background: rgba(11,37,80,0.6);
+      border: 1px solid rgba(180,210,255,0.15);
+      border-radius: 2px;
+      overflow: hidden;
+      cursor: zoom-in;
+    }
+    .album-main img {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: opacity 0.35s ease;
+    }
+    .album-main-hint {
+      position: absolute;
+      bottom: 12px; right: 14px;
+      font-family: var(--ff-mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: rgba(180,210,255,0.3);
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .album-thumbs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(180,210,255,0.15) transparent;
+    }
+    .album-thumbs::-webkit-scrollbar { height: 3px; }
+    .album-thumbs::-webkit-scrollbar-track { background: transparent; }
+    .album-thumbs::-webkit-scrollbar-thumb { background: rgba(180,210,255,0.2); border-radius: 2px; }
+
+    .album-thumb {
+      flex-shrink: 0;
+      width: 88px;
+      height: 60px;
+      object-fit: cover;
+      border: 1px solid rgba(180,210,255,0.1);
+      border-radius: 2px;
+      cursor: pointer;
+      opacity: 0.45;
+      transition: opacity 0.2s, border-color 0.2s;
+    }
+    .album-thumb:hover { opacity: 0.75; }
+    .album-thumb.active { opacity: 1; border-color: var(--cyan); }
+
+    /* â”€â”€ Features column (right) â”€â”€ */
+    .sw-label {
+      font-family: var(--ff-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(180,210,255,0.4);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .sw-label::before {
+      content: '';
+      display: block;
+      width: 32px; height: 1px;
+      background: rgba(180,210,255,0.3);
+    }
+
+    .sw-title {
+      font-family: var(--ff-serif);
+      font-size: clamp(36px, 4vw, 58px);
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      color: #e8f3ff;
+      margin-bottom: 20px;
+    }
+    .sw-title em {
+      font-style: italic;
+      background: linear-gradient(90deg, oklch(0.68 0.10 240), oklch(0.72 0.14 200), oklch(0.78 0.16 180));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .sw-desc,
+    .sw-features,
+    .about-body,
+    .about-right,
+    .oss-body,
+    .oss-pillars {
+      font-size: 16px;
+      line-height: 1.7;
+      color: rgba(180,210,255,0.55);
+    }
+
+    .sw-features {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .feature-check {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: var(--cyan);
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    .feature-text {
+      font-size: inherit;
+      line-height: inherit;
+      color: inherit;
+    }
+    .feature-text strong {
+      color: #e8f3ff;
+      font-weight: 600;
+    }
+
+    .about-right .v-body,
+    .oss-pillars p {
+      font-size: inherit;
+      line-height: inherit;
+      color: inherit;
+      margin: 0;
+    }
+
+    /* â”€â”€ Lightbox â”€â”€ */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(4,12,30,0.96);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img {
+      max-width: 92vw;
+      max-height: 92vh;
+      object-fit: contain;
+      border: 1px solid rgba(180,210,255,0.12);
+      border-radius: 2px;
+      box-shadow: 0 0 80px rgba(0,0,0,0.6);
+    }
+    .lightbox-close {
+      position: absolute;
+      top: 24px; right: 32px;
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: rgba(180,210,255,0.4);
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color 0.2s;
+      user-select: none;
+    }
+    .lightbox-close:hover { color: var(--blueprint-text); }
+
+    /* â”€â”€ ABOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    .about-grid {
+      display: grid;
+      /*grid-template-columns: repeat(2, minmax(0, 1fr));*/
+      grid-template-columns: 0.75fr 1.25fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    .about-heading {
+      font-family: var(--ff-serif);
+      font-size: clamp(36px, 4vw, 58px);
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      color: #e8f3ff;
+      margin-bottom: 32px;
+      text-align: right;
+    }
+    .about-heading em {
+      font-style: italic;
+      background: linear-gradient(90deg, oklch(0.68 0.10 240), oklch(0.72 0.14 200), oklch(0.78 0.16 180));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .about-body {
+      font-size: 16px;
+      line-height: 1.7;
+      color: rgba(180,210,255,0.55);
+
+    }
+
+    .about-right {
+      border-left: 3px solid rgba(180,210,255,0.15);
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .value-row {
+      padding: 22px 0;
+      border-bottom: 1px solid rgba(180,210,255,0.1);
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 16px;
+    }
+    .value-row:first-child { border-top: 1px solid rgba(180,210,255,0.1); }
+    .v-num {
+      font-family: var(--ff-mono);
+      font-size: 10px;
+      color: rgba(180,210,255,0.25);
+      padding-top: 4px;
+    }
+    .v-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 5px;
+      color: #e8f3ff;
+    }
+    .v-body {
+      font-size: 16px;
+      color: rgba(180,210,255,0.55);
+      line-height: 1.7;
+    }
+
+    /* â”€â”€ OPEN SOURCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    .oss-section {
+      background: transparent;
+      border-top: 1px solid rgba(180,210,255,0.1);
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .oss-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 120px 52px;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: 10px;
+      align-items: start;
+      justify-content: center;
+    }
+
+    .oss-heading {
+      font-family: var(--ff-serif);
+      font-size: clamp(36px, 4vw, 58px);
+      line-height: 1.0;
+      letter-spacing: -0.01em;
+      margin-bottom: 24px;
+      color: #e8f3ff;
+    }
+    .oss-heading em {
+      font-style: italic;
+      background: linear-gradient(90deg, oklch(0.68 0.10 240), oklch(0.72 0.14 200), oklch(0.78 0.16 180));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .oss-body {
+      font-size: 16px;
+      line-height: 1.7;
+      color: rgba(180,210,255,0.55);
+      margin-bottom: 36px;
+    }
+
+    .btn-ink {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 26px;
+      background: rgba(180,210,255,0.12);
+      border: 1px solid rgba(180,210,255,0.3);
+      color: var(--blueprint-text);
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border-radius: 2px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .btn-ink:hover { background: rgba(180,210,255,0.2); border-color: rgba(180,210,255,0.5); }
+
+    .oss-pillars {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      align-items: start;
+    }
+    .pillar {
+      padding: 20px ;
+      border-bottom: 3px solid rgba(180,210,255,0.1);
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 16px;
+      align-items: flex-start;
+      width: 100%;
+    }
+    .pillar:first-child { border-top: 1px solid rgba(180,210,255,0.1); padding-bottom: 0; }
+    .pillar-intro { grid-template-columns: 0 1fr; }
+    .pillar-num {
+      font-family: var(--ff-mono);
+      font-size: 20px;
+      color: rgba(180,210,255,0.25);
+      padding-top: 0px;
+    }
+    .pillar h3 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 5px;
+      color: #e8f3ff;
+    }
+    .pillar p {
+      font-size: 16px;
+      color: rgba(180,210,255,0.55);
+      line-height: 1.7;
+    }
+
+    .contribution-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #0BE77E;
+      text-decoration: none;
+      font-size: 14px;
+      font-family: var(--ff-mono);
+      letter-spacing: 0.05em;
+      margin-top: 8px;
+      transition: color 0.2s;
+    }
+    .contribution-link:hover { color: #10A65A; }
+
+    .contrib-path-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e8f3ff;
+      margin-bottom: 4px;
+      margin-top: 0;
+    }
+
+    .contrib-path-desc {
+      margin-bottom: 8px;
+      font-size: 16px;
+      color: rgba(180,210,255,0.55);
+      line-height: 1.7;
+    }
+
+    .contrib-path-row {
+      position: relative;
+      margin-bottom: 4px;
+      line-height: 1.5;
+    }
+
+    .contrib-path-row .feature-check {
+      position: absolute;
+      left: -24px;
+      top: 2px;
+      width: 18px;
+    }
+
+    .contrib-path-section {
+      margin-top: 16px;
+      line-height: 1.7;
+    }
+    .contrib-path-section:first-of-type {
+      margin-top: 12px;
+    }
+
+    .contrib-container {
+      display: flex;
+      flex-direction: column;
+      align-items: start;
+    }
+
+    .contrib-box {
+      padding: 32px;
+    }
+
+    /* â”€â”€ FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    footer {
+      background: rgba(5,18,45,0.6);
+      border-top: 1px solid rgba(180,210,255,0.1);
+      padding: 48px 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+    .footer-copy {
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: rgba(180,210,255,0.3);
+    }
+    .footer-links {
+      display: flex;
+      gap: 28px;
+    }
+    .footer-links a {
+      font-family: var(--ff-mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(180,210,255,0.3);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: rgba(180,210,255,0.7); }
+
+    /* â”€â”€ ANIMATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .hero-title { animation: fadeUp 0.7s 0.25s both; }
+    .hero-sub   { animation: fadeUp 0.7s 0.4s both; }
+    .hero-cta   { animation: fadeUp 0.7s 0.55s both; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="wordmark" href="/"><img src="/Logo OpenAnstruk-Label.png" alt="OpenAnstruk Logo" style="height: 32px; width: auto;"></a>
+  <ul class="nav-links">
+    <li><a href="#home">Home</a></li>
+    <li><a href="#software">Software</a></li>
+    <li><a href="#about">Who-We-Are?</a></li>
+    <li><a href="#oss">Open Source</a></li>
+    <li><a href="https://github.com/adrianulza" target="_blank" class="nav-gh">GitHub â†—</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section id="home" class="hero" data-screen-label="Home">
+  <div class="hero-left">
+    <h1 class="hero-title">
+      The structural engineering software every mind deserves.<br>
+      <emp>Open tool, open knowledge, open access.</emp>
+    </h1>
+    <p class="hero-sub">
+      We're building structural engineering software for every mind that shapes our world.<br>
+      Students learning the fundamentals. Academics teaching with integrity.<br>
+      Researchers exploring the limits. Engineers solving problems that matter.<br>
+      We're building a movement to make industrial-grade structural analysis free, open-source, and accessible to everyone.<br>
+      <br>
+      <emp>"Whether you code, test, document, or use itâ€”you belong here."</emp>
+    </p>
+    <div class="hero-cta">
+      <a href="/html/app.html" class="btn-blueprint">Launch OpenAnstruk-2D</a>
+    </div>
+  </div>
+</section>
+
+<!-- SOFTWARE -->
+<section id="software" class="carousel-section" data-screen-label="Software">
+  <div class="carousel-container">
+    <div class="sw-layout">
+
+      <!-- LABEL: full-width -->
+      <div class="sw-label">Software</div>
+
+      <!-- TITLE: left column -->
+      <h2 class="sw-title">
+        Software <em>Built to Evolve</em>
+      </h2>
+
+      <!-- DESCRIPTION: left column, below title -->
+      <p class="sw-desc">
+        We started with OpenAnstruk-2D, built from the ground up for structural engineers. It's a classic 2D structural analysis tool delivered through your browser. Features will keep evolving, remain open source, with no hidden algorithms. We're committed to meeting industrial-grade standards.
+      </p>
+
+      <!-- ALBUM (left, below header) -->
+      <div class="sw-album">
+        <div class="album-main" id="album-main" onclick="openLightbox()">
+          <img id="album-active-img" src="/demo/1.png" alt="Structural Model">
+          <span class="album-main-hint">Click to enlarge</span>
+        </div>
+        <div class="album-thumbs" id="album-thumbs">
+          <img src="/demo/1.png" alt="Structural Model"    class="album-thumb active" onclick="setSlide(0)">
+          <img src="/demo/2.png" alt="Load Definition"     class="album-thumb"        onclick="setSlide(1)">
+          <img src="/demo/3.png" alt="Analysis Results"    class="album-thumb"        onclick="setSlide(2)">
+          <img src="/demo/4.png" alt="Shear Force Diagram" class="album-thumb"        onclick="setSlide(3)">
+          <img src="/demo/5.png" alt="Moment Diagram"      class="album-thumb"        onclick="setSlide(4)">
+          <img src="/demo/6.png" alt="Deformation"         class="album-thumb"        onclick="setSlide(5)">
+          <img src="/demo/7.png" alt="Interface"           class="album-thumb"        onclick="setSlide(6)">
+          <img src="/demo/8.png" alt="Reactions"           class="album-thumb"        onclick="setSlide(7)">
+        </div>
+      </div>
+
+      <!-- FEATURES (right, aligned to album top) -->
+      <div class="sw-features-col">
+        <div class="sw-features">
+          <div class="feature-item">
+            <div class="feature-check">âœ“</div>
+            <div class="feature-text"><strong>Interactive Modeling:</strong> Place nodes and members with snap-to-grid. Define supports and loads visually. Get results instantly as you model. No cluttered menus. No steep learning curve.</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-check">âœ“</div>
+            <div class="feature-text"><strong>Web-based:</strong> No installation, pure web app that works offline after initial load. Run anywhere, anytime.</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-check">âœ“</div>
+            <div class="feature-text"><strong>Real-time Results:</strong> See shear force and bending moment diagrams instantly as you model. Direct stiffness method, computed entirely in your browser.</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-check">âœ“</div>
+            <div class="feature-text"><strong>We're expanding beyond 2D:</strong> 3D analysis, dynamic, nonlinear solver, design code check, BIM integration, ML/AI optimization. This is the future of structural engineering software. We're building toward it.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div class="lightbox-close">ESC / click to close</div>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- ABOUT -->
+<section id="about" data-screen-label="About">
+  <div class="section-inner">
+    <div class="section-label">Who we are</div>
+    <div class="about-grid">
+      <div>
+        <h2 class="about-heading">
+          Our mission<br>is to make<br>structural engineering<br>applications<br>accessible to<br><em>everyone.</em>
+        </h2>
+      </div>
+      <div class="about-right">
+        <p class="about-body">
+          Structural engineering software has always been exclusive. The barrier isn't knowledge, but, access. Industrial-grade tools are costly. Open-source alternatives require extensive coding skills most structural engineers don't have. Students graduate without ever using professional analysis software. Academics struggle to teach practical examples because institutional subscriptions are unaffordable. Researchers face steep learning curves for script-based tools or find themselves locked into proprietary softwares. Small firms and young engineers carry licensing costs as a burden while fighting to survive project by project.
+        </p>
+        <p class="about-body">
+          Engineering principles are open. Published in textbooks, research articles, grounded in mathematics anyone can verify. Yet the tools that apply these principles remain gatekept: intuitive and industrial-ready, but costly; open and sophisticated, but requiring extensive coding knowledge; free but limited in capability.
+        </p>
+        <p class="about-body">
+          We're building OpenAnstruk as an inclusive structural engineering software: open source, accessible, and industrial-grade. Designed for students learning the fundamentals, academics demonstrating practical examples, researchers exploring new methods, and engineers solving problems that matter.
+        </p>
+        <p class="about-body">
+          We're not fighting the status quo. We're honoring a legacy that is one shaped across millennia by structural engineers whose work built the world we inhabit today. That legacy deserves tools everyone can access.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OPEN SOURCE -->
+<section id="oss" class="oss-section" data-screen-label="Open Source">
+  <div class="oss-inner">
+    <div>
+      <div class="section-label">Open Source</div>
+      <h2 class="oss-heading">
+        Knowledge<br>should be<br><em>open.</em>
+      </h2>
+      <p class="oss-body">
+        The tools that protect lives should be auditable, improvable, and permanently available. We release everything under the MIT License. Use it, modify it, distribute it.
+      </p>
+    </div>
+    <div class="contrib-box">
+      <div class="oss-pillars">
+        <div class="pillar pillar-intro">
+          <div class="pillar-num"></div>
+          <div>
+            <h3>How could you join?</h3>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-num">01</div>
+          <div>
+            <h3>Use It</h3>
+            <p>Run OpenAnstruk today. No account required, no installation. Works in your browser, offline after first load.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-num">02</div>
+          <div>
+            <h3>Contribute</h3>
+            <p>Every contribution counts. Strengthen the tool in the way that fits you:</p>
+            <div class="contrib-path-section">
+              <div class="contrib-path-row">
+                <div class="feature-check">âœ“</div>
+                <p class="contrib-path-title">Technical Contributors:</p>
+              </div>
+              <p class="contrib-path-desc">Submit improvements, fix bugs, optimize the solver.</p>
+              <a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" class="btn-ink" style="margin-top: 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.746 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+                Contribute on GitHub
+              </a>
+            </div>
+            <div class="contrib-path-section">
+              <div class="contrib-path-row">
+                <div class="feature-check">âœ“</div>
+                <p class="contrib-path-title">Non-Technical Contributors</p>
+              </div>
+              <p class="contrib-path-desc">Test against other tools. Report bugs. Share what works and what could improve. Give feedback.</p>
+              <a href="mailto:openanstruk@gmail.com" class="contribution-link">â†’ Email to: openanstruk@gmail.com</a>
+            </div>
+          </div>
+        </div>
+        <div class="pillar">
+          <div class="pillar-num">03</div>
+          <div>
+            <h3>Spread It</h3>
+            <p>Share with colleagues. Teach with it in your classroom. Cite it in your research. Each mention reaches engineers who need it.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-copy">Â© 2026 OpenAnstruk â€” MIT License</div>
+  <div class="footer-links"></div>
+</footer>
+
+<script>
+  const slides = [
+    { src: 'demo/1.png', alt: 'Structural Model' },
+    { src: 'demo/2.png', alt: 'Load Definition' },
+    { src: 'demo/3.png', alt: 'Analysis Results' },
+    { src: 'demo/4.png', alt: 'Shear Force Diagram' },
+    { src: 'demo/5.png', alt: 'Moment Diagram' },
+    { src: 'demo/6.png', alt: 'Deformation' },
+    { src: 'demo/7.png', alt: 'Interface' },
+    { src: 'demo/8.png', alt: 'Reactions' },
+  ];
+
+  let currentSlide = 0;
+  let autoplayTimer = null;
+
+  function setSlide(n, resetTimer = true) {
+    currentSlide = n;
+    const activeImg = document.getElementById('album-active-img');
+    activeImg.src = slides[n].src;
+    activeImg.alt = slides[n].alt;
+    document.querySelectorAll('.album-thumb').forEach((t, i) => {
+      t.classList.toggle('active', i === n);
+    });
+    if (resetTimer) startAutoplay();
+  }
+
+  function startAutoplay() {
+    clearInterval(autoplayTimer);
+    autoplayTimer = setInterval(() => {
+      setSlide((currentSlide + 1) % slides.length, false);
+    }, 5000);
+  }
+
+  function openLightbox() {
+    clearInterval(autoplayTimer);
+    const lb = document.getElementById('lightbox');
+    const lbImg = document.getElementById('lightbox-img');
+    lbImg.src = slides[currentSlide].src;
+    lbImg.alt = slides[currentSlide].alt;
+    lb.classList.add('open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    startAutoplay();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => startAutoplay());
+
+  document.addEventListener('keydown', (e) => {
+    const lbOpen = document.getElementById('lightbox').classList.contains('open');
+    if (e.key === 'Escape') { closeLightbox(); return; }
+    if (e.key === 'ArrowRight') setSlide(Math.min(currentSlide + 1, slides.length - 1));
+    if (e.key === 'ArrowLeft')  setSlide(Math.max(currentSlide - 1, 0));
+    if (lbOpen) openLightbox();
+  });
+</script>
+
+</body>
+</html>
