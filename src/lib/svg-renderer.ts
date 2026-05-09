@@ -166,8 +166,8 @@ function renderGrid(
   minY: number,
   maxY: number,
   worldToSVG: (wx: number, wy: number) => { x: number; y: number },
-  svgWidth: number,
-  svgHeight: number,
+  _svgWidth: number,
+  _svgHeight: number,
 ): string {
   let svg = "  <g id=\"grid\" stroke=\"#e5e7eb\" stroke-width=\"0.5\">\n"
 
@@ -281,9 +281,6 @@ function renderDistributedLoad(
   const ny = dx / len
 
   const maxArrowLen = 30 * (scale / SCALE)
-  const arrowLen1 = Math.max(5, Math.min(maxArrowLen, Math.abs(wStart) * 2))
-  const arrowLen2 = Math.max(5, Math.min(maxArrowLen, Math.abs(wEnd) * 2))
-
   const numArrows = Math.max(3, Math.floor(len / 25))
 
   let svg = ""
@@ -325,8 +322,8 @@ function renderDistributedLoad(
 function renderDimensions(
   model: StructureModel,
   worldToSVG: (wx: number, wy: number) => { x: number; y: number },
-  svgHeight: number,
-  svgWidth: number,
+  _svgHeight: number,
+  _svgWidth: number,
 ): string {
   let svg = "  <g id=\"dimensions\" stroke=\"#2563eb\" stroke-width=\"1\" fill=\"none\">\n"
 

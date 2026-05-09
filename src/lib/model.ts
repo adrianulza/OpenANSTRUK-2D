@@ -34,10 +34,6 @@ export interface Section {
   I: number
   /** Cross-sectional area in mm² */
   A: number
-  /** Unit weight in N/mm³ */
-  W: number
-  /** Poisson's ratio (dimensionless) */
-  nu: number
 }
 
 export interface PointLoad {
@@ -119,10 +115,11 @@ export function deleteMultiSelection(model: StructureModel, sel: MultiSelection)
 }
 
 export const defaultSections: Record<SectionId, Section> = {
-  // E in MPa, I in mm⁴, A in mm², W in N/mm³ (steel unit weight ≈ 7.85e-5 N/mm³)
-  iwf150: { id: "iwf150", name: "IWF 150", E: 200000, I: 15000000, A: 2680, W: 7.85e-5, nu: 0.3 },
-  iwf200: { id: "iwf200", name: "IWF 200", E: 200000, I: 28000000, A: 3340, W: 7.85e-5, nu: 0.3 },
-  wf300:  { id: "wf300",  name: "WF 300",  E: 200000, I: 72100000, A: 4790, W: 7.85e-5, nu: 0.3 },
+  // E in MPa, I in mm⁴, A in mm²
+  iwf150: { id: "iwf150", name: "IWF.100.100.6.8", E: 200000, I: 17000000, A: 1952 },
+  iwf200: { id: "iwf200", name: "IWF 200.100.5.5.8", E: 200000, I: 35000000, A: 2556 },
+  wf300:  { id: "wf300",  name: "H 300.300.10.15", E: 200000, I: 180000000, A: 10200 },
+  rc300x500: { id: "rc300x500", name: "RC 300x500", E: 23500, I: 3125000000, A: 150000 },
 }
 
 let idCounter = 0

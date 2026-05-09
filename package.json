@@ -1,10 +1,10 @@
 {
   "name": "openanstruk-2d",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
-  "private": true,
-  "description": "OpenANSTRUK-2D — 2D structural analysis (portal frame) web app. Pre-release / WIP.",
-  "license": "UNLICENSED",
+  "description": "OpenANSTRUK-2D — Open Source: Analisis Struktur 2-Dimensi.",
+  "license": "MIT",
+  "//": "Scripts pass explicit -c/--b flags so config files can live in config/ instead of root.",
   "scripts": {
     "dev": "vite -c config/vite.config.ts",
     "build": "tsc -b config/tsconfig.json && vite -c config/vite.config.ts build",

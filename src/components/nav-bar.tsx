@@ -17,14 +17,6 @@ interface NavBarProps {
 
 const tabs: TabType[] = ["Model", "Load", "Analyze"]
 
-const EXAMPLE_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: "Simple Beam",
-  2: "Cantilever",
-  3: "Portal (Gravity)",
-  4: "Portal (Lateral)",
-  5: "Asymmetric Rafter",
-}
-
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
 function NewCanvasIcon() {
@@ -94,7 +86,6 @@ function TrussIcon() {
 export function NavBar({
   activeTab,
   onTabChange,
-  onTemplateLoad,
   onNewFile,
   onOpenBeamTemplate,
   onOpenFrameTemplate,
@@ -180,9 +171,9 @@ export function NavBar({
       <div className="relative h-11 flex items-center px-4">
 
         {/* Logo — anchored left */}
-        <h1 className="text-lg font-bold text-[#1a2f5e] tracking-tight shrink-0">
-          OpenANSTRUK-2D
-        </h1>
+        <a href="/" className="shrink-0 hover:opacity-80 transition-opacity">
+          <img src="/OpenAnstruk-2DLabel_BgNVInter.svg" alt="OpenAnstruk Logo" style={{ height: "32px", width: "auto" }} />
+        </a>
 
         {/* Tabs + File — absolute-centred as a group */}
         <nav className="absolute left-1/2 -translate-x-1/2 flex items-center">

@@ -1,10 +1,18 @@
 import { useState } from "react"
 import type { StructureModel, Section } from "@/lib/model"
+import {
+  type UnitSettings,
+  DEFAULT_UNIT_SETTINGS,
+  displayE, parseE, labelE,
+  displayI, parseI, labelI,
+  displayA, parseA, labelA,
+} from "@/lib/units"
 import { EXAMPLES, EXAMPLE_IDS } from "./examples-data"
 
 interface Props {
   onConfirm: (model: StructureModel, section: Section) => void
   onClose: () => void
+  unitSettings?: UnitSettings
 }
 
 const selectCls =
@@ -13,12 +21,17 @@ const selectCls =
 const inputCls =
   "w-full h-7 border border-gray-200 rounded-md px-2 text-xs font-medium text-[#1a2f5e] bg-white focus:outline-none focus:ring-2 focus:ring-[#1a2f5e]/20 focus:border-[#1a2f5e]"
 
-export function ExamplesModal({ onConfirm, onClose }: Props) {
-  const [selectedExampleId, setSelectedExampleId] = useState<string>(EXAMPLE_IDS[0])
+function fmt(n: number): string {
+  return Number.isInteger(n) ? String(n) : parseFloat(n.toPrecision(6)).toString()
+}
+
+export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
+  const u = unitSettings ?? DEFAULT_UNIT_SETTINGS
   const initialExample = EXAMPLES[EXAMPLE_IDS[0]]
-  const [E, setE] = useState(String(initialExample.defaultE))
-  const [I, setI] = useState(String(initialExample.defaultI))
-  const [A, setA] = useState(String(initialExample.defaultA))
+  const [selectedExampleId, setSelectedExampleId] = useState<string>(EXAMPLE_IDS[0])
+  const [E, setE] = useState(fmt(displayE(initialExample.defaultE, u)))
+  const [I, setI] = useState(fmt(displayI(initialExample.defaultI, u)))
+  const [A, setA] = useState(fmt(displayA(initialExample.defaultA, u)))
   const [notes, setNotes] = useState(initialExample?.notesTemplate || "")
 
   const example = EXAMPLES[selectedExampleId]
@@ -27,29 +40,25 @@ export function ExamplesModal({ onConfirm, onClose }: Props) {
     const ex = EXAMPLES[id]
     setSelectedExampleId(id)
     setNotes(ex?.notesTemplate || "")
-    setE(String(ex.defaultE))
-    setI(String(ex.defaultI))
-    setA(String(ex.defaultA))
+    setE(fmt(displayE(ex.defaultE, u)))
+    setI(fmt(displayI(ex.defaultI, u)))
+    setA(fmt(displayA(ex.defaultA, u)))
   }
 
   const handleConfirm = () => {
-    const E_val = parseFloat(E) || 1
-    const I_val = parseFloat(I) || 1
-    const A_val = parseFloat(A) || 1
+    const E_val = parseE(parseFloat(E) || 1, u)
+    const I_val = parseI(parseFloat(I) || 1, u)
+    const A_val = parseA(parseFloat(A) || 1, u)
 
-    // Create the model from template
     const model = example.templateFn()
 
-    // Create a unique section for this example
-    const sectionId = `example-${selectedExampleId}`
+    const sectionId = "section"
     const newSection: Section = {
       id: sectionId,
-      name: example.title,
+      name: "section",
       E: E_val,
       I: I_val,
       A: A_val,
-      W: 0.001, // placeholder
-      nu: 0.2,  // default Poisson's ratio
     }
 
     onConfirm(model, newSection)
@@ -126,7 +135,7 @@ export function ExamplesModal({ onConfirm, onClose }: Props) {
 
               {/* E input */}
               <div>
-                <label className="block text-[10px] font-medium text-gray-600 mb-1">E (kN/m²)</label>
+                <label className="block text-[10px] font-medium text-gray-600 mb-1">E ({labelE(u)})</label>
                 <input
                   type="number"
                   value={E}
@@ -139,7 +148,7 @@ export function ExamplesModal({ onConfirm, onClose }: Props) {
 
               {/* I input */}
               <div>
-                <label className="block text-[10px] font-medium text-gray-600 mb-1">I (m⁴)</label>
+                <label className="block text-[10px] font-medium text-gray-600 mb-1">I ({labelI(u)})</label>
                 <input
                   type="number"
                   value={I}
@@ -152,7 +161,7 @@ export function ExamplesModal({ onConfirm, onClose }: Props) {
 
               {/* A input */}
               <div>
-                <label className="block text-[10px] font-medium text-gray-600 mb-1">A (m²)</label>
+                <label className="block text-[10px] font-medium text-gray-600 mb-1">A ({labelA(u)})</label>
                 <input
                   type="number"
                   value={A}
