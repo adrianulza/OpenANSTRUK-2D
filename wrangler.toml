@@ -3,3 +3,5 @@ compatibility_date = "2024-01-01"
 
 [assets]
 directory = "./dist"
+html_handling = "none"
+not_found_handling = "none"
