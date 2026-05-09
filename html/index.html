@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OPENANSTRUK Landing Page</title>
+  <title>OpenAnstruk</title>
+  <link rel="icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -38,7 +39,6 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* â”€â”€ GLOBAL BLUEPRINT GRID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     body::before {
       content: '';
       position: fixed;
@@ -52,9 +52,47 @@
       background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
       pointer-events: none;
       z-index: 0;
+      opacity: 0;
     }
 
-    /* â”€â”€ NAV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+    /* Perspective floor grid */
+    .floor-grid {
+      position: fixed;
+      inset: 60px 0 0 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+      perspective: 1100px;
+      perspective-origin: 50% 0%;
+    }
+    .floor-grid::before {
+      content: '';
+      position: absolute;
+      left: -50%;
+      right: -50%;
+      top: 0;
+      height: 240vh;
+      background-image:
+        linear-gradient(rgba(180,210,255,0.55) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,210,255,0.55) 1px, transparent 1px),
+        linear-gradient(rgba(180,210,255,0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(180,210,255,0.18) 1px, transparent 1px);
+      background-size: 160px 160px, 160px 160px, 32px 32px, 32px 32px;
+      transform: rotateX(72deg);
+      transform-origin: 50% 0;
+      mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.2) 4%, rgba(0,0,0,0.85) 25%, #000 55%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.2) 4%, rgba(0,0,0,0.85) 25%, #000 55%);
+    }
+    .floor-grid::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      top: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(180,210,255,0.4), transparent);
+      box-shadow: 0 0 24px rgba(180,210,255,0.3);
+    }
+
     nav {
       position: fixed;
       top: 0; left: 0; right: 0;
@@ -115,7 +153,6 @@
     }
     .nav-gh:hover { background: rgba(180,210,255,0.08) !important; }
 
-    /* â”€â”€ HERO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .hero {
       background: transparent;
       min-height: 102vh;
@@ -165,7 +202,7 @@
     .hero-sub {
       font-size: 16px;
       line-height: 1.7;
-      color: rgba(180,210,255,0.55);
+      color: rgba(255, 255, 255, 0.55);
       max-width: 1000px;
       margin: 0 auto 38px;
     }
@@ -180,7 +217,7 @@
     .hero-sub emp {
       font-style: italic;
       font-weight: bolder;
-      background: rgba(180,210,255,0.55);
+      background: rgba(255, 255, 255, 0.55);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -217,7 +254,6 @@
       border-color: rgba(180,210,255,0.55);
     }
 
-    /* â”€â”€ SECTIONS (shared) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .section-inner {
       max-width: 1200px;
       margin: 0 auto;
@@ -249,7 +285,6 @@
       background: rgba(180,210,255,0.3);
     }
 
-    /* â”€â”€ SOFTWARE / ALBUM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .carousel-section {
       background: transparent;
       position: relative;
@@ -270,7 +305,6 @@
       justify-content: center;
     }
 
-    /* header row + album/features row */
     .sw-layout {
       display: grid;
       grid-template-columns: 3fr 2fr;
@@ -284,35 +318,12 @@
       align-items: start;
     }
 
-    .sw-label {
-      grid-area: label;
-      margin-bottom: 32px;
-    }
+    .sw-label { grid-area: label; margin-bottom: 32px; }
+    .sw-title { grid-area: title; margin-bottom: 32px; }
+    .sw-desc { grid-area: desc; margin-bottom: 20px; }
+    .sw-album { grid-area: album; }
+    .sw-features-col { grid-area: features; }
 
-    .sw-title {
-      grid-area: title;
-      margin-bottom: 32px;
-    }
-
-    .sw-desc {
-      grid-area: desc;
-      margin-bottom: 20px;
-    }
-
-    .sw-album {
-      grid-area: album;
-    }
-
-    .sw-features-col {
-      grid-area: features;
-    }
-
-    .sw-label-header {
-      grid-column: 1 / -1;
-      margin-bottom: 32px;
-    }
-
-    /* â”€â”€ Album (left column) â”€â”€ */
     .sw-album {
       display: flex;
       flex-direction: column;
@@ -373,7 +384,6 @@
     .album-thumb:hover { opacity: 0.75; }
     .album-thumb.active { opacity: 1; border-color: var(--cyan); }
 
-    /* â”€â”€ Features column (right) â”€â”€ */
     .sw-label {
       font-family: var(--ff-mono);
       font-size: 10px;
@@ -461,7 +471,6 @@
       margin: 0;
     }
 
-    /* â”€â”€ Lightbox â”€â”€ */
     .lightbox {
       display: none;
       position: fixed;
@@ -495,10 +504,8 @@
     }
     .lightbox-close:hover { color: var(--blueprint-text); }
 
-    /* â”€â”€ ABOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .about-grid {
       display: grid;
-      /*grid-template-columns: repeat(2, minmax(0, 1fr));*/
       grid-template-columns: 0.75fr 1.25fr;
       gap: 30px;
       align-items: start;
@@ -525,7 +532,6 @@
       font-size: 16px;
       line-height: 1.7;
       color: rgba(180,210,255,0.55);
-
     }
 
     .about-right {
@@ -563,7 +569,6 @@
       line-height: 1.7;
     }
 
-    /* â”€â”€ OPEN SOURCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     .oss-section {
       background: transparent;
       border-top: 1px solid rgba(180,210,255,0.1);
@@ -634,7 +639,7 @@
       align-items: start;
     }
     .pillar {
-      padding: 20px ;
+      padding: 20px;
       border-bottom: 3px solid rgba(180,210,255,0.1);
       display: grid;
       grid-template-columns: 28px 1fr;
@@ -667,7 +672,7 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      color: #0BE77E;
+      color: #ffffff;
       text-decoration: none;
       font-size: 14px;
       font-family: var(--ff-mono);
@@ -675,7 +680,7 @@
       margin-top: 8px;
       transition: color 0.2s;
     }
-    .contribution-link:hover { color: #10A65A; }
+    .contribution-link:hover { color: #64ca5d; }
 
     .contrib-path-title {
       font-size: 14px;
@@ -723,7 +728,6 @@
       padding: 32px;
     }
 
-    /* â”€â”€ FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     footer {
       background: rgba(5,18,45,0.6);
       border-top: 1px solid rgba(180,210,255,0.1);
@@ -755,7 +759,6 @@
     }
     .footer-links a:hover { color: rgba(180,210,255,0.7); }
 
-    /* â”€â”€ ANIMATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -763,24 +766,61 @@
     .hero-title { animation: fadeUp 0.7s 0.25s both; }
     .hero-sub   { animation: fadeUp 0.7s 0.4s both; }
     .hero-cta   { animation: fadeUp 0.7s 0.55s both; }
+
+    /* ── TIER 3 — WEBGL WIREFRAME ──────────────────────── */
+    .hero { perspective: 1400px; }
+    #hero-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.4;
+    }
+    .hero-left { z-index: 2; }
+    .hero-title {
+      text-shadow:
+        0 0 24px rgba(11,37,80,0.6),
+        0 0 60px rgba(11,37,80,0.4);
+    }
+    .hero-sub {
+      text-shadow: 0 0 18px rgba(11,37,80,0.7);
+    }
+
+    .sw-album { perspective: 1200px; }
+    .album-main {
+      transform-style: preserve-3d;
+      transition: transform 0.45s cubic-bezier(.2,.7,.2,1), box-shadow 0.45s;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.28);
+    }
+    .album-main:hover {
+      transform: rotateX(3deg) rotateY(-5deg) translateZ(18px);
+      box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 0 32px rgba(180,210,255,0.08);
+    }
+    .pillar { transition: transform 0.3s, border-color 0.3s; }
+    .pillar:hover { transform: translateX(6px); border-color: rgba(180,210,255,0.3); }
   </style>
 </head>
 <body>
 
+<div class="floor-grid"></div>
+
 <!-- NAV -->
 <nav>
-  <a class="wordmark" href="/"><img src="/Logo OpenAnstruk-Label.png" alt="OpenAnstruk Logo" style="height: 32px; width: auto;"></a>
+  <a class="wordmark" href="/"><img src="/OpenAnstruk-Label_BgInter.svg" alt="OpenAnstruk Logo" style="height: 40px; width: auto;"></a>
   <ul class="nav-links">
     <li><a href="#home">Home</a></li>
     <li><a href="#software">Software</a></li>
     <li><a href="#about">Who-We-Are?</a></li>
     <li><a href="#oss">Open Source</a></li>
-    <li><a href="https://github.com/adrianulza" target="_blank" class="nav-gh">GitHub â†—</a></li>
+    <li><a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" class="nav-gh">GitHub ↗</a></li>
   </ul>
 </nav>
 
 <!-- HERO -->
 <section id="home" class="hero" data-screen-label="Home">
+  <canvas id="hero-canvas"></canvas>
   <div class="hero-left">
     <h1 class="hero-title">
       The structural engineering software every mind deserves.<br>
@@ -792,7 +832,7 @@
       Researchers exploring the limits. Engineers solving problems that matter.<br>
       We're building a movement to make industrial-grade structural analysis free, open-source, and accessible to everyone.<br>
       <br>
-      <emp>"Whether you code, test, document, or use itâ€”you belong here."</emp>
+      <emp>"Whether you code, test, document, or use it—you belong here."</emp>
     </p>
     <div class="hero-cta">
       <a href="/html/app.html" class="btn-blueprint">Launch OpenAnstruk-2D</a>
@@ -805,20 +845,16 @@
   <div class="carousel-container">
     <div class="sw-layout">
 
-      <!-- LABEL: full-width -->
       <div class="sw-label">Software</div>
 
-      <!-- TITLE: left column -->
       <h2 class="sw-title">
-        Software <em>Built to Evolve</em>
+        Software <em style="color: rgb(15, 114, 229)">Built to Evolve</em>
       </h2>
 
-      <!-- DESCRIPTION: left column, below title -->
       <p class="sw-desc">
         We started with OpenAnstruk-2D, built from the ground up for structural engineers. It's a classic 2D structural analysis tool delivered through your browser. Features will keep evolving, remain open source, with no hidden algorithms. We're committed to meeting industrial-grade standards.
       </p>
 
-      <!-- ALBUM (left, below header) -->
       <div class="sw-album">
         <div class="album-main" id="album-main" onclick="openLightbox()">
           <img id="album-active-img" src="/demo/1.png" alt="Structural Model">
@@ -836,23 +872,22 @@
         </div>
       </div>
 
-      <!-- FEATURES (right, aligned to album top) -->
       <div class="sw-features-col">
         <div class="sw-features">
           <div class="feature-item">
-            <div class="feature-check">âœ“</div>
+            <div class="feature-check">✓</div>
             <div class="feature-text"><strong>Interactive Modeling:</strong> Place nodes and members with snap-to-grid. Define supports and loads visually. Get results instantly as you model. No cluttered menus. No steep learning curve.</div>
           </div>
           <div class="feature-item">
-            <div class="feature-check">âœ“</div>
+            <div class="feature-check">✓</div>
             <div class="feature-text"><strong>Web-based:</strong> No installation, pure web app that works offline after initial load. Run anywhere, anytime.</div>
           </div>
           <div class="feature-item">
-            <div class="feature-check">âœ“</div>
+            <div class="feature-check">✓</div>
             <div class="feature-text"><strong>Real-time Results:</strong> See shear force and bending moment diagrams instantly as you model. Direct stiffness method, computed entirely in your browser.</div>
           </div>
           <div class="feature-item">
-            <div class="feature-check">âœ“</div>
+            <div class="feature-check">✓</div>
             <div class="feature-text"><strong>We're expanding beyond 2D:</strong> 3D analysis, dynamic, nonlinear solver, design code check, BIM integration, ML/AI optimization. This is the future of structural engineering software. We're building toward it.</div>
           </div>
         </div>
@@ -930,7 +965,7 @@
             <p>Every contribution counts. Strengthen the tool in the way that fits you:</p>
             <div class="contrib-path-section">
               <div class="contrib-path-row">
-                <div class="feature-check">âœ“</div>
+                <div class="feature-check">✓</div>
                 <p class="contrib-path-title">Technical Contributors:</p>
               </div>
               <p class="contrib-path-desc">Submit improvements, fix bugs, optimize the solver.</p>
@@ -941,11 +976,11 @@
             </div>
             <div class="contrib-path-section">
               <div class="contrib-path-row">
-                <div class="feature-check">âœ“</div>
+                <div class="feature-check">✓</div>
                 <p class="contrib-path-title">Non-Technical Contributors</p>
               </div>
               <p class="contrib-path-desc">Test against other tools. Report bugs. Share what works and what could improve. Give feedback.</p>
-              <a href="mailto:openanstruk@gmail.com" class="contribution-link">â†’ Email to: openanstruk@gmail.com</a>
+              <a href="mailto:openanstruk@gmail.com" class="contribution-link">→ Email to: openanstruk@gmail.com</a>
             </div>
           </div>
         </div>
@@ -959,17 +994,15 @@
       </div>
     </div>
   </div>
-
-  </div>
 </section>
 
 <!-- FOOTER -->
 <footer>
-  <div class="footer-copy">Â© 2026 OpenAnstruk â€” MIT License</div>
+  <div class="footer-copy">© 2026 OpenAnstruk — MIT License</div>
   <div class="footer-links"></div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
   const slides = [
     { src: 'demo/1.png', alt: 'Structural Model' },
     { src: 'demo/2.png', alt: 'Load Definition' },
@@ -1017,6 +1050,156 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => startAutoplay());
+
+  // ── Tier 3 — WebGL wireframe truss ─────────────────
+  (function () {
+    const canvas = document.getElementById('hero-canvas');
+    if (!canvas) return;
+    const hero = canvas.parentElement;
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/three@0.160.0/build/three.min.js';
+    script.onload = init;
+    document.head.appendChild(script);
+
+    function init() {
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+      camera.position.set(6.5, 4.2, 8);
+      camera.lookAt(0, 0.6, 0);
+
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xb4d2ff, transparent: true, opacity: 0.35 });
+      const dimMat  = new THREE.LineBasicMaterial({ color: 0xb4d2ff, transparent: true, opacity: 0.18 });
+      const slabMat = new THREE.LineBasicMaterial({ color: 0xb4d2ff, transparent: true, opacity: 0.22 });
+
+      const group = new THREE.Group();
+      scene.add(group);
+
+      const W = 4.2, D = 3.2, H = 1.5;
+      const stories = 3, baysX = 2, baysZ = 1;
+      const verts = [];
+      for (let s = 0; s <= stories; s++) {
+        for (let i = 0; i <= baysX; i++) {
+          for (let j = 0; j <= baysZ; j++) {
+            verts.push([
+              (i - baysX/2) * W/baysX,
+              s * H,
+              (j - baysZ/2) * D/baysZ
+            ]);
+          }
+        }
+      }
+      const idx = (s,i,j) => s*(baysX+1)*(baysZ+1) + i*(baysZ+1) + j;
+
+      function addLine(a, b, mat) {
+        const g = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(...a), new THREE.Vector3(...b)
+        ]);
+        group.add(new THREE.Line(g, mat));
+      }
+
+      function addBox(cx, cy, cz, sx, sy, sz, mat) {
+        const hx = sx/2, hy = sy/2, hz = sz/2;
+        const p = [
+          [cx-hx,cy-hy,cz-hz],[cx+hx,cy-hy,cz-hz],[cx+hx,cy-hy,cz+hz],[cx-hx,cy-hy,cz+hz],
+          [cx-hx,cy+hy,cz-hz],[cx+hx,cy+hy,cz-hz],[cx+hx,cy+hy,cz+hz],[cx-hx,cy+hy,cz+hz]
+        ];
+        const e = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+        e.forEach(([a,b]) => addLine(p[a], p[b], mat));
+      }
+
+      // Columns (square section visualization)
+      const colT = 0.18;
+      for (let s = 0; s < stories; s++) {
+        for (let i = 0; i <= baysX; i++) {
+          for (let j = 0; j <= baysZ; j++) {
+            const v = verts[idx(s,i,j)];
+            addBox(v[0], v[1] + H/2, v[2], colT, H, colT, lineMat);
+          }
+        }
+      }
+
+      // Beams along X
+      const beamH = 0.16, beamW = 0.14;
+      for (let s = 1; s <= stories; s++) {
+        for (let j = 0; j <= baysZ; j++) {
+          for (let i = 0; i < baysX; i++) {
+            const a = verts[idx(s,i,j)], b = verts[idx(s,i+1,j)];
+            addBox((a[0]+b[0])/2, a[1]-beamH/2, a[2], Math.abs(b[0]-a[0]), beamH, beamW, lineMat);
+          }
+        }
+        // Beams along Z
+        for (let i = 0; i <= baysX; i++) {
+          for (let j = 0; j < baysZ; j++) {
+            const a = verts[idx(s,i,j)], b = verts[idx(s,i,j+1)];
+            addBox(a[0], a[1]-beamH/2, (a[2]+b[2])/2, beamW, beamH, Math.abs(b[2]-a[2]), lineMat);
+          }
+        }
+      }
+
+      // Floor slab outlines (thin plate)
+      for (let s = 1; s <= stories; s++) {
+        const y = s*H - beamH;
+        const x0 = -W/2, x1 = W/2, z0 = -D/2, z1 = D/2;
+        const slabT = 0.06;
+        addBox(0, y - slabT/2, 0, W, slabT, D, slabMat);
+      }
+
+      // Footings at base
+      const ftSize = 0.45, ftH = 0.18;
+      for (let i = 0; i <= baysX; i++) {
+        for (let j = 0; j <= baysZ; j++) {
+          const v = verts[idx(0,i,j)];
+          addBox(v[0], -ftH/2, v[2], ftSize, ftH, ftSize, dimMat);
+        }
+      }
+
+      const nodeGeom = new THREE.SphereGeometry(0.05, 8, 6);
+      const nodeMat  = new THREE.MeshBasicMaterial({ color: 0xb4d2ff, transparent: true, opacity: 0.45 });
+      verts.forEach(v => {
+        const m = new THREE.Mesh(nodeGeom, nodeMat);
+        m.position.set(...v);
+        group.add(m);
+      });
+
+      group.position.y = -1.2;
+
+      function resize() {
+        const r = hero.getBoundingClientRect();
+        renderer.setSize(r.width, r.height, false);
+        camera.aspect = r.width / r.height;
+        camera.updateProjectionMatrix();
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      let mx = 0, my = 0;
+      hero.addEventListener('mousemove', (e) => {
+        const r = hero.getBoundingClientRect();
+        mx = ((e.clientX - r.left) / r.width  - 0.5) * 2;
+        my = ((e.clientY - r.top)  / r.height - 0.5) * 2;
+      });
+      hero.addEventListener('mouseleave', () => { mx = my = 0; });
+
+      let visible = true;
+      const io = new IntersectionObserver((entries) => {
+        visible = entries[0].isIntersecting;
+      }, { threshold: 0 });
+      io.observe(hero);
+
+      let t = 0;
+      function loop() {
+        requestAnimationFrame(loop);
+        if (!visible) return;
+        t += 0.0035;
+        group.rotation.y = t + mx * 0.4;
+        group.rotation.x = my * -0.15;
+        renderer.render(scene, camera);
+      }
+      loop();
+    }
+  })();
 
   document.addEventListener('keydown', (e) => {
     const lbOpen = document.getElementById('lightbox').classList.contains('open');

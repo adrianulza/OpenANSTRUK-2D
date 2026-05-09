@@ -1,9 +1,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { TabType, ToolType } from "./tool-sidebar"
-import type { Section, SectionId, MultiSelection, StructureModel, SupportType, MemberType, Load, LoadId } from "@/lib/model"
+import type { Section, SectionId, MultiSelection, StructureModel, SupportType, MemberType, Load, LoadId, PointLoad, DistributedLoad } from "@/lib/model"
 import { newSectionId } from "@/lib/model"
-import type { AnalysisResult } from "@/lib/solver"
+import type { AnalysisResult, NodeDisplacement } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import type { UnitSettings } from "@/lib/units"
 import {
@@ -11,7 +12,6 @@ import {
   displayE, parseE, labelE,
   displayI, parseI, labelI,
   displayA, parseA, labelA,
-  displayW, parseW, labelW,
 } from "@/lib/units"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,12 +25,34 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Trash2,
-  Pencil,
-  Triangle,
-  Circle,
-  Square,
   X,
 } from "lucide-react"
+
+const pinIcon = (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" strokeWidth={0.5}>
+    <polygon points="8,2 12,10 4,10" />
+    <line x1="3" y1="11" x2="13" y2="11" strokeWidth={1.5} />
+  </svg>
+)
+
+const rollerIcon = (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" strokeWidth={0.5}>
+    <polygon points="8,2 12,10 4,10" />
+    <circle cx="6" cy="12.5" r="1.5" fill="none" strokeWidth={1.5} />
+    <circle cx="10" cy="12.5" r="1.5" fill="none" strokeWidth={1.5} />
+    <line x1="3" y1="14" x2="13" y2="14" strokeWidth={1.5} />
+  </svg>
+)
+
+const fixedIcon = (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" strokeWidth={0.5}>
+    <rect x="4" y="3" width="8" height="6" fill="currentColor" />
+    <line x1="2.5" y1="10" x2="13.5" y2="10" strokeWidth={1.5} />
+    <line x1="4" y1="10" x2="3" y2="13" strokeWidth={1.5} />
+    <line x1="9" y1="10" x2="8" y2="13" strokeWidth={1.5} />
+    <line x1="12" y1="10" x2="11" y2="13" strokeWidth={1.5} />
+  </svg>
+)
 import { formatValue } from "@/lib/constants"
 
 export type SelectedLoadType = "point" | "uniform" | "asymmetric" | null
@@ -84,6 +106,7 @@ interface FlyoutPanelProps {
   selectedLoadId?: LoadId | null
   selectedLoadIds?: string[]
   onModifyLoad?: (patch: Partial<Load>) => void
+  onModifyLoadsByType?: (type: "point" | "distributed", patch: Partial<Load>) => void
   onDeleteLoad?: () => void
   onDeleteLoadIds?: () => void
   diagramScale?: number
@@ -94,10 +117,12 @@ interface FlyoutPanelProps {
   onInvertBMDChange?: (v: boolean) => void
   deformationScale?: number
   onDeformationScaleChange?: (v: number) => void
-  showDeformLabels?: boolean
-  onShowDeformLabelsChange?: (v: boolean) => void
   showDeformNodeLabels?: boolean
   onShowDeformNodeLabelsChange?: (v: boolean) => void
+  showReactionNodeLabels?: boolean
+  onShowReactionNodeLabelsChange?: (v: boolean) => void
+  showDiagramMemberLabels?: boolean
+  onShowDiagramMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
 }
 
@@ -149,6 +174,7 @@ export function FlyoutPanel({
   selectedLoadId,
   selectedLoadIds,
   onModifyLoad,
+  onModifyLoadsByType,
   onDeleteLoad,
   onDeleteLoadIds,
   diagramScale = 10,
@@ -159,10 +185,12 @@ export function FlyoutPanel({
   onInvertBMDChange,
   deformationScale = 25,
   onDeformationScaleChange,
-  showDeformLabels = true,
-  onShowDeformLabelsChange,
   showDeformNodeLabels = true,
   onShowDeformNodeLabelsChange,
+  showReactionNodeLabels = true,
+  onShowReactionNodeLabelsChange,
+  showDiagramMemberLabels = true,
+  onShowDiagramMemberLabelsChange,
   analysisResult,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
@@ -175,8 +203,8 @@ export function FlyoutPanel({
         "flex flex-col max-h-[calc(100vh-5rem)]"
       )}
     >
-      <div className="p-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-        <span className="font-medium text-sm text-[#1e293b]">{getToolTitle(activeTool, activeTab)}</span>
+      <div className="p-3 flex items-center justify-between shrink-0">
+        <span className="font-medium text-sm" style={{ color: FLYOUT_PANEL_COLORS.headerFont }}>{getToolTitle(activeTool, activeTab)}</span>
         <button
           onClick={onClose}
           className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 rounded hover:bg-gray-100"
@@ -184,6 +212,7 @@ export function FlyoutPanel({
           <X size={14} />
         </button>
       </div>
+      <div className="mx-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.headerSeparator, borderTopWidth: 3 }} />
       <div className="p-3 overflow-y-auto">
         <FlyoutContent
           activeTab={activeTab}
@@ -232,6 +261,7 @@ export function FlyoutPanel({
           selectedLoadId={selectedLoadId}
           selectedLoadIds={selectedLoadIds}
           onModifyLoad={onModifyLoad}
+          onModifyLoadsByType={onModifyLoadsByType}
           onDeleteLoad={onDeleteLoad}
           onDeleteLoadIds={onDeleteLoadIds}
           diagramScale={diagramScale}
@@ -242,10 +272,12 @@ export function FlyoutPanel({
           onInvertBMDChange={onInvertBMDChange}
           deformationScale={deformationScale}
           onDeformationScaleChange={onDeformationScaleChange}
-          showDeformLabels={showDeformLabels}
-          onShowDeformLabelsChange={onShowDeformLabelsChange}
           showDeformNodeLabels={showDeformNodeLabels}
           onShowDeformNodeLabelsChange={onShowDeformNodeLabelsChange}
+          showReactionNodeLabels={showReactionNodeLabels}
+          onShowReactionNodeLabelsChange={onShowReactionNodeLabelsChange}
+          showDiagramMemberLabels={showDiagramMemberLabels}
+          onShowDiagramMemberLabelsChange={onShowDiagramMemberLabelsChange}
           analysisResult={analysisResult}
         />
       </div>
@@ -309,6 +341,7 @@ function FlyoutContent({
   selectedLoadId,
   selectedLoadIds = [],
   onModifyLoad,
+  onModifyLoadsByType,
   onDeleteLoad,
   onDeleteLoadIds,
   diagramScale = 10,
@@ -319,10 +352,12 @@ function FlyoutContent({
   onInvertBMDChange,
   deformationScale = 25,
   onDeformationScaleChange,
-  showDeformLabels = true,
-  onShowDeformLabelsChange,
   showDeformNodeLabels = true,
   onShowDeformNodeLabelsChange,
+  showReactionNodeLabels = true,
+  onShowReactionNodeLabelsChange,
+  showDiagramMemberLabels = true,
+  onShowDiagramMemberLabelsChange,
   analysisResult,
 }: FlyoutContentProps) {
   if (activeTab === "Model") {
@@ -424,8 +459,10 @@ function FlyoutContent({
         return (
           <ModifyLoadToolContent
             selectedLoad={selectedLoad}
+            selectedLoadIds={selectedLoadIds ?? []}
+            model={model ?? null}
             onModify={onModifyLoad}
-            onDelete={onDeleteLoad}
+            onModifyByType={onModifyLoadsByType}
           />
         )
       }
@@ -448,15 +485,15 @@ function FlyoutContent({
       case "SELECT":
         return <AnalyzeSelectContent analysisResult={analysisResult ?? null} />
       case "REACTION":
-        return <ReactionToolContent analysisResult={analysisResult ?? null} />
+        return <ReactionToolContent analysisResult={analysisResult ?? null} showNodeLabels={showReactionNodeLabels} onShowNodeLabelsChange={onShowReactionNodeLabelsChange} />
       case "AXIAL":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} analysisResult={analysisResult} model={model} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} />
       case "SHEAR":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertSFD} onInvertChange={onInvertSFDChange} analysisResult={analysisResult} model={model} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertSFD} onInvertChange={onInvertSFDChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} />
       case "MOMENT":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} analysisResult={analysisResult} model={model} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} />
       case "DEFORMATION":
-        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} showLabels={showDeformLabels} onShowLabelsChange={onShowDeformLabelsChange} showNodeLabels={showDeformNodeLabels} onShowNodeLabelsChange={onShowDeformNodeLabelsChange} analysisResult={analysisResult} />
+        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} showNodeLabels={showDeformNodeLabels} onShowNodeLabelsChange={onShowDeformNodeLabelsChange} analysisResult={analysisResult} />
       default:
         return null
     }
@@ -539,12 +576,15 @@ function ModifyComponentToolContent({
     <button
       key={type}
       onClick={() => { setSupportType(type); setSupportApplied(false) }}
-      className={cn(
-        "flex-1 h-10 flex flex-col items-center justify-center gap-0.5 rounded transition-colors text-[11px]",
-        supportType === type
-          ? "bg-[#2563eb]/10 text-[#2563eb] font-medium"
-          : "bg-gray-50 text-gray-500 hover:bg-gray-100"
-      )}
+      className="flex-1 h-10 flex flex-col items-center justify-center gap-0.5 rounded transition-colors text-[11px]"
+      style={supportType === type ? {
+        color: FLYOUT_PANEL_COLORS.primary,
+        backgroundColor: FLYOUT_PANEL_COLORS.primary + '19',
+        fontWeight: 500,
+      } : {
+        backgroundColor: '#f3f4f6',
+        color: '#6b7280',
+      }}
     >
       {icon}
       {title}
@@ -573,12 +613,15 @@ function ModifyComponentToolContent({
               setSectionApplied(true)
             }}
             disabled={!canApplySection}
-            className={cn(
-              "w-full py-1.5 rounded-md text-[13px] font-medium transition-colors",
-              canApplySection
-                ? "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"
-            )}
+            className="w-full py-1.5 rounded-md text-[13px] font-medium transition-colors"
+            style={canApplySection ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#9ca3af',
+              cursor: 'not-allowed',
+            }}
           >
             Apply
           </button>
@@ -595,9 +638,9 @@ function ModifyComponentToolContent({
         <div className="space-y-2">
           <Label className="text-xs text-gray-600">Modify support</Label>
           <div className="flex gap-1.5">
-            {supportBtn("pin", <Triangle size={14} />, "Pin")}
-            {supportBtn("roller", <Circle size={14} />, "Roller")}
-            {supportBtn("fixed", <Square size={14} />, "Fixed")}
+            {supportBtn("pin", pinIcon, "Pin")}
+            {supportBtn("roller", rollerIcon, "Roller")}
+            {supportBtn("fixed", fixedIcon, "Fixed")}
           </div>
           <button
             onClick={() => {
@@ -606,12 +649,15 @@ function ModifyComponentToolContent({
               setSupportApplied(true)
             }}
             disabled={!canApplySupport}
-            className={cn(
-              "w-full py-1.5 rounded-md text-[13px] font-medium transition-colors",
-              canApplySupport
-                ? "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"
-            )}
+            className="w-full py-1.5 rounded-md text-[13px] font-medium transition-colors"
+            style={canApplySupport ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#9ca3af',
+              cursor: 'not-allowed',
+            }}
           >
             Apply
           </button>
@@ -701,23 +747,27 @@ function MemberToolContent({
         <div className="flex gap-1">
           <button
             onClick={() => onMemberTypeChange?.("frame")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              activeMemberType === "frame"
-                ? "bg-[#1a2f5e] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={activeMemberType === "frame" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Frame
           </button>
           <button
             onClick={() => onMemberTypeChange?.("truss")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              activeMemberType === "truss"
-                ? "bg-[#1a2f5e] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={activeMemberType === "truss" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Truss
           </button>
@@ -749,12 +799,17 @@ function SupportToolContent({
     return (
       <button
         onClick={() => onSupportTypeChange?.(type)}
-        className={cn(
-          "flex-1 h-12 flex flex-col items-center justify-center gap-1 rounded transition-colors",
-          active
-            ? "border-2 border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]"
-            : "border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-500"
-        )}
+        className="flex-1 h-12 flex flex-col items-center justify-center gap-1 rounded transition-colors"
+        style={active ? {
+          borderWidth: 2,
+          borderColor: FLYOUT_PANEL_COLORS.primary,
+          backgroundColor: FLYOUT_PANEL_COLORS.primary + '0d',
+          color: FLYOUT_PANEL_COLORS.primary,
+        } : {
+          borderWidth: 1,
+          borderColor: '#e5e7eb',
+          color: '#9ca3af',
+        }}
       >
         {icon}
         <span className="text-[10px] font-medium">{label}</span>
@@ -766,9 +821,9 @@ function SupportToolContent({
     <div className="space-y-4">
       <Label className="text-xs text-gray-600">Support Type</Label>
       <div className="flex gap-2">
-        {btn("pin", <Triangle size={16} />, "Pin")}
-        {btn("roller", <Circle size={16} />, "Roller")}
-        {btn("fixed", <Square size={16} />, "Fixed")}
+        {btn("pin", pinIcon, "Pin")}
+        {btn("roller", rollerIcon, "Roller")}
+        {btn("fixed", fixedIcon, "Fixed")}
       </div>
       <p className="text-xs text-gray-500 leading-relaxed">Click a node to assign</p>
     </div>
@@ -805,7 +860,7 @@ function MaterialToolContent({
 
   // ── Local form state ────────────────────────────────────────────────────────
 
-  type Fields = { name: string; E: string; I: string; A: string; W: string; nu: string }
+  type Fields = { name: string; E: string; I: string; A: string }
 
   const fromSection = React.useCallback(
     (sec: Section): Fields => ({
@@ -813,8 +868,6 @@ function MaterialToolContent({
       E:    fmt(displayE(sec.E, u)),
       I:    fmt(displayI(sec.I, u)),
       A:    fmt(displayA(sec.A, u)),
-      W:    fmt(displayW(sec.W, u)),
-      nu:   sec.nu.toString(),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [u.pressure, u.length, u.force]
@@ -829,7 +882,7 @@ function MaterialToolContent({
     const f = fromSection(s)
     setSaved(f)
     setLocal(f)
-  }, [activeSection, fromSection]) // fromSection changes when units change
+  }, [activeSection, fromSection, s]) // fromSection changes when units change
 
   if (!s || !local || !saved) return null
 
@@ -839,21 +892,18 @@ function MaterialToolContent({
   // ── Validation ──────────────────────────────────────────────────────────────
 
   const validNum = (v: string) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 }
-  const validNuV = (v: string) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 && n < 0.5 }
 
   const nameEmpty = local.name.trim() === ""
   const invalidE  = !validNum(local.E)
   const invalidI  = !validNum(local.I)
   const invalidA  = !validNum(local.A)
-  const invalidW  = !validNum(local.W)
-  const invalidNu = !validNuV(local.nu)
-  const isFormValid = !nameEmpty && !invalidE && !invalidI && !invalidA && !invalidW && !invalidNu
+  const isFormValid = !nameEmpty && !invalidE && !invalidI && !invalidA
 
   // ── Dirty detection ─────────────────────────────────────────────────────────
 
   const isNameDirty   = local.name !== saved.name
   const isValuesDirty = local.E !== saved.E || local.I !== saved.I ||
-                        local.A !== saved.A || local.W !== saved.W || local.nu !== saved.nu
+                        local.A !== saved.A
 
   // Mutually exclusive: name changed → Add intent; values only → Modify intent
   const canModify = isValuesDirty && !isNameDirty && isFormValid
@@ -868,8 +918,6 @@ function MaterialToolContent({
     E:  parseE(parseFloat(local.E), u),
     I:  parseI(parseFloat(local.I), u),
     A:  parseA(parseFloat(local.A), u),
-    W:  parseW(parseFloat(local.W), u),
-    nu: parseFloat(local.nu),
   })
 
   const handleModify = () => {
@@ -937,20 +985,21 @@ function MaterialToolContent({
       {field("Elastic Modulus, E", "E", labelE(u), invalidE)}
       {field("Inertia, I",         "I", labelI(u), invalidI)}
       {field("Section Area, A",    "A", labelA(u), invalidA)}
-      {field("Unit Weight, W",     "W", labelW(u), invalidW)}
-      {field("Poisson Ratio, ν",   "nu", "", invalidNu, { step: "0.01" })}
 
       {/* Add / Modify row */}
       <div className="flex gap-2 pt-1">
         <Button
           size="sm"
           variant="outline"
-          className={cn(
-            "flex-1 h-7 text-xs transition-colors",
-            canModify
-              ? "border-[#2563eb] text-[#2563eb] bg-[#2563eb]/5 hover:bg-[#2563eb]/10"
-              : "text-gray-400 border-gray-200"
-          )}
+          className="flex-1 h-7 text-xs transition-colors"
+          style={canModify ? {
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+            color: FLYOUT_PANEL_COLORS.primary,
+            backgroundColor: FLYOUT_PANEL_COLORS.primary + '08',
+          } : {
+            borderColor: '#e5e7eb',
+            color: '#9ca3af',
+          }}
           disabled={!canModify}
           onClick={handleModify}
         >
@@ -959,12 +1008,15 @@ function MaterialToolContent({
         <Button
           size="sm"
           variant="outline"
-          className={cn(
-            "flex-1 h-7 text-xs transition-colors",
-            canAdd
-              ? "border-[#2563eb] text-[#2563eb] bg-[#2563eb]/5 hover:bg-[#2563eb]/10"
-              : "text-gray-400 border-gray-200"
-          )}
+          className="flex-1 h-7 text-xs transition-colors"
+          style={canAdd ? {
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+            color: FLYOUT_PANEL_COLORS.primary,
+            backgroundColor: FLYOUT_PANEL_COLORS.primary + '08',
+          } : {
+            borderColor: '#e5e7eb',
+            color: '#9ca3af',
+          }}
           disabled={!canAdd}
           onClick={handleAdd}
         >
@@ -980,7 +1032,7 @@ function MaterialToolContent({
       )}
 
       {/* Delete */}
-      <div className="border-t border-gray-100 pt-2">
+      <div className="border-t pt-2" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
         <Button
           size="sm"
           variant="ghost"
@@ -1089,23 +1141,27 @@ function PointLoadToolContent({
         <div className="flex gap-1">
           <button
             onClick={() => onInputModeChange?.("principal")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              inputMode === "principal"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={inputMode === "principal" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Principal
           </button>
           <button
             onClick={() => onInputModeChange?.("angular")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              inputMode === "angular"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={inputMode === "angular" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Angular
           </button>
@@ -1120,23 +1176,27 @@ function PointLoadToolContent({
             <div className="flex gap-1">
               <button
                 onClick={() => onAxisChange?.("x")}
-                className={cn(
-                  "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                  axis === "x"
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
+                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+                style={axis === "x" ? {
+                  backgroundColor: FLYOUT_PANEL_COLORS.primary,
+                  color: 'white',
+                } : {
+                  backgroundColor: '#f3f4f6',
+                  color: '#4b5563',
+                }}
               >
                 X-axis
               </button>
               <button
                 onClick={() => onAxisChange?.("y")}
-                className={cn(
-                  "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                  axis === "y"
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
+                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+                style={axis === "y" ? {
+                  backgroundColor: FLYOUT_PANEL_COLORS.primary,
+                  color: 'white',
+                } : {
+                  backgroundColor: '#f3f4f6',
+                  color: '#4b5563',
+                }}
               >
                 Y-axis
               </button>
@@ -1250,23 +1310,27 @@ function DistributedLoadToolContent({
         <div className="flex gap-1">
           <button
             onClick={() => onDistModeChange?.("local-axis")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              distMode === "local-axis"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={distMode === "local-axis" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Local-axis
           </button>
           <button
             onClick={() => onDistModeChange?.("global-axis")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              distMode === "global-axis"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={distMode === "global-axis" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Global Axis
           </button>
@@ -1279,23 +1343,27 @@ function DistributedLoadToolContent({
           <div className="flex gap-1">
             <button
               onClick={() => onActiveAxisChange?.("x")}
-              className={cn(
-                "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                activeAxis === "x"
-                  ? "bg-[#2563eb] text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
+              className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+              style={activeAxis === "x" ? {
+                backgroundColor: FLYOUT_PANEL_COLORS.primary,
+                color: 'white',
+              } : {
+                backgroundColor: '#f3f4f6',
+                color: '#4b5563',
+              }}
             >
               X-axis
             </button>
             <button
               onClick={() => onActiveAxisChange?.("y")}
-              className={cn(
-                "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                activeAxis === "y"
-                  ? "bg-[#2563eb] text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
+              className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+              style={activeAxis === "y" ? {
+                backgroundColor: FLYOUT_PANEL_COLORS.primary,
+                color: 'white',
+              } : {
+                backgroundColor: '#f3f4f6',
+                color: '#4b5563',
+              }}
             >
               Y-axis
             </button>
@@ -1308,23 +1376,27 @@ function DistributedLoadToolContent({
         <div className="flex gap-1">
           <button
             onClick={() => onDistTypeChange?.("uniform")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              distType === "uniform"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={distType === "uniform" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Uniform
           </button>
           <button
             onClick={() => onDistTypeChange?.("asymmetric")}
-            className={cn(
-              "flex-1 h-7 text-[11px] rounded-md transition-colors",
-              distType === "asymmetric"
-                ? "bg-[#2563eb] text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
+            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+            style={distType === "asymmetric" ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+            } : {
+              backgroundColor: '#f3f4f6',
+              color: '#4b5563',
+            }}
           >
             Asymmetric
           </button>
@@ -1472,306 +1544,251 @@ function DistributedLoadToolContent({
   )
 }
 
+function DistributedLoadEditor({
+  load,
+  onApply,
+}: {
+  load: DistributedLoad
+  onApply: (patch: Partial<Load>) => void
+}) {
+  const initMode = load.mode ?? "local-axis"
+  const [editDistMode, setEditDistMode] = React.useState<"local-axis" | "global-axis">(initMode)
+  const [editDistType, setEditDistType] = React.useState<"uniform" | "asymmetric">(() => {
+    if (initMode === "local-axis") return (load.wStart ?? 0) !== (load.wEnd ?? 0) ? "asymmetric" : "uniform"
+    return (load.wxStart ?? 0) !== (load.wxEnd ?? 0) || (load.wyStart ?? 0) !== (load.wyEnd ?? 0) ? "asymmetric" : "uniform"
+  })
+  const [editWStart, setEditWStart] = React.useState(load.wStart ?? 0)
+  const [editWEnd, setEditWEnd] = React.useState(load.wEnd ?? 0)
+  const [editWxStart, setEditWxStart] = React.useState(load.wxStart ?? 0)
+  const [editWxEnd, setEditWxEnd] = React.useState(load.wxEnd ?? 0)
+  const [editWyStart, setEditWyStart] = React.useState(load.wyStart ?? 0)
+  const [editWyEnd, setEditWyEnd] = React.useState(load.wyEnd ?? 0)
+
+  React.useEffect(() => {
+    const mode = load.mode ?? "local-axis"
+    setEditDistMode(mode)
+    if (mode === "local-axis") {
+      setEditWStart(load.wStart ?? 0)
+      setEditWEnd(load.wEnd ?? 0)
+      setEditDistType((load.wStart ?? 0) !== (load.wEnd ?? 0) ? "asymmetric" : "uniform")
+    } else {
+      setEditWxStart(load.wxStart ?? 0)
+      setEditWxEnd(load.wxEnd ?? 0)
+      setEditWyStart(load.wyStart ?? 0)
+      setEditWyEnd(load.wyEnd ?? 0)
+      setEditDistType((load.wxStart ?? 0) !== (load.wxEnd ?? 0) || (load.wyStart ?? 0) !== (load.wyEnd ?? 0) ? "asymmetric" : "uniform")
+    }
+  }, [load])
+
+  const handleApply = () => {
+    if (editDistMode === "local-axis") {
+      const wEnd = editDistType === "asymmetric" ? editWEnd : editWStart
+      onApply({ mode: "local-axis", wStart: editWStart, wEnd, wxStart: undefined, wxEnd: undefined, wyStart: undefined, wyEnd: undefined } as Partial<Load>)
+    } else {
+      const wxEnd = editDistType === "asymmetric" ? editWxEnd : editWxStart
+      const wyEnd = editDistType === "asymmetric" ? editWyEnd : editWyStart
+      onApply({ mode: "global-axis", wxStart: editWxStart, wxEnd, wyStart: editWyStart, wyEnd, wStart: undefined, wEnd: undefined } as Partial<Load>)
+    }
+  }
+
+  const modeBtn = (mode: "local-axis" | "global-axis", label: string) => (
+    <button onClick={() => setEditDistMode(mode)} className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+      style={editDistMode === mode ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}>
+      {label}
+    </button>
+  )
+  const distBtn = (type: "uniform" | "asymmetric", label: string) => (
+    <button onClick={() => setEditDistType(type)} className="flex-1 h-7 text-[11px] rounded-md transition-colors"
+      style={editDistType === type ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Input Mode</Label>
+        <div className="flex gap-1">{modeBtn("local-axis", "Local-axis")}{modeBtn("global-axis", "Global Axis")}</div>
+      </div>
+
+      {editDistMode === "local-axis" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-gray-600">Distribution</Label>
+            <div className="flex gap-1">{distBtn("uniform", "Uniform")}{distBtn("asymmetric", "Asymmetric")}</div>
+          </div>
+          <div className="space-y-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-600">{editDistType === "asymmetric" ? "Start (i)" : "Load"}</Label>
+              <div className="flex gap-2">
+                <NumericInput value={editWStart} onChange={setEditWStart} className="h-7 text-xs font-mono flex-1" />
+                <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
+              </div>
+            </div>
+            {editDistType === "asymmetric" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-gray-600">End (j)</Label>
+                <div className="flex gap-2">
+                  <NumericInput value={editWEnd} onChange={setEditWEnd} className="h-7 text-xs font-mono flex-1" />
+                  <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-400 leading-snug">⊥ perpendicular to member  ·  + outward  ·  − inward</p>
+        </>
+      )}
+
+      {editDistMode === "global-axis" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-gray-600">Distribution</Label>
+            <div className="flex gap-1">{distBtn("uniform", "Uniform")}{distBtn("asymmetric", "Asymmetric")}</div>
+          </div>
+          <div className="space-y-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-600">X-axis (horizontal)</Label>
+              <div className="flex gap-2">
+                <NumericInput value={editWxStart} onChange={setEditWxStart} className="h-7 text-xs font-mono flex-1" />
+                <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
+              </div>
+              {editDistType === "asymmetric" && (
+                <div className="flex gap-2">
+                  <div className="text-[10px] text-gray-400 self-center">End (j)</div>
+                  <NumericInput value={editWxEnd} onChange={setEditWxEnd} className="h-7 text-xs font-mono flex-1" />
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-600">Y-axis (vertical)</Label>
+              <div className="flex gap-2">
+                <NumericInput value={editWyStart} onChange={setEditWyStart} className="h-7 text-xs font-mono flex-1" />
+                <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
+              </div>
+              {editDistType === "asymmetric" && (
+                <div className="flex gap-2">
+                  <div className="text-[10px] text-gray-400 self-center">End (j)</div>
+                  <NumericInput value={editWyEnd} onChange={setEditWyEnd} className="h-7 text-xs font-mono flex-1" />
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 leading-snug">+ rightward (X)  ·  − leftward  ·  + upward (Y)  ·  − downward</p>
+        </>
+      )}
+
+      <Button size="sm" className="w-full text-xs h-7" style={{ backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' }} onClick={handleApply}>
+        Apply
+      </Button>
+    </div>
+  )
+}
+
 function ModifyLoadToolContent({
   selectedLoad,
+  selectedLoadIds = [],
+  model,
   onModify,
-  onDelete,
+  onModifyByType,
 }: {
   selectedLoad: Load | null
+  selectedLoadIds?: string[]
+  model: import("../lib/model").StructureModel | null
   onModify?: (patch: Partial<Load>) => void
-  onDelete?: () => void
+  onModifyByType?: (type: "point" | "distributed", patch: Partial<Load>) => void
 }) {
   const [editFx, setEditFx] = React.useState<number>(0)
   const [editFy, setEditFy] = React.useState<number>(0)
-  const [editWStart, setEditWStart] = React.useState<number>(0)
-  const [editWEnd, setEditWEnd] = React.useState<number>(0)
-  const [editDistType, setEditDistType] = React.useState<"uniform" | "asymmetric">("uniform")
-  const [editDistMode, setEditDistMode] = React.useState<"local-axis" | "global-axis">("local-axis")
-  const [editWxStart, setEditWxStart] = React.useState<number>(0)
-  const [editWxEnd, setEditWxEnd] = React.useState<number>(0)
-  const [editWyStart, setEditWyStart] = React.useState<number>(0)
-  const [editWyEnd, setEditWyEnd] = React.useState<number>(0)
 
-  React.useEffect(() => {
-    if (!selectedLoad) return
-    if (selectedLoad.type === "point") {
-      setEditFx(selectedLoad.fx)
-      setEditFy(selectedLoad.fy)
-    } else {
-      const mode = selectedLoad.mode ?? "local-axis"
-      setEditDistMode(mode)
-      if (mode === "local-axis") {
-        setEditWStart(selectedLoad.wStart ?? 0)
-        setEditWEnd(selectedLoad.wEnd ?? 0)
-        setEditDistType(selectedLoad.wStart !== selectedLoad.wEnd ? "asymmetric" : "uniform")
-      } else {
-        setEditWxStart(selectedLoad.wxStart ?? 0)
-        setEditWxEnd(selectedLoad.wxEnd ?? 0)
-        setEditWyStart(selectedLoad.wyStart ?? 0)
-        setEditWyEnd(selectedLoad.wyEnd ?? 0)
-        setEditDistType(selectedLoad.wxStart !== selectedLoad.wxEnd || selectedLoad.wyStart !== selectedLoad.wyEnd ? "asymmetric" : "uniform")
-      }
+  // Derive all selected loads by type
+  const allSelected = React.useMemo(() => {
+    if (!model) return { points: [], dists: [] }
+    const ids = selectedLoadIds.length > 0 ? selectedLoadIds : (selectedLoad ? [selectedLoad.id] : [])
+    const points: PointLoad[] = []
+    const dists: DistributedLoad[] = []
+    for (const id of ids) {
+      const l = model.loads[id]
+      if (!l) continue
+      if (l.type === "point") points.push(l as PointLoad)
+      else dists.push(l as DistributedLoad)
     }
-  }, [selectedLoad])
+    return { points, dists }
+  }, [selectedLoadIds, selectedLoad, model])
 
-  if (!selectedLoad) {
+  const hasPoints = allSelected.points.length > 0
+  const hasDists = allSelected.dists.length > 0
+  const totalCount = allSelected.points.length + allSelected.dists.length
+
+  // Seed point load editor from first point load in selection
+  const firstPoint = allSelected.points[0] ?? null
+  React.useEffect(() => {
+    if (!firstPoint) return
+    setEditFx(firstPoint.fx)
+    setEditFy(firstPoint.fy)
+  }, [firstPoint])
+
+  if (totalCount === 0) {
     return (
       <p className="text-xs text-gray-500 leading-relaxed">
-        Click a load on the canvas to select it
+        Click a load or drag a box on the canvas to select loads
       </p>
     )
   }
 
-  const handleApply = () => {
-    if (selectedLoad.type === "point") {
-      onModify?.({ fx: editFx, fy: editFy } as Partial<Load>)
-    } else {
-      if (editDistMode === "local-axis") {
-        const wEnd = editDistType === "asymmetric" ? editWEnd : editWStart
-        onModify?.({
-          mode: "local-axis",
-          wStart: editWStart,
-          wEnd,
-          wxStart: undefined,
-          wxEnd: undefined,
-          wyStart: undefined,
-          wyEnd: undefined,
-        } as Partial<Load>)
-      } else {
-        const wxEnd = editDistType === "asymmetric" ? editWxEnd : editWxStart
-        const wyEnd = editDistType === "asymmetric" ? editWyEnd : editWyStart
-        onModify?.({
-          mode: "global-axis",
-          wxStart: editWxStart,
-          wxEnd,
-          wyStart: editWyStart,
-          wyEnd,
-          wStart: undefined,
-          wEnd: undefined,
-        } as Partial<Load>)
-      }
-    }
+  const handleApplyPoint = () => {
+    onModifyByType?.("point", { fx: editFx, fy: editFy } as Partial<Load>)
+  }
+
+  const handleApplyDist = (patch: Partial<Load>) => {
+    onModifyByType?.("distributed", patch)
   }
 
   return (
     <div className="space-y-3">
-      {selectedLoad.type === "point" && (
+      {totalCount > 1 && (
+        <div className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5">
+          <span className="text-xs text-gray-600">{totalCount} loads selected</span>
+        </div>
+      )}
+
+      {hasPoints && (
         <>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Point Load</span>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-gray-600">Global axis</Label>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-[10px] text-gray-500">X (rightward)</Label>
-                <NumericInput
-                  value={editFx}
-                  onChange={setEditFx}
-                  className="h-7 text-xs font-mono w-full"
-                />
+                <NumericInput value={editFx} onChange={setEditFx} className="h-7 text-xs font-mono w-full" />
               </div>
               <div>
                 <Label className="text-[10px] text-gray-500">Y (upward)</Label>
-                <NumericInput
-                  value={editFy}
-                  onChange={setEditFy}
-                  className="h-7 text-xs font-mono w-full"
-                />
+                <NumericInput value={editFy} onChange={setEditFy} className="h-7 text-xs font-mono w-full" />
               </div>
             </div>
           </div>
+          <Button size="sm" className="w-full text-xs h-7" style={{ backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' }} onClick={handleApplyPoint}>
+            Apply
+          </Button>
         </>
       )}
 
-      {selectedLoad.type === "distributed" && (
+      {hasPoints && hasDists && (
+        <div className="h-px bg-gray-100" />
+      )}
+
+      {hasDists && (
         <>
-          <div className="space-y-1.5">
-            <Label className="text-xs text-gray-600">Input Mode</Label>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setEditDistMode("local-axis")}
-                className={cn(
-                  "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                  editDistMode === "local-axis"
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
-              >
-                Local-axis
-              </button>
-              <button
-                onClick={() => setEditDistMode("global-axis")}
-                className={cn(
-                  "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                  editDistMode === "global-axis"
-                    ? "bg-[#2563eb] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                )}
-              >
-                Global Axis
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Distributed Load</span>
+            <div className="flex-1 h-px bg-gray-100" />
           </div>
-
-          {editDistMode === "local-axis" && (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-gray-600">Distribution</Label>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setEditDistType("uniform")}
-                    className={cn(
-                      "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                      editDistType === "uniform"
-                        ? "bg-[#2563eb] text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    )}
-                  >
-                    Uniform
-                  </button>
-                  <button
-                    onClick={() => setEditDistType("asymmetric")}
-                    className={cn(
-                      "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                      editDistType === "asymmetric"
-                        ? "bg-[#2563eb] text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    )}
-                  >
-                    Asymmetric
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-gray-600">{editDistType === "asymmetric" ? "Start (i)" : "Load"}</Label>
-                  <div className="flex gap-2">
-                    <NumericInput
-                      value={editWStart}
-                      onChange={setEditWStart}
-                      className="h-7 text-xs font-mono flex-1"
-                    />
-                    <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
-                  </div>
-                </div>
-                {editDistType === "asymmetric" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-gray-600">End (j)</Label>
-                    <div className="flex gap-2">
-                      <NumericInput
-                        value={editWEnd}
-                        onChange={setEditWEnd}
-                        className="h-7 text-xs font-mono flex-1"
-                      />
-                      <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <p className="text-[10px] text-gray-400 leading-snug">⊥ perpendicular to member  ·  + outward  ·  − inward</p>
-            </>
-          )}
-
-          {editDistMode === "global-axis" && (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-gray-600">Distribution</Label>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setEditDistType("uniform")}
-                    className={cn(
-                      "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                      editDistType === "uniform"
-                        ? "bg-[#2563eb] text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    )}
-                  >
-                    Uniform
-                  </button>
-                  <button
-                    onClick={() => setEditDistType("asymmetric")}
-                    className={cn(
-                      "flex-1 h-7 text-[11px] rounded-md transition-colors",
-                      editDistType === "asymmetric"
-                        ? "bg-[#2563eb] text-white"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    )}
-                  >
-                    Asymmetric
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-gray-600">X-axis (horizontal)</Label>
-                  <div className="flex gap-2">
-                    <NumericInput
-                      value={editWxStart}
-                      onChange={setEditWxStart}
-                      className="h-7 text-xs font-mono flex-1"
-                    />
-                    <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
-                  </div>
-                  {editDistType === "asymmetric" && (
-                    <div className="flex gap-2 ml-0">
-                      <div className="text-[10px] text-gray-400 self-center">End (j)</div>
-                      <NumericInput
-                        value={editWxEnd}
-                        onChange={setEditWxEnd}
-                        className="h-7 text-xs font-mono flex-1"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-gray-600">Y-axis (vertical)</Label>
-                  <div className="flex gap-2">
-                    <NumericInput
-                      value={editWyStart}
-                      onChange={setEditWyStart}
-                      className="h-7 text-xs font-mono flex-1"
-                    />
-                    <span className="text-xs text-gray-500 self-center whitespace-nowrap">kN/m</span>
-                  </div>
-                  {editDistType === "asymmetric" && (
-                    <div className="flex gap-2 ml-0">
-                      <div className="text-[10px] text-gray-400 self-center">End (j)</div>
-                      <NumericInput
-                        value={editWyEnd}
-                        onChange={setEditWyEnd}
-                        className="h-7 text-xs font-mono flex-1"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-[10px] text-gray-400 leading-snug">+ rightward (X)  ·  − leftward  ·  + upward (Y)  ·  − downward</p>
-            </>
-          )}
+          <DistributedLoadEditor load={allSelected.dists[0]} onApply={handleApplyDist} />
         </>
       )}
-
-      <div className="flex gap-1.5">
-        <Button
-          size="sm"
-          className="flex-1 bg-[#2563eb] hover:bg-[#1d4ed8] text-xs h-7"
-          onClick={handleApply}
-        >
-          Apply
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1 text-red-500 border-red-200 hover:bg-red-50 text-xs h-7"
-          onClick={onDelete}
-        >
-          <Trash2 size={11} className="mr-1" />
-          Delete
-        </Button>
-      </div>
     </div>
   )
 }
@@ -1818,48 +1835,71 @@ function DeleteLoadToolContent({
 
 // ── Analyze Tab Tool Contents ─────────────────────────────────────────────────
 
-function ReactionToolContent({ analysisResult }: { analysisResult: AnalysisResult | null }) {
+function ReactionToolContent({ analysisResult, showNodeLabels = true, onShowNodeLabelsChange }: { analysisResult: AnalysisResult | null, showNodeLabels?: boolean, onShowNodeLabelsChange?: (v: boolean) => void }) {
   const [showReport, setShowReport] = React.useState(true)
 
-  if (!analysisResult) {
-    return <p className="text-xs text-gray-500">No results. Add supports and run analysis.</p>
-  }
-  const entries = Object.entries(analysisResult.reactions)
+  const entries = analysisResult ? (Object.entries(analysisResult.reactions) as [string, { Rx: number; Ry: number; Mz: number }][]) : []
   const valColor = (v: number) => v >= 0 ? "#2563eb" : "#ef4444"
   const fmt = (v: number, unit: string) => `${v >= 0 ? "+" : ""}${formatValue(v)} ${unit}`
-  const row = (label: string, v: number, unit: string) => (
-    <div className="flex items-baseline justify-between rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5" key={label}>
-      <span className="text-[10px] text-gray-500">{label}</span>
-      <span className="text-[11px] font-mono" style={{ color: valColor(v) }}>{fmt(v, unit)}</span>
-    </div>
-  )
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-gray-600">Reaction Report</Label>
+        <Label className="text-xs text-gray-600">Node Labels</Label>
+        <button
+          onClick={() => onShowNodeLabelsChange?.(!showNodeLabels)}
+          className="text-xs px-2 py-0.5 rounded border transition-colors"
+          style={showNodeLabels ? {
+            backgroundColor: FLYOUT_PANEL_COLORS.primary,
+            color: 'white',
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+          } : {
+            backgroundColor: 'white',
+            color: '#6b7280',
+            borderColor: '#d1d5db',
+          }}
+        >
+          {showNodeLabels ? "On" : "Off"}
+        </button>
+      </div>
+      <div className="flex items-center justify-between border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
+        <Label className="text-xs text-gray-600">Reactions Summary</Label>
         <button
           onClick={() => setShowReport(v => !v)}
-          className={cn(
-            "text-xs px-2 py-0.5 rounded border transition-colors",
-            showReport
-              ? "bg-[#2563eb] text-white border-[#2563eb]"
-              : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-          )}
+          className="text-xs px-2 py-0.5 rounded border transition-colors"
+          style={showReport ? {
+            backgroundColor: FLYOUT_PANEL_COLORS.primary,
+            color: 'white',
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+          } : {
+            backgroundColor: 'white',
+            color: '#6b7280',
+            borderColor: '#d1d5db',
+          }}
         >
           {showReport ? "On" : "Off"}
         </button>
       </div>
       {showReport && (
-        <div className="space-y-3">
-          {entries.map(([nodeId, r]) => (
-            <div key={nodeId} className="space-y-1">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{nodeId}</p>
-              {row("Rx (lateral)",  r.Rx, "kN")}
-              {row("Ry (vertical)", r.Ry, "kN")}
-              {row("Mz (moment)",   r.Mz, "kN·m")}
-            </div>
-          ))}
-        </div>
+        entries.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No results</p>
+        ) : (
+          <div className="space-y-2">
+            {entries.map(([nodeId, r]) => (
+              <div key={nodeId} className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 space-y-1">
+                <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
+                <div className="grid grid-cols-2 gap-x-2">
+                  <span className="text-[10px] text-gray-500">Rx</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Rx) }}>{fmt(r.Rx, "kN")}</span>
+                  <span className="text-[10px] text-gray-500">Ry</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Ry) }}>{fmt(r.Ry, "kN")}</span>
+                  <span className="text-[10px] text-gray-500">Mz</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Mz) }}>{fmt(r.Mz, "kN·m")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   )
@@ -1925,6 +1965,8 @@ function DiagramToolContent({
   onScaleChange,
   invert = false,
   onInvertChange,
+  showMemberLabels = true,
+  onShowMemberLabelsChange,
   analysisResult,
   model,
 }: {
@@ -1933,16 +1975,15 @@ function DiagramToolContent({
   onScaleChange?: (v: number) => void
   invert?: boolean
   onInvertChange?: (v: boolean) => void
+  showMemberLabels?: boolean
+  onShowMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   model?: StructureModel
 }) {
   type DiagramKind = "AXIAL" | "SHEAR" | "MOMENT"
   const kind = label as DiagramKind
 
-  const sectionLabel =
-    kind === "AXIAL"  ? "Max. Axial" :
-    kind === "SHEAR"  ? "Max. Shear" :
-                        "Max. Moment"
+  const sectionLabel = "Forces Summary"
 
   const memberRows = React.useMemo(() => {
     if (!analysisResult || !model) return []
@@ -1977,9 +2018,9 @@ function DiagramToolContent({
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 select-none">
         <div className="flex items-center justify-between">
-          <Label className="text-xs text-gray-600">Diagram Scale Factor</Label>
+          <span className="text-xs text-gray-600">Diagram Scale Factor</span>
           <span className="text-xs font-mono text-gray-500">{scale ?? 10}</span>
         </div>
         <input
@@ -1987,58 +2028,87 @@ function DiagramToolContent({
           value={scale ?? 10}
           min={1}
           max={200}
-          className="w-full h-1.5 accent-[#2563eb] cursor-pointer"
+          className="w-full h-1.5 accent-[#2563eb] cursor-pointer touch-none"
           onChange={(e) => onScaleChange?.(Number(e.target.value))}
         />
       </div>
 
+      <div className="flex items-center justify-between select-none">
+        <span className="text-xs text-gray-600">Member Labels</span>
+        <button
+          onClick={() => onShowMemberLabelsChange?.(!showMemberLabels)}
+          className="text-xs px-2 py-0.5 rounded border transition-colors"
+          style={showMemberLabels ? {
+            backgroundColor: FLYOUT_PANEL_COLORS.primary,
+            color: 'white',
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+          } : {
+            backgroundColor: 'white',
+            color: '#6b7280',
+            borderColor: '#d1d5db',
+          }}
+        >
+          {showMemberLabels ? "On" : "Off"}
+        </button>
+      </div>
+
       {onInvertChange !== undefined && (
-        <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-          <Label className="text-xs text-gray-600">Invert Diagram</Label>
+        <div className="flex items-center justify-between select-none">
+          <span className="text-xs text-gray-600">Invert Diagram</span>
           <button
             onClick={() => onInvertChange(!invert)}
-            className={cn(
-              "text-xs px-2 py-0.5 rounded border transition-colors",
-              invert
-                ? "bg-[#2563eb] text-white border-[#2563eb]"
-                : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-            )}
+            className="text-xs px-2 py-0.5 rounded border transition-colors"
+            style={invert ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+              borderColor: FLYOUT_PANEL_COLORS.primary,
+            } : {
+              backgroundColor: 'white',
+              color: '#6b7280',
+              borderColor: '#d1d5db',
+            }}
           >
             {invert ? "On" : "Off"}
           </button>
         </div>
       )}
 
-      {memberRows.length > 0 && (
-        <div className="space-y-1.5 border-t border-gray-100 pt-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-gray-600">{sectionLabel}</Label>
-            <button
-              onClick={() => setShowReport(v => !v)}
-              className={cn(
-                "text-xs px-2 py-0.5 rounded border transition-colors",
-                showReport
-                  ? "bg-[#2563eb] text-white border-[#2563eb]"
-                  : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-              )}
-            >
-              {showReport ? "On" : "Off"}
-            </button>
-          </div>
-          {showReport && (
+      <div className="space-y-1.5 border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-gray-600">{sectionLabel}</Label>
+          <button
+            onClick={() => setShowReport(v => !v)}
+            className="text-xs px-2 py-0.5 rounded border transition-colors"
+            style={showReport ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+              borderColor: FLYOUT_PANEL_COLORS.primary,
+            } : {
+              backgroundColor: 'white',
+              color: '#6b7280',
+              borderColor: '#d1d5db',
+            }}
+          >
+            {showReport ? "On" : "Off"}
+          </button>
+        </div>
+        {showReport && (
+          memberRows.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No results</p>
+          ) : (
             <div className="space-y-1">
               {memberRows.map(({ id, peak }) => (
                 <div key={id} className="flex items-baseline justify-between rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5">
-                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{id}</span>
+                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase">{id.toUpperCase()}</span>
                   <span className="text-[11px] font-mono" style={{ color: peakColor(peak) }}>
                     {fmt(peak)} {unit}
                   </span>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          )
+        )}
+      </div>
     </div>
   )
 }
@@ -2046,30 +2116,26 @@ function DiagramToolContent({
 function DeformationToolContent({
   scale,
   onScaleChange,
-  showLabels = true,
-  onShowLabelsChange,
   showNodeLabels = true,
   onShowNodeLabelsChange,
   analysisResult,
 }: {
   scale?: number
   onScaleChange?: (v: number) => void
-  showLabels?: boolean
-  onShowLabelsChange?: (v: boolean) => void
   showNodeLabels?: boolean
   onShowNodeLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
 }) {
   const [showReport, setShowReport] = React.useState(true)
   const nodeEntries = analysisResult
-    ? Object.entries(analysisResult.nodeDisplacements)
+    ? Object.entries(analysisResult.nodeDisplacements) as [string, NodeDisplacement][]
     : []
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 select-none">
         <div className="flex items-center justify-between">
-          <Label className="text-xs text-gray-600">Deformation Scale Factor</Label>
+          <span className="text-xs text-gray-600">Deformation Scale Factor</span>
           <span className="text-xs font-mono text-gray-500">{scale ?? 25}</span>
         </div>
         <input
@@ -2077,50 +2143,44 @@ function DeformationToolContent({
           value={scale ?? 25}
           min={1}
           max={1000}
-          className="w-full h-1.5 accent-[#2563eb] cursor-pointer"
+          className="w-full h-1.5 accent-[#2563eb] cursor-pointer touch-none"
           onChange={(e) => onScaleChange?.(Number(e.target.value))}
         />
       </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-gray-600">Displacement Labels</Label>
-        <button
-          onClick={() => onShowLabelsChange?.(!showLabels)}
-          className={cn(
-            "text-xs px-2 py-0.5 rounded border transition-colors",
-            showLabels
-              ? "bg-[#2563eb] text-white border-[#2563eb]"
-              : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-          )}
-        >
-          {showLabels ? "On" : "Off"}
-        </button>
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-gray-600">Node Labels</Label>
+      <div className="flex items-center justify-between select-none">
+        <span className="text-xs text-gray-600">Node Labels</span>
         <button
           onClick={() => onShowNodeLabelsChange?.(!showNodeLabels)}
-          className={cn(
-            "text-xs px-2 py-0.5 rounded border transition-colors",
-            showNodeLabels
-              ? "bg-[#2563eb] text-white border-[#2563eb]"
-              : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-          )}
+          className="text-xs px-2 py-0.5 rounded border transition-colors"
+          style={showNodeLabels ? {
+            backgroundColor: FLYOUT_PANEL_COLORS.primary,
+            color: 'white',
+            borderColor: FLYOUT_PANEL_COLORS.primary,
+          } : {
+            backgroundColor: 'white',
+            color: '#6b7280',
+            borderColor: '#d1d5db',
+          }}
         >
           {showNodeLabels ? "On" : "Off"}
         </button>
       </div>
 
-      <div className="border-t border-gray-100 pt-3 space-y-1.5">
+      <div className="border-t pt-3 space-y-1.5" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
         <div className="flex items-center justify-between">
-          <Label className="text-xs text-gray-600">Node Displacements</Label>
+          <Label className="text-xs text-gray-600">Displacement Summary</Label>
           <button
             onClick={() => setShowReport(v => !v)}
-            className={cn(
-              "text-xs px-2 py-0.5 rounded border transition-colors",
-              showReport
-                ? "bg-[#2563eb] text-white border-[#2563eb]"
-                : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
-            )}
+            className="text-xs px-2 py-0.5 rounded border transition-colors"
+            style={showReport ? {
+              backgroundColor: FLYOUT_PANEL_COLORS.primary,
+              color: 'white',
+              borderColor: FLYOUT_PANEL_COLORS.primary,
+            } : {
+              backgroundColor: 'white',
+              color: '#6b7280',
+              borderColor: '#d1d5db',
+            }}
           >
             {showReport ? "On" : "Off"}
           </button>
@@ -2131,15 +2191,15 @@ function DeformationToolContent({
           ) : (
             <div className="space-y-2">
               {nodeEntries.map(([nodeId, d]) => (
-                <div key={nodeId} className="space-y-0.5">
-                  <span className="text-xs font-medium text-[#7c3aed]">{nodeId}</span>
+                <div key={nodeId} className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 space-y-1">
+                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
                   <div className="grid grid-cols-2 gap-x-2">
-                    <span className="text-xs text-gray-400">x</span>
-                    <span className="text-xs font-mono text-right text-[#1e293b]">{(d.u * 1000).toFixed(3)} mm</span>
-                    <span className="text-xs text-gray-400">y</span>
-                    <span className="text-xs font-mono text-right text-[#1e293b]">{(d.v * 1000).toFixed(3)} mm</span>
-                    <span className="text-xs text-gray-400">θ</span>
-                    <span className="text-xs font-mono text-right text-[#1e293b]">{(d.theta * 1000).toFixed(3)} mrad</span>
+                    <span className="text-[10px] text-gray-500">x</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.u * 1000).toFixed(3)} mm</span>
+                    <span className="text-[10px] text-gray-500">y</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.v * 1000).toFixed(3)} mm</span>
+                    <span className="text-[10px] text-gray-500">θ</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.theta * 1000).toFixed(3)} mrad</span>
                   </div>
                 </div>
               ))}

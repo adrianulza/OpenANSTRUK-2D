@@ -1,8 +1,6 @@
 import { cn } from "@/lib/utils"
 import {
-  MousePointer2,
   Pencil,
-  BoxSelect,
   Triangle,
   Layers,
   ArrowDown,
@@ -40,9 +38,17 @@ interface Tool {
   icon: React.ReactNode
 }
 
+const memberIcon = (
+  <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+    <line x1="4" y1="16" x2="16" y2="4" />
+    <circle cx="4" cy="16" r="1.5" fill="currentColor" />
+    <circle cx="16" cy="4" r="1.5" fill="currentColor" />
+  </svg>
+)
+
 const modelTools: Tool[] = [
   { id: "NODE", label: "NODE", icon: <CircleDot size={20} /> },
-  { id: "MEMBER", label: "MEMBER", icon: <BoxSelect size={20} strokeWidth={1.5} /> },
+  { id: "MEMBER", label: "MEMBER", icon: memberIcon },
   { id: "SUPPORT", label: "SUPPORT", icon: <Triangle size={18} /> },
   { id: "MATERIAL", label: "MATERIAL", icon: <Layers size={20} /> },
   { id: "SELECT", label: "MODIFY", icon: <Pencil size={20} /> },
