@@ -1,17 +1,6 @@
-# OpenAnstruk-2D
+# OpenANSTRUK-2D
 
-<p align="center">
-  <strong>Open tool, open knowledge, open access.</strong>
-</p>
-
-<p align="center">
-  <a href="https://openanstruk.com"><img alt="website" src="https://img.shields.io/badge/openanstruk.com-1a2f5e?logo=googlechrome&logoColor=white"></a>
-  <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
-</p>
-
-A free, open-source 2D structural analysis application that runs entirely in your browser. Model portal frames, beams, and trusses — apply loads, solve, and view results.
-
-> *"Whether you code, test, document, or use it — you belong here."*
+A 2D structural analysis web application for modeling, loading, and analyzing frame structures.
 
 ## Features
 
