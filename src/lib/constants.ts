@@ -64,12 +64,12 @@ export const LOAD_PT_ARROW_LEN_PX      = 50   // point load max shaft length in 
 export const LOAD_PT_ARROWHEAD_SIZE_PX = 13   // point load arrowhead triangle size in pixels
 export const LOAD_PT_LINE_WIDTH_PX     = 4    // point load shaft stroke width in pixels
 
-export const LOAD_DIST_MAX_ARROW_PX      = 47  // distributed load max arrow length in pixels
+export const LOAD_DIST_MAX_ARROW_PX      = 40  // distributed load max arrow length in pixels
 export const LOAD_DIST_ARROWHEAD_SIZE_PX = 7   // distributed load arrowhead triangle size in pixels
 export const LOAD_DIST_LINE_WIDTH_PX     = 2   // distributed load stroke width in pixels
 export const LOAD_DIST_NUM_ARROWS        = 6   // number of arrows drawn along a distributed load
 export const LOAD_DIST_FILL_ALPHA        = 0.5 // opacity of the distributed load fill region
-export const LOAD_DIST_LABEL_GAP_PX     = 8   // px gap between baseline and label
+export const LOAD_DIST_LABEL_GAP_PX     = 10   // px gap between baseline and label
 
 // ── Diagram rendering (Analyze tab) ──────────────────────────────────────────
 export const DIAGRAM_BASE_PX_PER_KN  = 4    // pixels per kN at scale=50 (SFD)

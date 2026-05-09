@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, startTransition } from "react"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -25,9 +25,12 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
 
   // Sync the input when length unit changes (displayed value changes, stored value stays the same)
   useEffect(() => {
-    setSpacingInput(
-      parseFloat(displayGridSpacing(unitSettings.gridSpacing, unitSettings).toPrecision(8)).toString()
+    startTransition(() =>
+      setSpacingInput(
+        parseFloat(displayGridSpacing(unitSettings.gridSpacing, unitSettings).toPrecision(8)).toString()
+      )
     )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitSettings.length, unitSettings.gridSpacing])
 
   const commitSpacing = () => {
@@ -62,8 +65,8 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
           size="sm"
           className="w-full"
         >
-          <ToggleGroupItem value="kN" className="flex-1 text-xs">kN</ToggleGroupItem>
-          <ToggleGroupItem value="N"  className="flex-1 text-xs">N</ToggleGroupItem>
+          <ToggleGroupItem value="kN" className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">kN</ToggleGroupItem>
+          <ToggleGroupItem value="N"  className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">N</ToggleGroupItem>
         </ToggleGroup>
       </div>
 
@@ -78,8 +81,8 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
           size="sm"
           className="w-full"
         >
-          <ToggleGroupItem value="GPa" className="flex-1 text-xs">GPa</ToggleGroupItem>
-          <ToggleGroupItem value="MPa" className="flex-1 text-xs">MPa</ToggleGroupItem>
+          <ToggleGroupItem value="GPa" className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">GPa</ToggleGroupItem>
+          <ToggleGroupItem value="MPa" className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">MPa</ToggleGroupItem>
         </ToggleGroup>
       </div>
 
@@ -94,8 +97,8 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
           size="sm"
           className="w-full"
         >
-          <ToggleGroupItem value="m"  className="flex-1 text-xs">m</ToggleGroupItem>
-          <ToggleGroupItem value="mm" className="flex-1 text-xs">mm</ToggleGroupItem>
+          <ToggleGroupItem value="m"  className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">m</ToggleGroupItem>
+          <ToggleGroupItem value="mm" className="flex-1 text-xs data-[state=on]:bg-[#2563eb] data-[state=on]:text-white data-[state=on]:border-[#2563eb]">mm</ToggleGroupItem>
         </ToggleGroup>
       </div>
 

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react"
+﻿import { useCallback, useEffect, useState, startTransition } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
@@ -32,7 +32,6 @@ import {
   template5AsymmetricRafter,
 } from "@/templates/examples"
 import {
-  createInitialModel,
   createEmptyModel,
   stabilityOf,
   emptySelection,
@@ -75,8 +74,9 @@ export default function App() {
   const [invertSFD, setInvertSFD] = useState(true)
   const [invertBMD, setInvertBMD] = useState(false)
   const [deformationScale, setDeformationScale] = useState(25)
-  const [showDeformLabels, setShowDeformLabels] = useState(true)
   const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(true)
+  const [showReactionNodeLabels, setShowReactionNodeLabels] = useState(true)
+  const [showDiagramMemberLabels, setShowDiagramMemberLabels] = useState(true)
   const [templateModal, setTemplateModal] = useState<"beam" | "frame" | "truss" | null>(null)
   const [showExamplesModal, setShowExamplesModal] = useState(false)
 
@@ -103,7 +103,7 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "Analyze") return
     const r = analyze(model)
-    setAnalysisResult(r.ok ? r : null)
+    startTransition(() => setAnalysisResult(r.ok ? r : null))
   }, [model, activeTab])
 
   const handleTabChange = useCallback((tab: TabType) => {
@@ -141,13 +141,10 @@ export default function App() {
   }, [])
 
   const handleExampleConfirm = useCallback((model: StructureModel, section: Section) => {
-    setModel(model)
-    if (section.id && !model.sections[section.id]) {
-      setModel((prev) => ({
-        ...prev,
-        sections: { ...prev.sections, [section.id]: section },
-      }))
-    }
+    setModel({
+      ...model,
+      sections: { ...model.sections, [section.id]: section },
+    })
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
@@ -166,6 +163,9 @@ export default function App() {
   const handleCloseFlyout = useCallback(() => {
     setActiveTool(null)
     setPendingFrameStart(null)
+    setSelection(emptySelection())
+    setSelectedLoadId(null)
+    setSelectedLoadIds([])
   }, [])
 
   const handleMouseMove = useCallback((x: number, y: number) => {
@@ -417,11 +417,11 @@ export default function App() {
 
           const selectLoad = (id: string) => {
             if (isDeleteTool) setSelectedLoadIds([id])
-            else setSelectedLoadId(id)
+            else { setSelectedLoadId(id); setSelectedLoadIds([]) }
           }
           const clearLoad = () => {
             if (isDeleteTool) setSelectedLoadIds([])
-            else setSelectedLoadId(null)
+            else { setSelectedLoadId(null); setSelectedLoadIds([]) }
           }
 
           // Pass 1: point loads â€” always take priority over distributed loads
@@ -541,6 +541,23 @@ export default function App() {
     [selectedLoadId]
   )
 
+  const handleModifyLoadsByType = useCallback(
+    (type: "point" | "distributed", patch: Partial<Load>) => {
+      const ids = selectedLoadIds.length > 0 ? selectedLoadIds : (selectedLoadId ? [selectedLoadId] : [])
+      if (ids.length === 0) return
+      setModel((m) => {
+        const loads = { ...m.loads }
+        for (const id of ids) {
+          if (loads[id]?.type === type) {
+            loads[id] = { ...loads[id], ...patch } as Load
+          }
+        }
+        return { ...m, loads }
+      })
+    },
+    [selectedLoadIds, selectedLoadId]
+  )
+
   const handleDeleteLoad = useCallback(() => {
     if (!selectedLoadId) return
     setModel((m) => {
@@ -561,13 +578,12 @@ export default function App() {
     setSelectedLoadIds([])
   }, [selectedLoadIds])
 
-  const handleSelectLoadId = useCallback((loadId: string) => {
-    setSelectedLoadId(loadId)
-  }, [])
-
   const handleSelectLoadIds = useCallback((ids: string[]) => {
     setSelectedLoadIds(ids)
-  }, [])
+    if (activeTool === "MODIFY_LOAD") {
+      setSelectedLoadId(ids[0] ?? null)
+    }
+  }, [activeTool])
 
   const handleSectionPropsChange = useCallback(
     (id: SectionId, patch: Partial<Section>) => {
@@ -668,6 +684,7 @@ export default function App() {
             selectedLoadId={selectedLoadId}
             selectedLoadIds={selectedLoadIds}
             onModifyLoad={handleModifyLoad}
+            onModifyLoadsByType={handleModifyLoadsByType}
             onDeleteLoad={handleDeleteLoad}
             onDeleteLoadIds={handleDeleteLoadIds}
             diagramScale={diagramScale}
@@ -678,10 +695,12 @@ export default function App() {
             onInvertBMDChange={setInvertBMD}
             deformationScale={deformationScale}
             onDeformationScaleChange={setDeformationScale}
-            showDeformLabels={showDeformLabels}
-            onShowDeformLabelsChange={setShowDeformLabels}
             showDeformNodeLabels={showDeformNodeLabels}
             onShowDeformNodeLabelsChange={setShowDeformNodeLabels}
+            showReactionNodeLabels={showReactionNodeLabels}
+            onShowReactionNodeLabelsChange={setShowReactionNodeLabels}
+            showDiagramMemberLabels={showDiagramMemberLabels}
+            onShowDiagramMemberLabelsChange={setShowDiagramMemberLabels}
             analysisResult={analysisResult}
           />
 
@@ -698,7 +717,6 @@ export default function App() {
             onSelectItems={handleSelectItems}
             onDeselectItems={handleDeselectItems}
             onClearSelection={handleClearSelection}
-            onSelectLoadId={handleSelectLoadId}
             onSelectLoadIds={handleSelectLoadIds}
             selectedLoadId={selectedLoadId}
             selectedLoadIds={selectedLoadIds}
@@ -707,8 +725,9 @@ export default function App() {
             invertSFD={invertSFD}
             invertBMD={invertBMD}
             deformationScale={deformationScale}
-            showDeformLabels={showDeformLabels}
             showDeformNodeLabels={showDeformNodeLabels}
+            showReactionNodeLabels={showReactionNodeLabels}
+            showDiagramMemberLabels={showDiagramMemberLabels}
             hoveredNodeId={hoveredNodeId}
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
@@ -768,6 +787,7 @@ export default function App() {
         <ExamplesModal
           onConfirm={handleExampleConfirm}
           onClose={() => setShowExamplesModal(false)}
+          unitSettings={unitSettings}
         />
       )}
 

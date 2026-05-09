@@ -1,8 +1,12 @@
 import type { StructureModel } from "@/lib/model"
 import { newNodeId, newMemberId, newLoadId, defaultSections } from "@/lib/model"
 
+const SECTION_DEFAULT: StructureModel["sections"][string] = {
+  id: "section", name: "section", E: 23500, I: 3125000, A: 150000,
+}
+
 const SECTION_C30: StructureModel["sections"][string] = {
-  id: "c30gpa", name: "C30 GPa", E: 30000, I: 480000000, A: 75000, W: 7.85e-5, nu: 0.2,
+  id: "section", name: "section", E: 30000, I: 480000000, A: 75000,
 }
 
 /** Template 1 — Simply supported beam, L=5 m (2+3 m), P=10 kN downward at 2 m from left, distributed load on right */
@@ -22,8 +26,8 @@ export function template1SimpleBeam(): StructureModel {
 
   const mL = newMemberId()
   const mR = newMemberId()
-  members[mL] = { id: mL, a: nA, b: nP, section: "iwf150" }
-  members[mR] = { id: mR, a: nP, b: nB, section: "iwf150" }
+  members[mL] = { id: mL, a: nA, b: nP, section: "section" }
+  members[mR] = { id: mR, a: nP, b: nB, section: "section" }
 
   supports[nA] = { nodeId: nA, type: "pin" }
   supports[nB] = { nodeId: nB, type: "roller" }
@@ -31,7 +35,7 @@ export function template1SimpleBeam(): StructureModel {
   const lPt = newLoadId()
   loads[lPt] = { id: lPt, type: "point", nodeId: nP, fx: 0, fy: -10 }
 
-  return { nodes, members, supports, sections: { ...defaultSections }, loads }
+  return { nodes, members, supports, sections: { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }, loads }
 }
 
 /** Template 2 — Cantilever beam, fixed at left, L=5 m, uniform load −10 kN/m */
@@ -48,14 +52,14 @@ export function template2Cantilever(): StructureModel {
   nodes[nB] = { id: nB, x:  2.5, y: 0 }
 
   const mId = newMemberId()
-  members[mId] = { id: mId, a: nA, b: nB, section: "iwf150" }
+  members[mId] = { id: mId, a: nA, b: nB, section: "section" }
 
   supports[nA] = { nodeId: nA, type: "fixed" }
 
   const lId = newLoadId()
-  loads[lId] = { id: lId, type: "distributed", memberId: mId, wStart: -10, wEnd: -10 }
+  loads[lId] = { id: lId, type: "distributed", memberId: mId, mode: "local-axis", wStart: -10, wEnd: -10 }
 
-  return { nodes, members, supports, sections: { ...defaultSections }, loads }
+  return { nodes, members, supports, sections: { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }, loads }
 }
 
 /**
@@ -86,10 +90,10 @@ export function template3Portal(): StructureModel {
   const mBL = newMemberId()  // beam left segment  (nTL → nLP, 2 m)
   const mBR = newMemberId()  // beam right segment (nLP → nTR, 3 m)
 
-  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "iwf150" }
-  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "iwf150" }
-  members[mBL] = { id: mBL, a: nTL, b: nLP, section: "iwf150" }
-  members[mBR] = { id: mBR, a: nLP, b: nTR, section: "iwf150" }
+  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "section" }
+  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "section" }
+  members[mBL] = { id: mBL, a: nTL, b: nLP, section: "section" }
+  members[mBR] = { id: mBR, a: nLP, b: nTR, section: "section" }
 
   supports[nBL] = { nodeId: nBL, type: "fixed" }
   supports[nBR] = { nodeId: nBR, type: "fixed" }
@@ -99,12 +103,13 @@ export function template3Portal(): StructureModel {
   const lPt = newLoadId()
 
   // Uniform downward load on both beam segments
-  loads[lD1] = { id: lD1, type: "distributed", memberId: mBL, wStart: -10, wEnd: -10 }
-  loads[lD2] = { id: lD2, type: "distributed", memberId: mBR, wStart: -10, wEnd: -10 }
+  loads[lD1] = { id: lD1, type: "distributed", memberId: mBL, mode: "local-axis", wStart: -10, wEnd: -10 }
+  loads[lD2] = { id: lD2, type: "distributed", memberId: mBR, mode: "local-axis", wStart: -10, wEnd: -10 }
   // Downward point load at 2 m from beam left
-  loads[lPt] = { id: lPt, type: "point", nodeId: nLP, fx: 0, fy: 10 }
+  loads[lPt] = { id: lPt, type: "point", nodeId: nLP, fx: 0, fy: -10 }
 
-  return { nodes, members, supports, sections: { ...defaultSections }, loads }
+  const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
+  return { nodes, members, supports, sections, loads }
 }
 
 /**
@@ -141,11 +146,11 @@ export function template5AsymmetricRafter(): StructureModel {
   const mRC    = newMemberId()  // right column       nBR → nTR
   const mRaft  = newMemberId()  // inclined rafter    nTL → nTR
 
-  members[mLC1]  = { id: mLC1,  a: nBL, b: nML, section: "c30gpa" }
-  members[mLC2]  = { id: mLC2,  a: nML, b: nTL, section: "c30gpa" }
-  members[mBeam] = { id: mBeam, a: nML, b: nTR, section: "c30gpa" }
-  members[mRC]   = { id: mRC,   a: nBR, b: nTR, section: "c30gpa" }
-  members[mRaft] = { id: mRaft, a: nTL, b: nTR, section: "c30gpa" }
+  members[mLC1]  = { id: mLC1,  a: nBL, b: nML, section: "section" }
+  members[mLC2]  = { id: mLC2,  a: nML, b: nTL, section: "section" }
+  members[mBeam] = { id: mBeam, a: nML, b: nTR, section: "section" }
+  members[mRC]   = { id: mRC,   a: nBR, b: nTR, section: "section" }
+  members[mRaft] = { id: mRaft, a: nTL, b: nTR, section: "section" }
 
   supports[nBL] = { nodeId: nBL, type: "fixed" }
   supports[nBR] = { nodeId: nBR, type: "fixed" }
@@ -156,7 +161,7 @@ export function template5AsymmetricRafter(): StructureModel {
 
   loads[l40]   = { id: l40,   type: "point",       nodeId:   nTL,   fx: 40, fy: 0 }
   loads[l80]   = { id: l80,   type: "point",       nodeId:   nML,   fx: 80, fy: 0 }
-  loads[lDist] = { id: lDist, type: "distributed", memberId: mRaft, wStart: 12, wEnd: 12 }
+  loads[lDist] = { id: lDist, type: "distributed", memberId: mRaft, mode: "local-axis", wStart: 12, wEnd: 12 }
 
   const sections = { ...defaultSections, [SECTION_C30.id]: SECTION_C30 }
   return { nodes, members, supports, sections, loads }
@@ -183,9 +188,9 @@ export function template4PortalLateral(): StructureModel {
   const mRC = newMemberId()  // right column
   const mB  = newMemberId()  // beam
 
-  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "iwf150" }
-  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "iwf150" }
-  members[mB]  = { id: mB,  a: nTL, b: nTR, section: "iwf150" }
+  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "section" }
+  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "section" }
+  members[mB]  = { id: mB,  a: nTL, b: nTR, section: "section" }
 
   supports[nBL] = { nodeId: nBL, type: "fixed" }
   supports[nBR] = { nodeId: nBR, type: "fixed" }
@@ -193,9 +198,10 @@ export function template4PortalLateral(): StructureModel {
   const lDist = newLoadId()
   const lPt   = newLoadId()
 
-  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, wStart: 10, wEnd: 10 }
+  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, mode: "local-axis", wStart: 10, wEnd: 10 }
   // Rightward lateral point load at joint A
   loads[lPt]   = { id: lPt,   type: "point", nodeId: nTL, fx: 10, fy: 0 }
 
-  return { nodes, members, supports, sections: { ...defaultSections }, loads }
+  const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
+  return { nodes, members, supports, sections, loads }
 }

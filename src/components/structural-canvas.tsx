@@ -1,11 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
-import type { NodeId, MultiSelection, StructureModel, SupportType, Load, LoadId } from "@/lib/model"
+import type { NodeId, MultiSelection, StructureModel, SupportType, LoadId } from "@/lib/model"
 import type { AnalysisResult } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import { isEmptySelection } from "@/lib/model"
 import {
-  GRID,
   Rect,
   ScreenPoint,
   WorldPoint,
@@ -48,7 +47,6 @@ import {
   DIAGRAM_BASE_PX_PER_KNM,
   COLOR_SFD_POS,
   COLOR_SFD_NEG,
-  COLOR_BMD_FILL,
   COLOR_DIAGRAM_STROKE,
   DIAGRAM_LINE_WIDTH,
   DIAGRAM_LABEL_FONT,
@@ -77,6 +75,33 @@ function perpWorld(ax: number, ay: number, bx: number, by: number) {
 // Draw a small member-ID tag (pill with white background) at a screen position.
 // Used by all three diagram drawers; placed on the member axis so it doesn't
 // collide with force labels which are always offset perpendicular to the axis.
+function drawNodeIdTag(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  nodeId: string,
+) {
+  const text = "N" + nodeId.replace(/^\D+/, "")
+  const font = "bold 10px 'JetBrains Mono', monospace"
+  ctx.save()
+  ctx.font = font
+  const tw = ctx.measureText(text).width
+  const ph = 4, pw = 6
+  const bw = tw + pw * 2, bh = 14 + ph * 2
+  ctx.fillStyle = "rgba(255,255,255,0.92)"
+  ctx.strokeStyle = "#94a3b8"
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.roundRect(sx - bw / 2, sy - bh / 2, bw, bh, 3)
+  ctx.fill()
+  ctx.stroke()
+  ctx.fillStyle = "#475569"
+  ctx.textAlign = "center"
+  ctx.textBaseline = "middle"
+  ctx.fillText(text, sx, sy)
+  ctx.restore()
+}
+
 function drawMemberIdTag(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -140,7 +165,6 @@ interface StructuralCanvasProps {
   onSelectItems?: (items: MultiSelection) => void
   onDeselectItems?: (items: MultiSelection) => void
   onClearSelection?: () => void
-  onSelectLoadId?: (loadId: LoadId) => void
   onSelectLoadIds?: (loadIds: string[]) => void
   selectedLoadId?: LoadId | null
   selectedLoadIds?: string[]
@@ -149,8 +173,9 @@ interface StructuralCanvasProps {
   invertSFD?: boolean
   invertBMD?: boolean
   deformationScale?: number
-  showDeformLabels?: boolean
   showDeformNodeLabels?: boolean
+  showReactionNodeLabels?: boolean
+  showDiagramMemberLabels?: boolean
   hoveredNodeId?: NodeId | null
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
@@ -171,7 +196,6 @@ export function StructuralCanvas({
   onSelectItems,
   onDeselectItems,
   onClearSelection,
-  onSelectLoadId,
   onSelectLoadIds,
   selectedLoadId,
   selectedLoadIds = [],
@@ -180,8 +204,9 @@ export function StructuralCanvas({
   invertSFD = false,
   invertBMD = false,
   deformationScale = 25,
-  showDeformLabels = true,
   showDeformNodeLabels = true,
+  showReactionNodeLabels = true,
+  showDiagramMemberLabels = true,
   hoveredNodeId,
   hoveredMemberId,
   hoveredLoadId,
@@ -200,6 +225,7 @@ export function StructuralCanvas({
   const [zoom, setZoom] = useState(1)
   const panStartRef = useRef<{ mx: number; my: number; basePanX: number; basePanY: number } | null>(null)
   const isPanningRef = useRef(false)
+  const [isPanning, setIsPanning] = useState(false)
   // Refs always hold the committed values — used inside native event listeners (no stale closure)
   const panXRef = useRef(0)
   const panYRef = useRef(0)
@@ -673,20 +699,16 @@ export function StructuralCanvas({
           let isParallelLoad = false
           for (let i = 0; i <= NUM_ARROWS; i++) {
             const t = i / NUM_ARROWS
-            let dirX = 0, dirY = 0, mag = 0
 
-            if (mode === "local-axis") {
-              const w = (load.wStart ?? 0) + t * ((load.wEnd ?? 0) - (load.wStart ?? 0))
-              mag = Math.abs(w)
-            } else {
+            if (mode !== "local-axis") {
               const wxStart = load.wxStart ?? 0, wxEnd = load.wxEnd ?? 0
               const wyStart = load.wyStart ?? 0, wyEnd = load.wyEnd ?? 0
               const wx = wxStart + t * (wxEnd - wxStart)
               const wy = wyStart + t * (wyEnd - wyStart)
-              mag = Math.hypot(wx, -wy)
+              const mag = Math.hypot(wx, -wy)
               if (mag > 1e-6) {
-                dirX = wx / mag
-                dirY = -wy / mag
+                const dirX = wx / mag
+                const dirY = -wy / mag
                 const dotProd = Math.abs(dirX * memberDx_norm + dirY * memberDy_norm)
                 if (dotProd > 0.95) { isParallelLoad = true; break }
               }
@@ -707,12 +729,11 @@ export function StructuralCanvas({
               const mx = PA.sx + t * (PB.sx - PA.sx)
               const my = PA.sy + t * (PB.sy - PA.sy)
 
-              let dirX = 0, dirY = 0, mag = 0, sign = 1
+              let dirX: number, dirY: number, mag: number
 
               if (mode === "local-axis") {
                 const w = (load.wStart ?? 0) + t * ((load.wEnd ?? 0) - (load.wStart ?? 0))
-                mag = Math.abs(w)
-                sign = w >= 0 ? 1 : -1
+                const sign = w >= 0 ? 1 : -1
                 dirX = sign * snx
                 dirY = sign * sny
               } else {
@@ -753,7 +774,6 @@ export function StructuralCanvas({
             let labelText = ""
 
             if (mode === "local-axis") {
-              const wMid = (load.wStart ?? 0) + 0.5 * ((load.wEnd ?? 0) - (load.wStart ?? 0))
               labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
                 ? `${formatValue(Math.abs(load.wStart ?? 0))} kN/m`
                 : `${formatValue(Math.abs(load.wStart ?? 0))}–${formatValue(Math.abs(load.wEnd ?? 0))} kN/m`
@@ -782,7 +802,7 @@ export function StructuralCanvas({
 
             for (let i = 0; i <= NUM_ARROWS; i++) {
               const t = i / NUM_ARROWS
-              let dirX = 0, dirY = 0, mag = 0
+              let dirX: number, dirY: number, mag: number
 
               if (mode === "local-axis") {
                 const w = (load.wStart ?? 0) + t * ((load.wEnd ?? 0) - (load.wStart ?? 0))
@@ -791,6 +811,8 @@ export function StructuralCanvas({
                 dirX = sign * snx
                 dirY = sign * sny
               } else {
+                dirX = 0
+                dirY = 0
                 const wxStart = load.wxStart ?? 0, wxEnd = load.wxEnd ?? 0
                 const wyStart = load.wyStart ?? 0, wyEnd = load.wyEnd ?? 0
                 const wx = wxStart + t * (wxEnd - wxStart)
@@ -843,12 +865,11 @@ export function StructuralCanvas({
             // Draw individual arrows (shaft + head)
             for (let i = 0; i <= NUM_ARROWS; i++) {
               const t = i / NUM_ARROWS
-              let sdx = 0, sdy = 0, mag = 0
+              let sdx: number, sdy: number
 
               if (mode === "local-axis") {
                 const w = (load.wStart ?? 0) + t * ((load.wEnd ?? 0) - (load.wStart ?? 0))
                 if (Math.abs(w) < 0.001) continue
-                mag = Math.abs(w)
                 const sign = w >= 0 ? 1 : -1
                 sdx = sign * snx
                 sdy = sign * sny
@@ -857,7 +878,7 @@ export function StructuralCanvas({
                 const wyStart = load.wyStart ?? 0, wyEnd = load.wyEnd ?? 0
                 const wx = wxStart + t * (wxEnd - wxStart)
                 const wy = wyStart + t * (wyEnd - wyStart)
-                mag = Math.hypot(wx, -wy)
+                const mag = Math.hypot(wx, -wy)
                 if (mag < 0.001) continue
                 sdx = wx / mag
                 sdy = -wy / mag
@@ -881,15 +902,13 @@ export function StructuralCanvas({
           if (!isParallelLoad && basePts) {
             const midIdx = Math.floor(NUM_ARROWS / 2)
             const midBase = basePts[midIdx]
-            let labelText = ""
-
             if (mode === "local-axis") {
               const wMid = (load.wStart ?? 0) + 0.5 * ((load.wEnd ?? 0) - (load.wStart ?? 0))
               const signMid = wMid >= 0 ? 1 : -1
               const LABEL_GAP = LOAD_DIST_LABEL_GAP_PX
               const labelX = midBase.x - signMid * snx * LABEL_GAP
               const labelY = midBase.y - signMid * sny * LABEL_GAP
-              labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
+              const labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
                 ? `${formatValue(Math.abs(load.wStart ?? 0))} kN/m`
                 : `${formatValue(Math.abs(load.wStart ?? 0))}–${formatValue(Math.abs(load.wEnd ?? 0))} kN/m`
               ctx.fillStyle = labelColor
@@ -908,7 +927,7 @@ export function StructuralCanvas({
                 const LABEL_GAP = LOAD_DIST_LABEL_GAP_PX
                 const labelX = midBase.x - dirXMid * LABEL_GAP
                 const labelY = midBase.y + dirYMid * LABEL_GAP  // flip back for screen
-                labelText = wxStart === wxEnd && wyStart === wyEnd
+                const labelText = wxStart === wxEnd && wyStart === wyEnd
                   ? `${formatValue(magMid)} kN/m`
                   : `${formatValue(Math.abs(wxStart))}/${formatValue(Math.abs(wyStart))}–${formatValue(Math.abs(wxEnd))}/${formatValue(Math.abs(wyEnd))} kN/m`
                 ctx.fillStyle = labelColor
@@ -942,6 +961,8 @@ export function StructuralCanvas({
         const PB = worldToScreen(nB, rect)
         const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
         const spx = nx, spy = -ny
+
+        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
         // Axial force is constant along member; use N1 (tension positive)
         const N = ef.N1
@@ -998,10 +1019,9 @@ export function StructuralCanvas({
         ctx.restore()
 
         ctx.restore()
-        drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
       }
     },
-    [model, analysisResult, diagramScale]
+    [model, analysisResult, diagramScale, showDiagramMemberLabels]
   )
 
   const drawShearDiagram = useCallback(
@@ -1021,6 +1041,9 @@ export function StructuralCanvas({
 
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
+
+        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
+
         const dx = nB.x - nA.x
         const isVertical = Math.abs(dx) < 1e-6  // vertical member (or near-vertical)
         const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
@@ -1163,10 +1186,9 @@ export function StructuralCanvas({
         }
 
         ctx.restore()
-        drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
       }
     },
-    [model, analysisResult, diagramScale, invertSFD]
+    [model, analysisResult, diagramScale, invertSFD, showDiagramMemberLabels]
   )
 
   const drawMomentDiagram = useCallback(
@@ -1186,6 +1208,9 @@ export function StructuralCanvas({
 
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
+
+        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
+
         const dx = nB.x - nA.x
         const isVertical = Math.abs(dx) < 1e-6  // vertical member (or near-vertical)
         const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
@@ -1315,10 +1340,9 @@ export function StructuralCanvas({
         if (Math.abs(peakMDisplay) > 0.01 && peakIdx > 0 && peakIdx < N_PTS) labelPt(pts[peakIdx], peakMDisplay, 0)
 
         ctx.restore()
-        drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
       }
     },
-    [model, analysisResult, diagramScale, invertBMD]
+    [model, analysisResult, diagramScale, invertBMD, showDiagramMemberLabels]
   )
 
   const drawDeformedShape = useCallback(
@@ -1326,75 +1350,10 @@ export function StructuralCanvas({
       if (!analysisResult) return
       const N_PTS = 40
       const COLOR = "#7c3aed"
-      const lineH = 13
-      const pad = 5
-
-      // Helper: place a label box collision-free from already-placed boxes
-      type Box = { x: number; y: number; w: number; h: number }
-      const overlapArea = (a: Box, b: Box) => {
-        const ox = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
-        const oy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
-        return ox * oy
-      }
-      const placeBox = (anchorSx: number, anchorSy: number, boxW: number, boxH: number, placed: Box[]): Box => {
-        const GAP = 10
-        const candidates: [number, number][] = [
-          [GAP,         -boxH / 2],
-          [-boxW - GAP, -boxH / 2],
-          [-boxW / 2,   -boxH - GAP],
-          [-boxW / 2,   GAP],
-          [GAP,         -boxH - GAP],
-          [GAP,         GAP],
-          [-boxW - GAP, -boxH - GAP],
-          [-boxW - GAP, GAP],
-        ]
-        let best: Box = { x: anchorSx + GAP, y: anchorSy - boxH / 2, w: boxW, h: boxH }
-        let bestOvlp = Infinity
-        for (const [ox, oy] of candidates) {
-          const c: Box = { x: anchorSx + ox, y: anchorSy + oy, w: boxW, h: boxH }
-          const total = placed.reduce((s, p) => s + overlapArea(c, p), 0)
-          if (total === 0) return c
-          if (total < bestOvlp) { bestOvlp = total; best = c }
-        }
-        return best
-      }
-
-      const drawLabelBox = (lines: string[], anchorSx: number, anchorSy: number, placed: Box[]) => {
-        ctx.font = DIAGRAM_LABEL_FONT
-        const boxW = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2
-        const boxH = lines.length * lineH + pad * 2
-        const box = placeBox(anchorSx, anchorSy, boxW, boxH, placed)
-        placed.push(box)
-        ctx.save()
-        ctx.fillStyle = "rgba(255,255,255,0.92)"
-        ctx.strokeStyle = COLOR
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(box.x, box.y, boxW, boxH, 4)
-        ctx.fill()
-        ctx.stroke()
-        ctx.fillStyle = COLOR
-        ctx.textAlign = "left"
-        ctx.textBaseline = "top"
-        lines.forEach((line, i) => ctx.fillText(line, box.x + pad, box.y + pad + i * lineH))
-        ctx.beginPath()
-        ctx.arc(anchorSx, anchorSy, 3, 0, Math.PI * 2)
-        ctx.fillStyle = COLOR
-        ctx.fill()
-        ctx.restore()
-      }
-
-      // Determine which members have a distributed load
-      const membersWithDist = new Set<string>()
-      for (const load of Object.values(model.loads)) {
-        if (load.type === "distributed") membersWithDist.add(load.memberId)
-      }
 
       type MemberSpline = {
         memberId: string
         pts: { sx: number; sy: number; dispX: number; dispY: number; mag: number }[]
-        peak: { sx: number; sy: number; dispX: number; dispY: number; mag: number }
-        hasDist: boolean
       }
 
       // Pass 1: compute splines for all members
@@ -1430,8 +1389,7 @@ export function StructuralCanvas({
           const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
           pts.push({ sx, sy, dispX, dispY, mag: Math.hypot(dispX, dispY) })
         }
-        const peak = pts.reduce((a, b) => b.mag > a.mag ? b : a)
-        memberSplines.push({ memberId: member.id, pts, peak, hasDist: membersWithDist.has(member.id) })
+        memberSplines.push({ memberId: member.id, pts })
       }
 
       // Pass 2: draw splines
@@ -1460,61 +1418,18 @@ export function StructuralCanvas({
 
       // Pass 3: node labels (node ID at each deformed node position)
       if (showDeformNodeLabels) {
-        ctx.save()
-        ctx.font = "bold 10px 'JetBrains Mono', monospace"
-        ctx.textAlign = "center"
-        ctx.textBaseline = "bottom"
         for (const [nodeId, node] of Object.entries(model.nodes)) {
           const d = analysisResult.nodeDisplacements[nodeId]
           if (!d) continue
           const wx = node.x + deformationScale * d.u
           const wy = node.y + deformationScale * d.v
           const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-          ctx.fillStyle = "rgba(255,255,255,0.85)"
-          const displayNodeId = nodeId.toUpperCase()
-          const tw = ctx.measureText(displayNodeId).width
-          ctx.fillRect(sx - tw / 2 - 2, sy - 12, tw + 4, 11)
-          ctx.fillStyle = COLOR
-          ctx.fillText(displayNodeId, sx, sy - 2)
-        }
-        ctx.restore()
-      }
-
-      if (!showDeformLabels) return
-
-      const placed: Box[] = []
-
-      // Pass 4: one label at the node with globally max displacement
-      let maxNodeId: string | null = null
-      let maxNodeMag = -1
-      for (const [nodeId, d] of Object.entries(analysisResult.nodeDisplacements)) {
-        const mag = Math.hypot(d.u, d.v)
-        if (mag > maxNodeMag) { maxNodeMag = mag; maxNodeId = nodeId }
-      }
-      if (maxNodeId && maxNodeMag > 1e-9) {
-        const node = model.nodes[maxNodeId]
-        const d = analysisResult.nodeDisplacements[maxNodeId]
-        if (node && d) {
-          const wx = node.x + deformationScale * d.u
-          const wy = node.y + deformationScale * d.v
-          const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-          drawLabelBox(
-            [`x=${(d.u * 1000).toFixed(3)} mm`, `y=${(d.v * 1000).toFixed(3)} mm`],
-            sx, sy, placed
-          )
+          drawNodeIdTag(ctx, sx, sy, nodeId)
         }
       }
 
-      // Pass 5: one label per member at spline peak — only for members with distributed load
-      for (const { peak, hasDist } of memberSplines) {
-        if (!hasDist || peak.mag < 1e-9) continue
-        drawLabelBox(
-          [`x=${(peak.dispX * 1000).toFixed(3)} mm`, `y=${(peak.dispY * 1000).toFixed(3)} mm`],
-          peak.sx, peak.sy, placed
-        )
-      }
     },
-    [model, analysisResult, deformationScale, showDeformLabels, showDeformNodeLabels]
+    [model, analysisResult, deformationScale, showDeformNodeLabels]
   )
 
   const drawDeformHover = useCallback(
@@ -1626,30 +1541,28 @@ export function StructuralCanvas({
 
         // Ry — vertical. Arrow always originates from below.
         // Positive (upward): tip points toward node. Negative (downward): tip points away.
-        {
-          const zero = Math.abs(r.Ry) < 0.005
+        if (Math.abs(r.Ry) >= 0.005) {
+          const zero = false
           const base = r.Ry >= 0 ? sy + (SHAFT + OFFSET) : sy + OFFSET
           const tip  = r.Ry >= 0 ? sy + OFFSET           : sy + (SHAFT + OFFSET)
           arrow(sx, base, sx, tip, `${formatValue(r.Ry)} kN`, zero, colorFor(r.Ry, zero), 0, SHAFT)
         }
 
         // Rx — horizontal. Label positioned next to arrow tail.
-        {
-          const zero = Math.abs(r.Rx) < 0.005
+        if (Math.abs(r.Rx) >= 0.005) {
+          const zero = false
           const sign = r.Rx >= 0 ? -1 : 1   // positive → shaft goes left, tip points right
           arrow(sx + sign * (SHAFT + OFFSET), sy, sx + sign * OFFSET, sy, `${formatValue(r.Rx)} kN`, zero, colorFor(r.Rx, zero), sign * 60, 0)
         }
 
         // Mz — moment arc. Positive = CCW (structural) = CW on screen (Y-flipped).
-        {
-          const zero = Math.abs(r.Mz) < 0.005
+        if (Math.abs(r.Mz) >= 0.005) {
+          const zero = false
           const color = colorFor(r.Mz, zero)
           const cw = r.Mz >= 0   // CW on screen for positive Mz (standard structural sign convention)
           ctx.strokeStyle = color
           ctx.fillStyle = color
           ctx.lineWidth = 1.5
-          ctx.globalAlpha = zero ? 0.5 : 1
-          ctx.setLineDash(zero ? [3, 3] : [])
 
           // 3/4 arc (270°) explicit for each direction
           if (cw) {
@@ -1657,47 +1570,41 @@ export function StructuralCanvas({
             ctx.beginPath()
             ctx.arc(sx, sy, ARC_R, 0, -3*Math.PI/2, true)  // true = counterclockwise on standard axes, but clockwise on screen (Y-flipped)
             ctx.stroke()
-            ctx.setLineDash([])
-            if (!zero) {
-              const endAngle = Math.PI/2  // Ends at top (90°)
-              const ex = sx + ARC_R * Math.cos(endAngle)
-              const ey = sy + ARC_R * Math.sin(endAngle)
-              const arrowDir = Math.PI + Math.PI/12  // 30° up (blue tension, flipped 180°)
-              ctx.beginPath()
-              ctx.moveTo(ex, ey)
-              ctx.lineTo(ex + HEAD * Math.cos(arrowDir - 0.4), ey + HEAD * Math.sin(arrowDir - 0.4))
-              ctx.lineTo(ex + HEAD * Math.cos(arrowDir + 0.4), ey + HEAD * Math.sin(arrowDir + 0.4))
-              ctx.closePath(); ctx.fill()
-            }
+            const endAngle = Math.PI/2  // Ends at top (90°)
+            const ex = sx + ARC_R * Math.cos(endAngle)
+            const ey = sy + ARC_R * Math.sin(endAngle)
+            const arrowDir = Math.PI + Math.PI/12  // 30° up (blue tension, flipped 180°)
+            ctx.beginPath()
+            ctx.moveTo(ex, ey)
+            ctx.lineTo(ex + HEAD * Math.cos(arrowDir - 0.4), ey + HEAD * Math.sin(arrowDir - 0.4))
+            ctx.lineTo(ex + HEAD * Math.cos(arrowDir + 0.4), ey + HEAD * Math.sin(arrowDir + 0.4))
+            ctx.closePath(); ctx.fill()
           } else {
             // Negative Mz: CCW from 0° counterclockwise 270° (right → up → left → down, ends at bottom)
             ctx.beginPath()
             ctx.arc(sx, sy, ARC_R, 0, 3*Math.PI/2, false)  // false = clockwise on standard axes, but counterclockwise on screen
             ctx.stroke()
-            ctx.setLineDash([])
-            if (!zero) {
-              const endAngle = -Math.PI/2  // Ends at bottom (270°)
-              const ex = sx + ARC_R * Math.cos(endAngle)
-              const ey = sy + ARC_R * Math.sin(endAngle)
-              const arrowDir = Math.PI - Math.PI/12  // 30° down (red compression, flipped 180°)
-              ctx.beginPath()
-              ctx.moveTo(ex, ey)
-              ctx.lineTo(ex + HEAD * Math.cos(arrowDir - 0.4), ey + HEAD * Math.sin(arrowDir - 0.4))
-              ctx.lineTo(ex + HEAD * Math.cos(arrowDir + 0.4), ey + HEAD * Math.sin(arrowDir + 0.4))
-              ctx.closePath(); ctx.fill()
-            }
+            const endAngle = -Math.PI/2  // Ends at bottom (270°)
+            const ex = sx + ARC_R * Math.cos(endAngle)
+            const ey = sy + ARC_R * Math.sin(endAngle)
+            const arrowDir = Math.PI - Math.PI/12  // 30° down (red compression, flipped 180°)
+            ctx.beginPath()
+            ctx.moveTo(ex, ey)
+            ctx.lineTo(ex + HEAD * Math.cos(arrowDir - 0.4), ey + HEAD * Math.sin(arrowDir - 0.4))
+            ctx.lineTo(ex + HEAD * Math.cos(arrowDir + 0.4), ey + HEAD * Math.sin(arrowDir + 0.4))
+            ctx.closePath(); ctx.fill()
           }
 
-          ctx.globalAlpha = 1
           ctx.fillStyle = color
           ctx.textAlign = "left"; ctx.textBaseline = "middle"
           ctx.fillText(`${formatValue(r.Mz)} kN·m`, sx + ARC_R + 6, sy - ARC_R - 2)
         }
 
         ctx.restore()
+        if (showReactionNodeLabels) drawNodeIdTag(ctx, sx, sy, nodeId)
       }
     },
-    [model, analysisResult]
+    [model, analysisResult, showReactionNodeLabels]
   )
 
   const drawGlow = useCallback(
@@ -1738,6 +1645,7 @@ export function StructuralCanvas({
 
 
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [model, activeTool, hoveredNodeId, hoveredMemberId, hoveredLoadId]
   )
 
@@ -1898,6 +1806,7 @@ export function StructuralCanvas({
       const dy = e.clientY - panStartRef.current.my
       if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
         isPanningRef.current = true
+        setIsPanning(true)
         const container = containerRef.current
         if (container) {
           const rect    = container.getBoundingClientRect()
@@ -1929,7 +1838,7 @@ export function StructuralCanvas({
     }
 
     // Update box selection rubber-band
-    if ((activeTool === "SELECT" || activeTool === "DELETE") && boxStartRef.current) {
+    if ((activeTool === "SELECT" || activeTool === "DELETE" || (activeTab === "Load" && activeTool === "MODIFY_LOAD")) && boxStartRef.current) {
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
@@ -1948,16 +1857,19 @@ export function StructuralCanvas({
     if (panStartRef.current) {
       panStartRef.current = null
       isPanningRef.current = false
+      setIsPanning(false)
     }
   }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Middle mouse or left-drag when not using SELECT/DELETE box — start pan tracking
+    // Middle mouse or left-drag when not using SELECT/DELETE/MODIFY_LOAD box — start pan tracking
     const isMiddle = e.button === 1
-    const isLeftNonSelect = e.button === 0 && activeTool !== "SELECT" && activeTool !== "DELETE"
+    const isLoadModify = activeTab === "Load" && activeTool === "MODIFY_LOAD"
+    const isLeftNonSelect = e.button === 0 && activeTool !== "SELECT" && activeTool !== "DELETE" && !isLoadModify
     if (isMiddle || isLeftNonSelect) {
       panStartRef.current = { mx: e.clientX, my: e.clientY, basePanX: panX, basePanY: panY }
       isPanningRef.current = false
+      setIsPanning(false)
       if (isMiddle) e.preventDefault()
     }
 
@@ -1965,7 +1877,7 @@ export function StructuralCanvas({
     const w = toWorldCoords(e)
     if (w) onCanvasMouseDown?.(w.x, w.y)
 
-    if (activeTool === "SELECT" || activeTool === "DELETE") {
+    if (activeTool === "SELECT" || activeTool === "DELETE" || isLoadModify) {
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
@@ -1998,8 +1910,8 @@ export function StructuralCanvas({
       }
     }
 
-    // Handle Load tab DELETE tool box selection
-    if (activeTab === "Load" && activeTool === "DELETE" && hasDraggedRef.current && boxRect) {
+    // Handle Load tab DELETE/MODIFY_LOAD tool box selection
+    if (activeTab === "Load" && (activeTool === "DELETE" || activeTool === "MODIFY_LOAD") && hasDraggedRef.current && boxRect) {
       const container = containerRef.current
       if (container) {
         const rect = container.getBoundingClientRect()
@@ -2026,11 +1938,12 @@ export function StructuralCanvas({
     // Suppress click if we were panning
     if (isPanningRef.current) {
       isPanningRef.current = false
+      setIsPanning(false)
       return
     }
 
-    // Suppress click after box drag for Load tab DELETE — mouseup already handled load selection
-    if (activeTab === "Load" && activeTool === "DELETE" && hasDraggedRef.current) {
+    // Suppress click after box drag for Load tab DELETE/MODIFY_LOAD — mouseup already handled load selection
+    if (activeTab === "Load" && (activeTool === "DELETE" || activeTool === "MODIFY_LOAD") && hasDraggedRef.current) {
       hasDraggedRef.current = false
       return
     }
@@ -2081,7 +1994,7 @@ export function StructuralCanvas({
     if (w) onCanvasClick?.(w.x, w.y)
   }
 
-  const cursorClass = isPanningRef.current
+  const cursorClass = isPanning
     ? "cursor-grabbing"
     : activeTool === "NODE" || activeTool === "MEMBER" || activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD"
     ? "cursor-crosshair"
