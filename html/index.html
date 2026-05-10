@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=1280">
   <title>OpenAnstruk</title>
   <link rel="icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -996,6 +996,36 @@
   </div>
 </section>
 
+<!-- MOBILE BANNER -->
+<div id="mobile-banner" style="
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 9999;
+  background: #ffffff;
+  border-top: 1px solid #e0e0e0;
+  padding: 10px 20px;
+  text-align: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: #0f1a2e;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+">
+  <span>Best experienced on a desktop browser — some features require a keyboard and mouse.</span>
+  <button onclick="dismissMobileBanner()" style="
+    position: absolute;
+    right: 16px; top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #6b7a8d;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px 8px;
+  ">✕</button>
+</div>
+
 <!-- FOOTER -->
 <footer>
   <div class="footer-copy">© 2026 OpenAnstruk — MIT License</div>
@@ -1198,6 +1228,19 @@
         renderer.render(scene, camera);
       }
       loop();
+    }
+  })();
+
+  // Mobile banner
+  function dismissMobileBanner() {
+    document.getElementById('mobile-banner').style.display = 'none';
+    localStorage.setItem('mobileBannerDismissed', '1');
+  }
+  (function () {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const dismissed = localStorage.getItem('mobileBannerDismissed');
+    if (isMobile && !dismissed) {
+      document.getElementById('mobile-banner').style.display = 'block';
     }
   })();
 

@@ -100,6 +100,10 @@ export default function App() {
   const [hoveredMemberId, setHoveredMemberId] = useState<string | null>(null)
   const [hoveredLoadId, setHoveredLoadId] = useState<LoadId | null>(null)
 
+  const [showMobileModal, setShowMobileModal] = useState(() =>
+    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  )
+
   useEffect(() => {
     if (activeTab !== "Analyze") return
     const r = analyze(model)
@@ -617,6 +621,23 @@ export default function App() {
 
   return (
     <div className="relative h-screen w-screen flex flex-col overflow-hidden bg-[#F0F2F5]">
+      {showMobileModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-8 mx-6 flex flex-col items-center text-center max-w-sm w-full">
+            <div className="text-2xl mb-1">🖥️</div>
+            <h2 className="text-[#0b2550] font-semibold text-lg mb-2">Desktop Recommended</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+              This app works best on a desktop browser with a keyboard and mouse.
+            </p>
+            <button
+              onClick={() => setShowMobileModal(false)}
+              className="w-full bg-[#0b2550] text-white text-sm font-medium py-2.5 rounded-lg hover:bg-[#0e2d60] transition-colors"
+            >
+              Continue Anyway
+            </button>
+          </div>
+        </div>
+      )}
       <NavBar
         activeTab={activeTab}
         onTabChange={handleTabChange}
