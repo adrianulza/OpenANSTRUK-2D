@@ -2,6 +2,7 @@ import { useState, useEffect, startTransition } from "react"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Magnet, Crosshair, Ruler, Scaling } from "lucide-react"
 import {
   type UnitSettings,
   displayGridSpacing,
@@ -14,11 +15,19 @@ import {
 interface GridUnitsPanelProps {
   unitSettings: UnitSettings
   onUnitSettingsChange: (next: UnitSettings) => void
+  showDimensions: boolean
+  onToggleDimensions: () => void
+  snapToGrid: boolean
+  onSnapToGridChange: (v: boolean) => void
+  snapToNode: boolean
+  onSnapToNodeChange: (v: boolean) => void
+  adaptiveView: boolean
+  onAdaptiveViewChange: (v: boolean) => void
 }
 
 const PRESET_SPACINGS_M = [0.25, 0.5, 1.0]
 
-export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnitsPanelProps) {
+export function GridUnitsPanel({ unitSettings, onUnitSettingsChange, showDimensions, onToggleDimensions, snapToGrid, onSnapToGridChange, snapToNode, onSnapToNodeChange, adaptiveView, onAdaptiveViewChange }: GridUnitsPanelProps) {
   const [spacingInput, setSpacingInput] = useState(
     displayGridSpacing(unitSettings.gridSpacing, unitSettings).toString()
   )
@@ -52,7 +61,7 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
 
   return (
     <div className="w-56 p-3 space-y-3">
-      <p className="text-xs font-semibold text-[#1e293b]">Grid and Units</p>
+      <p className="text-xs font-semibold text-[#1e293b]">Settings</p>
 
       {/* Force unit */}
       <div className="space-y-1.5">
@@ -103,6 +112,36 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange }: GridUnits
       </div>
 
       <Separator />
+
+      {/* Toggle rows: label on left, checkbox on right */}
+      {([
+        { label: "Adaptive View",   icon: <Scaling className="w-3.5 h-3.5 shrink-0" />, value: adaptiveView,   onToggle: () => onAdaptiveViewChange(!adaptiveView) },
+        { label: "Show Dimensions", icon: <Ruler className="w-3.5 h-3.5 shrink-0" />,   value: showDimensions, onToggle: onToggleDimensions },
+        { label: "Snap to Node",    icon: <Crosshair className="w-3.5 h-3.5 shrink-0" />, value: snapToNode,  onToggle: () => onSnapToNodeChange(!snapToNode) },
+        { label: "Snap to Grid",    icon: <Magnet className="w-3.5 h-3.5 shrink-0" />,    value: snapToGrid,  onToggle: () => onSnapToGridChange(!snapToGrid) },
+      ] as const).map(({ label, icon, value, onToggle }) => (
+        <div
+          key={label}
+          onClick={onToggle}
+          className="flex items-center justify-between cursor-pointer group"
+        >
+          <span className="flex items-center gap-1.5 text-xs text-gray-600 group-hover:text-gray-900 transition-colors select-none">
+            {icon}
+            {label}
+          </span>
+          <span className={`w-4 h-4 rounded shrink-0 flex items-center justify-center border transition-colors ${
+            value
+              ? "bg-[#2563eb] border-[#2563eb]"
+              : "bg-white border-gray-300 group-hover:border-gray-400"
+          }`}>
+            {value && (
+              <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </span>
+        </div>
+      ))}
 
       {/* Grid spacing */}
       <div className="space-y-1.5">

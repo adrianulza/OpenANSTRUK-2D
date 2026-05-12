@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react"
+import { ZoomIn, ZoomOut } from "lucide-react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { NodeId, MultiSelection, StructureModel, SupportType, LoadId } from "@/lib/model"
 import type { AnalysisResult } from "@/lib/solver"
@@ -20,7 +21,6 @@ import {
   COLOR_BRAND,
   COLOR_SELECTION,
   COLOR_PREVIEW_NODE,
-  COLOR_PREVIEW_FRAME,
   COLOR_GRID,
   COLOR_AXIS_X,
   COLOR_AXIS_Y,
@@ -133,6 +133,7 @@ function drawMemberIdTag(
 // When the world is smaller than the viewport in one axis, centre it.
 const WORLD_M = 100            // half-world extent in metres
 const WORLD_PX = WORLD_M * SCALE  // 8 000 virtual px
+const MAX_ZOOM = 3             // maximum zoom-in multiplier
 
 function clampPan(
   px: number, py: number, z: number,
@@ -158,6 +159,10 @@ interface StructuralCanvasProps {
   selection: MultiSelection
   pendingFrameStart: NodeId | null
   gridSpacing: number
+  snapToGrid?: boolean
+  snapToNode?: boolean
+  lengthUnit?: "m" | "mm"
+  adaptiveView?: boolean
   onMouseMove: (x: number, y: number) => void
   onCanvasClick?: (worldX: number, worldY: number) => void
   onCanvasMouseDown?: (worldX: number, worldY: number) => void
@@ -189,6 +194,10 @@ export function StructuralCanvas({
   selection,
   pendingFrameStart,
   gridSpacing,
+  snapToGrid = true,
+  snapToNode = true,
+  lengthUnit = "m",
+  adaptiveView = true,
   onMouseMove,
   onCanvasClick,
   onCanvasMouseDown,
@@ -226,6 +235,7 @@ export function StructuralCanvas({
   const panStartRef = useRef<{ mx: number; my: number; basePanX: number; basePanY: number } | null>(null)
   const isPanningRef = useRef(false)
   const [isPanning, setIsPanning] = useState(false)
+  const [minZoom, setMinZoom] = useState(0.1)
   // Refs always hold the committed values — used inside native event listeners (no stale closure)
   const panXRef = useRef(0)
   const panYRef = useRef(0)
@@ -256,49 +266,53 @@ export function StructuralCanvas({
   const drawGizmo = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       const { sx, sy } = axisCenter(rect)
+      const s = adaptiveView ? 1 / zoom : 1
+      const axLen = GIZMO_AXIS_LENGTH * s
+      const arrowSz = GIZMO_ARROW_SIZE * s
 
       ctx.strokeStyle = COLOR_AXIS_X
-      ctx.lineWidth = 2
+      ctx.lineWidth = 2 * s
       ctx.beginPath()
       ctx.moveTo(sx, sy)
-      ctx.lineTo(sx + GIZMO_AXIS_LENGTH, sy)
+      ctx.lineTo(sx + axLen, sy)
       ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(sx + GIZMO_AXIS_LENGTH, sy)
-      ctx.lineTo(sx + GIZMO_AXIS_LENGTH - GIZMO_ARROW_SIZE, sy - GIZMO_ARROW_SIZE / 2)
-      ctx.lineTo(sx + GIZMO_AXIS_LENGTH - GIZMO_ARROW_SIZE, sy + GIZMO_ARROW_SIZE / 2)
+      ctx.moveTo(sx + axLen, sy)
+      ctx.lineTo(sx + axLen - arrowSz, sy - arrowSz / 2)
+      ctx.lineTo(sx + axLen - arrowSz, sy + arrowSz / 2)
       ctx.closePath()
       ctx.fillStyle = COLOR_AXIS_X
       ctx.fill()
-      ctx.font = "bold 12px 'Inter', sans-serif"
+      ctx.font = `bold ${12 * s}px 'Inter', sans-serif`
       ctx.fillStyle = COLOR_AXIS_X
       ctx.textAlign = "center"
       ctx.textBaseline = "top"
-      ctx.fillText("X", sx + GIZMO_AXIS_LENGTH + 8, sy - 5)
+      ctx.fillText("X", sx + axLen + 8 * s, sy - 5 * s)
 
       ctx.strokeStyle = COLOR_AXIS_Y
-      ctx.lineWidth = 2
+      ctx.lineWidth = 2 * s
       ctx.beginPath()
       ctx.moveTo(sx, sy)
-      ctx.lineTo(sx, sy - GIZMO_AXIS_LENGTH)
+      ctx.lineTo(sx, sy - axLen)
       ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(sx, sy - GIZMO_AXIS_LENGTH)
-      ctx.lineTo(sx - GIZMO_ARROW_SIZE / 2, sy - GIZMO_AXIS_LENGTH + GIZMO_ARROW_SIZE)
-      ctx.lineTo(sx + GIZMO_ARROW_SIZE / 2, sy - GIZMO_AXIS_LENGTH + GIZMO_ARROW_SIZE)
+      ctx.moveTo(sx, sy - axLen)
+      ctx.lineTo(sx - arrowSz / 2, sy - axLen + arrowSz)
+      ctx.lineTo(sx + arrowSz / 2, sy - axLen + arrowSz)
       ctx.closePath()
       ctx.fillStyle = COLOR_AXIS_Y
       ctx.fill()
       ctx.fillStyle = COLOR_AXIS_Y
       ctx.textAlign = "right"
       ctx.textBaseline = "middle"
-      ctx.fillText("Y", sx - 8, sy - GIZMO_AXIS_LENGTH - 2)
+      ctx.fillText("Y", sx - 8 * s, sy - axLen - 2 * s)
     },
-    []
+    [adaptiveView, zoom]
   )
 
   const drawMembers = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      const s = adaptiveView ? 1 / zoom : 1
       ctx.lineCap = "round"
       ctx.lineJoin = "round"
       for (const m of Object.values(model.members)) {
@@ -311,7 +325,7 @@ export function StructuralCanvas({
         const isHovered = (activeTool === "DISTRIBUTED_LOAD" || (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE"))) && m.id === hoveredMemberId
         const isTruss = m.memberType === "truss"
         ctx.strokeStyle = selected ? COLOR_SELECTION : (isHovered ? "#fcd34d" : COLOR_BRAND)
-        ctx.lineWidth = selected ? 5 : 4
+        ctx.lineWidth = (selected ? 5 : 4) * s
         ctx.beginPath()
         ctx.moveTo(pa.sx, pa.sy)
         ctx.lineTo(pb.sx, pb.sy)
@@ -320,7 +334,7 @@ export function StructuralCanvas({
         // Hinge indicators: small white circles inset from each end of truss members.
         // Offset inward along the member axis so they clear the node circles.
         if (isTruss) {
-          const r    = 3.5
+          const r    = 3.5 * s
           const dx   = pb.sx - pa.sx
           const dy   = pb.sy - pa.sy
           const len  = Math.hypot(dx, dy)
@@ -329,7 +343,7 @@ export function StructuralCanvas({
             const uy   = dy / len
             // Place the hinge-dot centre just past the node circle edge:
             // offset = NODE_RADIUS + r + 2 px gap
-            const off  = NODE_RADIUS + r + 2   // ≈ 11.5 px
+            const off  = (NODE_RADIUS + 3.5 + 2) * s   // ≈ 11.5 px base
             const pts  = [
               { sx: pa.sx + ux * off, sy: pa.sy + uy * off },  // near node A
               { sx: pb.sx - ux * off, sy: pb.sy - uy * off },  // near node B
@@ -340,7 +354,7 @@ export function StructuralCanvas({
               ctx.fillStyle = "#ffffff"
               ctx.fill()
               ctx.strokeStyle = selected ? COLOR_SELECTION : COLOR_BRAND
-              ctx.lineWidth = selected ? 2 : 1.5
+              ctx.lineWidth = (selected ? 2 : 1.5) * s
               ctx.stroke()
             }
           }
@@ -357,38 +371,40 @@ export function StructuralCanvas({
           ctx.save()
           ctx.translate(midX, midY)
           ctx.rotate(angle)
-          ctx.font = "bold 11px 'JetBrains Mono', monospace"
+          ctx.font = `bold ${11 * s}px 'JetBrains Mono', monospace`
           ctx.fillStyle = COLOR_MEMBER_LABEL
           ctx.textAlign = "center"
           ctx.textBaseline = "bottom"
-          ctx.fillText(section.name, 0, -8)
+          ctx.fillText(section.name, 0, -8 * s)
           ctx.restore()
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId]
+    [model, selection, activeTab, activeTool, hoveredMemberId, adaptiveView, zoom]
   )
 
   const drawNodes = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      const s = adaptiveView ? 1 / zoom : 1
       for (const n of Object.values(model.nodes)) {
         const p = worldToScreen(n, rect)
         const selected = selection.nodeIds.includes(n.id)
         const isHovered = (activeTab === "Model" && activeTool === "DELETE") && n.id === hoveredNodeId
         ctx.beginPath()
-        ctx.arc(p.sx, p.sy, NODE_RADIUS, 0, Math.PI * 2)
+        ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
         ctx.fillStyle = "#ffffff"
         ctx.fill()
         ctx.strokeStyle = selected ? COLOR_SELECTION : (isHovered ? "#fcd34d" : COLOR_BRAND)
-        ctx.lineWidth = selected ? 3 : 2
+        ctx.lineWidth = (selected ? 3 : 2) * s
         ctx.stroke()
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId]
+    [model, selection, activeTab, activeTool, hoveredNodeId, adaptiveView, zoom]
   )
 
   const drawSupports = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      const sc = adaptiveView ? 1 / zoom : 1
       for (const s of Object.values(model.supports)) {
         const n = model.nodes[s.nodeId]
         if (!n) continue
@@ -396,10 +412,10 @@ export function StructuralCanvas({
         const isSelected = selection.supportNodeIds.includes(s.nodeId)
         const isHovered = (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")) && s.nodeId === hoveredNodeId
         const overrideColor = isHovered ? "#fcd34d" : undefined
-        drawSupportGlyph(ctx, sx, sy, s.type, isSelected, overrideColor)
+        drawSupportGlyph(ctx, sx, sy, s.type, isSelected, overrideColor, sc)
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId]
+    [model, selection, activeTab, activeTool, hoveredNodeId, adaptiveView, zoom]
   )
 
   const drawPreview = useCallback(
@@ -417,32 +433,114 @@ export function StructuralCanvas({
         ctx.stroke()
         ctx.restore()
       } else if (activeTool === "MEMBER") {
+        const PREVIEW_COLOR = "#3b82f6"
+        const PREVIEW_ALPHA = 0.5
+        const s = adaptiveView ? 1 / zoom : 1
+
         if (pendingFrameStart) {
           const a = model.nodes[pendingFrameStart]
           if (a) {
             const pa = worldToScreen(a, rect)
+
+            // Dashed preview line
             ctx.save()
+            ctx.globalAlpha = PREVIEW_ALPHA
             ctx.setLineDash([5, 4])
-            ctx.strokeStyle = COLOR_PREVIEW_FRAME
-            ctx.lineWidth = 2
+            ctx.strokeStyle = PREVIEW_COLOR
+            ctx.lineWidth = 2 * s
             ctx.beginPath()
             ctx.moveTo(pa.sx, pa.sy)
             ctx.lineTo(p.sx, p.sy)
             ctx.stroke()
             ctx.restore()
+
+            // Live member-length dimension
+            const worldLen = Math.hypot(snapped.x - a.x, snapped.y - a.y)
+            if (worldLen > 1e-4) {
+              const dimVal = lengthUnit === "mm" ? worldLen * 1000 : worldLen
+              const dimText = `${dimVal.toFixed(lengthUnit === "mm" ? 0 : 3)} ${lengthUnit}`
+
+              const dx = p.sx - pa.sx, dy = p.sy - pa.sy
+              const lenPx = Math.hypot(dx, dy)
+              const ux = dx / lenPx, uy = dy / lenPx
+              const nx = -uy, ny = ux
+
+              const OFF = 22 * s
+              const ax = pa.sx + nx * OFF, ay = pa.sy + ny * OFF
+              const bx = p.sx  + nx * OFF, by = p.sy  + ny * OFF
+
+              ctx.save()
+              ctx.globalAlpha = PREVIEW_ALPHA
+              ctx.strokeStyle = PREVIEW_COLOR
+              ctx.fillStyle = PREVIEW_COLOR
+              ctx.lineWidth = 1 * s
+              ctx.setLineDash([])
+
+              // Extension ticks
+              const TICK = 6 * s
+              ctx.beginPath()
+              ctx.moveTo(pa.sx + nx * (OFF - TICK), pa.sy + ny * (OFF - TICK))
+              ctx.lineTo(pa.sx + nx * (OFF + TICK), pa.sy + ny * (OFF + TICK))
+              ctx.moveTo(p.sx  + nx * (OFF - TICK), p.sy  + ny * (OFF - TICK))
+              ctx.lineTo(p.sx  + nx * (OFF + TICK), p.sy  + ny * (OFF + TICK))
+              ctx.stroke()
+
+              // Dimension line
+              ctx.beginPath()
+              ctx.moveTo(ax, ay)
+              ctx.lineTo(bx, by)
+              ctx.stroke()
+
+              // Arrowheads
+              const ARROW = 5 * s
+              const drawHead = (tx: number, ty: number, dirX: number, dirY: number) => {
+                ctx.beginPath()
+                ctx.moveTo(tx, ty)
+                ctx.lineTo(tx + dirX * ARROW - ny * ARROW * 0.4, ty + dirY * ARROW - nx * ARROW * 0.4)
+                ctx.moveTo(tx, ty)
+                ctx.lineTo(tx + dirX * ARROW + ny * ARROW * 0.4, ty + dirY * ARROW + nx * ARROW * 0.4)
+                ctx.stroke()
+              }
+              drawHead(ax, ay,  ux,  uy)
+              drawHead(bx, by, -ux, -uy)
+
+              // Label — knockout then text, both at same alpha
+              const midX = (ax + bx) / 2, midY = (ay + by) / 2
+              let angle = Math.atan2(dy, dx)
+              if (angle > Math.PI / 2)  angle -= Math.PI
+              if (angle < -Math.PI / 2) angle += Math.PI
+
+              ctx.font = `600 ${11 * s}px 'JetBrains Mono', monospace`
+              const tw = ctx.measureText(dimText).width
+              ctx.save()
+              ctx.translate(midX, midY)
+              ctx.rotate(angle)
+              ctx.fillStyle = "#ffffff"
+              ctx.fillRect(-tw / 2 - 3 * s, -(8 * s) - 2 * s, tw + 6 * s, 11 * s + 4 * s)
+              ctx.fillStyle = PREVIEW_COLOR
+              ctx.textAlign = "center"
+              ctx.textBaseline = "bottom"
+              ctx.fillText(dimText, 0, -2 * s)
+              ctx.restore()
+
+              ctx.restore()
+            }
           }
         }
+
+        // Ghost node circle at cursor
         ctx.save()
+        ctx.globalAlpha = PREVIEW_ALPHA
         ctx.setLineDash([3, 3])
-        ctx.strokeStyle = COLOR_PREVIEW_FRAME
-        ctx.lineWidth = 1.5
+        ctx.strokeStyle = PREVIEW_COLOR
+        ctx.lineWidth = 1.5 * s
         ctx.beginPath()
-        ctx.arc(p.sx, p.sy, NODE_RADIUS + 2, 0, Math.PI * 2)
+        ctx.arc(p.sx, p.sy, (NODE_RADIUS + 2) * s, 0, Math.PI * 2)
         ctx.stroke()
         ctx.restore()
       }
     },
-    [activeTool, snapped, pendingFrameStart, model.nodes]
+    [activeTool, snapped, pendingFrameStart, model.nodes, adaptiveView, zoom, lengthUnit]
   )
 
   const drawDimensions = useCallback(
@@ -482,10 +580,11 @@ export function StructuralCanvas({
       const dimLineY = worldToScreen({ x: 0, y: maxY }, rect).sy - DIM_OFFSET
       const dimLineX = worldToScreen({ x: minX, y: 0 }, rect).sx - DIM_OFFSET
 
+      const s = adaptiveView ? 1 / zoom : 1
       ctx.save()
       ctx.strokeStyle = COLOR_DIM_LINE
-      ctx.lineWidth = 1
-      ctx.font = "12px 'JetBrains Mono', monospace"
+      ctx.lineWidth = 1 * s
+      ctx.font = `${12 * s}px 'JetBrains Mono', monospace`
       ctx.fillStyle = COLOR_DIM_TEXT
 
       // ── Horizontal dimensions (per consecutive unique-X pair) ──────────────
@@ -496,16 +595,16 @@ export function StructuralCanvas({
           const sx1 = worldToScreen({ x: x1, y: 0 }, rect).sx
           const sx2 = worldToScreen({ x: x2, y: 0 }, rect).sx
           // Extension lines start just above the topmost node at each X
-          const extSy1 = worldToScreen({ x: x1, y: topYAtX.get(x1) ?? maxY }, rect).sy - 8
-          const extSy2 = worldToScreen({ x: x2, y: topYAtX.get(x2) ?? maxY }, rect).sy - 8
+          const extSy1 = worldToScreen({ x: x1, y: topYAtX.get(x1) ?? maxY }, rect).sy - 8 * s
+          const extSy2 = worldToScreen({ x: x2, y: topYAtX.get(x2) ?? maxY }, rect).sy - 8 * s
 
           // Dashed extension lines
-          ctx.setLineDash([4, 3])
+          ctx.setLineDash([4 * s, 3 * s])
           ctx.beginPath()
           ctx.moveTo(sx1, extSy1)
-          ctx.lineTo(sx1, dimLineY + 5)
+          ctx.lineTo(sx1, dimLineY + 5 * s)
           ctx.moveTo(sx2, extSy2)
-          ctx.lineTo(sx2, dimLineY + 5)
+          ctx.lineTo(sx2, dimLineY + 5 * s)
           // Dimension line
           ctx.moveTo(sx1, dimLineY)
           ctx.lineTo(sx2, dimLineY)
@@ -514,16 +613,18 @@ export function StructuralCanvas({
           // Solid tick marks
           ctx.setLineDash([])
           ctx.beginPath()
-          ctx.moveTo(sx1, dimLineY - 5)
-          ctx.lineTo(sx1, dimLineY + 5)
-          ctx.moveTo(sx2, dimLineY - 5)
-          ctx.lineTo(sx2, dimLineY + 5)
+          ctx.moveTo(sx1, dimLineY - 5 * s)
+          ctx.lineTo(sx1, dimLineY + 5 * s)
+          ctx.moveTo(sx2, dimLineY - 5 * s)
+          ctx.lineTo(sx2, dimLineY + 5 * s)
           ctx.stroke()
 
           // Label
           ctx.textAlign = "center"
           ctx.textBaseline = "bottom"
-          ctx.fillText(`${(x2 - x1).toFixed(2)} m`, (sx1 + sx2) / 2, dimLineY - 7)
+          const hDist = lengthUnit === "mm" ? (x2 - x1) * 1000 : (x2 - x1)
+          const hDecimals = lengthUnit === "mm" ? 0 : 2
+          ctx.fillText(`${hDist.toFixed(hDecimals)} ${lengthUnit}`, (sx1 + sx2) / 2, dimLineY - 7 * s)
         }
       }
 
@@ -535,16 +636,16 @@ export function StructuralCanvas({
           const sy1 = worldToScreen({ x: 0, y: y1 }, rect).sy
           const sy2 = worldToScreen({ x: 0, y: y2 }, rect).sy
           // Extension lines start just left of the leftmost node at each Y
-          const extSx1 = worldToScreen({ x: leftXAtY.get(y1) ?? minX, y: y1 }, rect).sx - 8
-          const extSx2 = worldToScreen({ x: leftXAtY.get(y2) ?? minX, y: y2 }, rect).sx - 8
+          const extSx1 = worldToScreen({ x: leftXAtY.get(y1) ?? minX, y: y1 }, rect).sx - 8 * s
+          const extSx2 = worldToScreen({ x: leftXAtY.get(y2) ?? minX, y: y2 }, rect).sx - 8 * s
 
           // Dashed extension lines
-          ctx.setLineDash([4, 3])
+          ctx.setLineDash([4 * s, 3 * s])
           ctx.beginPath()
           ctx.moveTo(extSx1, sy1)
-          ctx.lineTo(dimLineX + 5, sy1)
+          ctx.lineTo(dimLineX + 5 * s, sy1)
           ctx.moveTo(extSx2, sy2)
-          ctx.lineTo(dimLineX + 5, sy2)
+          ctx.lineTo(dimLineX + 5 * s, sy2)
           // Dimension line
           ctx.moveTo(dimLineX, sy1)
           ctx.lineTo(dimLineX, sy2)
@@ -553,32 +654,35 @@ export function StructuralCanvas({
           // Solid tick marks
           ctx.setLineDash([])
           ctx.beginPath()
-          ctx.moveTo(dimLineX - 5, sy1)
-          ctx.lineTo(dimLineX + 5, sy1)
-          ctx.moveTo(dimLineX - 5, sy2)
-          ctx.lineTo(dimLineX + 5, sy2)
+          ctx.moveTo(dimLineX - 5 * s, sy1)
+          ctx.lineTo(dimLineX + 5 * s, sy1)
+          ctx.moveTo(dimLineX - 5 * s, sy2)
+          ctx.lineTo(dimLineX + 5 * s, sy2)
           ctx.stroke()
 
           // Label (rotated 90°)
           ctx.textAlign = "center"
           ctx.textBaseline = "bottom"
           ctx.save()
-          ctx.translate(dimLineX - 14, (sy1 + sy2) / 2)
+          ctx.translate(dimLineX - 14 * s, (sy1 + sy2) / 2)
           ctx.rotate(-Math.PI / 2)
-          ctx.fillText(`${(y2 - y1).toFixed(2)} m`, 0, 0)
+          const vDist = lengthUnit === "mm" ? (y2 - y1) * 1000 : (y2 - y1)
+          const vDecimals = lengthUnit === "mm" ? 0 : 2
+          ctx.fillText(`${vDist.toFixed(vDecimals)} ${lengthUnit}`, 0, 0)
           ctx.restore()
         }
       }
 
       ctx.restore()
     },
-    [model, gridSpacing]
+    [model, gridSpacing, adaptiveView, zoom, lengthUnit]
   )
 
   const drawLoads = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
-      const MAX_ARROW_LEN_PT   = LOAD_PT_ARROW_LEN_PX
-      const MAX_ARROW_LEN_DIST = LOAD_DIST_MAX_ARROW_PX
+      const s = adaptiveView ? 1 / zoom : 1
+      const MAX_ARROW_LEN_PT   = LOAD_PT_ARROW_LEN_PX * s
+      const MAX_ARROW_LEN_DIST = LOAD_DIST_MAX_ARROW_PX * s
 
       // Single global max across all load types so point and distributed loads share the same scale
       const loads = Object.values(model.loads)
@@ -640,7 +744,7 @@ export function StructuralCanvas({
         ctx.save()
         ctx.strokeStyle = strokeColor
         ctx.fillStyle   = fillColor
-        ctx.lineWidth   = load.type === "point" ? LOAD_PT_LINE_WIDTH_PX : LOAD_DIST_LINE_WIDTH_PX
+        ctx.lineWidth   = (load.type === "point" ? LOAD_PT_LINE_WIDTH_PX : LOAD_DIST_LINE_WIDTH_PX) * s
 
         if (load.type === "point") {
           const node = model.nodes[load.nodeId]
@@ -662,10 +766,10 @@ export function StructuralCanvas({
           ctx.stroke()
           // Draw arrowhead at node (tip)
           ctx.fillStyle = strokeColor
-          drawArrowHead(ctx, sx, sy, sdx, sdy, LOAD_PT_ARROWHEAD_SIZE_PX)
+          drawArrowHead(ctx, sx, sy, sdx, sdy, LOAD_PT_ARROWHEAD_SIZE_PX * s)
           // Label
           ctx.fillStyle = labelColor
-          ctx.font = "11px 'JetBrains Mono', monospace"
+          ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
           ctx.textAlign = "center"
           ctx.textBaseline = "bottom"
           const labelX = bx
@@ -748,7 +852,7 @@ export function StructuralCanvas({
               }
 
               // Large fixed offset for parallel loads (3x normal offset)
-              const offsetPx = 40
+              const offsetPx = 40 * s
               const bx = mx - dirX * offsetPx
               const by = my - dirY * offsetPx
 
@@ -756,21 +860,21 @@ export function StructuralCanvas({
               ctx.beginPath()
               ctx.moveTo(bx, by)
               ctx.lineTo(mx, my)
-              ctx.lineWidth = LOAD_DIST_LINE_WIDTH_PX
+              ctx.lineWidth = LOAD_DIST_LINE_WIDTH_PX * s
               ctx.stroke()
 
               // Draw arrowhead
               const dirLen = Math.hypot(dirX, dirY)
               if (dirLen > 0) {
                 ctx.fillStyle = strokeColor
-                drawArrowHead(ctx, mx, my, dirX / dirLen, dirY / dirLen, LOAD_DIST_ARROWHEAD_SIZE_PX + 2)
+                drawArrowHead(ctx, mx, my, dirX / dirLen, dirY / dirLen, (LOAD_DIST_ARROWHEAD_SIZE_PX + 2) * s)
               }
             }
 
             // Label at center top of member for parallel loads
             const midX = (PA.sx + PB.sx) / 2
             const midY = (PA.sy + PB.sy) / 2
-            const LABEL_OFFSET_Y = 20  // pixels above member center
+            const LABEL_OFFSET_Y = 20 * s  // pixels above member center
             let labelText = ""
 
             if (mode === "local-axis") {
@@ -792,7 +896,7 @@ export function StructuralCanvas({
 
             if (labelText) {
               ctx.fillStyle = labelColor
-              ctx.font = "11px 'JetBrains Mono', monospace"
+              ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
               ctx.textAlign = "center"
               ctx.textBaseline = "bottom"
               ctx.fillText(labelText, midX, midY - LABEL_OFFSET_Y)
@@ -893,7 +997,7 @@ export function StructuralCanvas({
               const dirLen = Math.hypot(sdx, sdy)
               if (dirLen > 0) {
                 ctx.fillStyle = strokeColor
-                drawArrowHead(ctx, tipPts[i].x, tipPts[i].y, sdx / dirLen, sdy / dirLen, LOAD_DIST_ARROWHEAD_SIZE_PX)
+                drawArrowHead(ctx, tipPts[i].x, tipPts[i].y, sdx / dirLen, sdy / dirLen, LOAD_DIST_ARROWHEAD_SIZE_PX * s)
               }
             }
           }
@@ -912,7 +1016,7 @@ export function StructuralCanvas({
                 ? `${formatValue(Math.abs(load.wStart ?? 0))} kN/m`
                 : `${formatValue(Math.abs(load.wStart ?? 0))}–${formatValue(Math.abs(load.wEnd ?? 0))} kN/m`
               ctx.fillStyle = labelColor
-              ctx.font = "11px 'JetBrains Mono', monospace"
+              ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
               ctx.textAlign = "center"
               ctx.textBaseline = "middle"
               ctx.fillText(labelText, labelX, labelY)
@@ -931,7 +1035,7 @@ export function StructuralCanvas({
                   ? `${formatValue(magMid)} kN/m`
                   : `${formatValue(Math.abs(wxStart))}/${formatValue(Math.abs(wyStart))}–${formatValue(Math.abs(wxEnd))}/${formatValue(Math.abs(wyEnd))} kN/m`
                 ctx.fillStyle = labelColor
-                ctx.font = "10px 'JetBrains Mono', monospace"
+                ctx.font = `${10 * s}px 'JetBrains Mono', monospace`
                 ctx.textAlign = "center"
                 ctx.textBaseline = "middle"
                 ctx.fillText(labelText, labelX, labelY)
@@ -943,12 +1047,13 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, selectedLoadId, selectedLoadIds, hoveredLoadId]
+    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, adaptiveView, zoom]
   )
 
   const drawAxialDiagram = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
+      const s = adaptiveView ? 1 / zoom : 1
       const BASE = DIAGRAM_BASE_PX_PER_KN * (diagramScale / 50)
 
       for (const member of Object.values(model.members)) {
@@ -1004,13 +1109,13 @@ export function StructuralCanvas({
 
         // Label at midpoint, parallel to member, always offset to the +perp side
         const absHalf = Math.abs(half)
-        const mx = (PA.sx + PB.sx) / 2 + absHalf * spx + spx * 18
-        const my = (PA.sy + PB.sy) / 2 + absHalf * spy + spy * 18
+        const mx = (PA.sx + PB.sx) / 2 + absHalf * spx + spx * 18 * s
+        const my = (PA.sy + PB.sy) / 2 + absHalf * spy + spy * 18 * s
         const angle = Math.atan2(PB.sy - PA.sy, PB.sx - PA.sx)
         ctx.save()
         ctx.translate(mx, my)
         ctx.rotate(angle)
-        ctx.font = DIAGRAM_LABEL_FONT
+        ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
         ctx.fillStyle = COLOR_DIAGRAM_STROKE
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
@@ -1021,12 +1126,13 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, showDiagramMemberLabels]
+    [model, analysisResult, diagramScale, showDiagramMemberLabels, adaptiveView, zoom]
   )
 
   const drawShearDiagram = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
+      const s = adaptiveView ? 1 / zoom : 1
       const BASE = DIAGRAM_BASE_PX_PER_KN * (diagramScale / 50)
       const N_PTS = 60
 
@@ -1139,7 +1245,7 @@ export function StructuralCanvas({
         // Labels — anchored to the outer edge of the diagram tip so text never
         // bleeds back into the filled polygon. End-point labels also get an
         // along-member nudge so they clear the node and sit beside the diagram.
-        ctx.font = DIAGRAM_LABEL_FONT
+        ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
         ctx.fillStyle = COLOR_DIAGRAM_STROKE
         ctx.globalAlpha = 1
 
@@ -1150,7 +1256,7 @@ export function StructuralCanvas({
 
         // alongSign: -1 = toward A (p0), +1 = toward B (pN), 0 = interior peak
         const labelPt = (p: typeof pts[0], val: number, alongSign = 0) => {
-          const PERP_GAP = 5, ALONG_GAP = 16
+          const PERP_GAP = 5 * s, ALONG_GAP = 16 * s
           const dlen = Math.hypot(p.dpx, p.dpy)
           const ux = dlen > 0.5 ? p.dpx / dlen : spx * (val >= 0 ? 1 : -1)
           const uy = dlen > 0.5 ? p.dpy / dlen : spy * (val >= 0 ? 1 : -1)
@@ -1188,12 +1294,13 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, invertSFD, showDiagramMemberLabels]
+    [model, analysisResult, diagramScale, invertSFD, showDiagramMemberLabels, adaptiveView, zoom]
   )
 
   const drawMomentDiagram = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
+      const s = adaptiveView ? 1 / zoom : 1
       const BASE = DIAGRAM_BASE_PX_PER_KNM * (diagramScale / 50)
       const N_PTS = 60
 
@@ -1303,7 +1410,7 @@ export function StructuralCanvas({
 
         // Labels — anchored to the outer edge of the diagram tip.
         // End-point labels get an along-member nudge to clear the node.
-        ctx.font = DIAGRAM_LABEL_FONT
+        ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
         ctx.fillStyle = COLOR_DIAGRAM_STROKE
         ctx.globalAlpha = 1
 
@@ -1312,7 +1419,7 @@ export function StructuralCanvas({
         const aly = Lscr > 0.5 ? (PB.sy - PA.sy) / Lscr : 0
 
         const labelPt = (p: typeof pts[0], val: number, alongSign = 0) => {
-          const PERP_GAP = 5, ALONG_GAP = 16
+          const PERP_GAP = 5 * s, ALONG_GAP = 16 * s
           const dlen = Math.hypot(p.dpx, p.dpy)
           const ux = dlen > 0.5 ? p.dpx / dlen : -spx * (val >= 0 ? 1 : -1)
           const uy = dlen > 0.5 ? p.dpy / dlen : -spy * (val >= 0 ? 1 : -1)
@@ -1342,7 +1449,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, invertBMD, showDiagramMemberLabels]
+    [model, analysisResult, diagramScale, invertBMD, showDiagramMemberLabels, adaptiveView, zoom]
   )
 
   const drawDeformedShape = useCallback(
@@ -1350,6 +1457,7 @@ export function StructuralCanvas({
       if (!analysisResult) return
       const N_PTS = 40
       const COLOR = "#7c3aed"
+      const s = adaptiveView ? 1 / zoom : 1
 
       type MemberSpline = {
         memberId: string
@@ -1396,7 +1504,7 @@ export function StructuralCanvas({
       for (const { pts } of memberSplines) {
         ctx.save()
         ctx.strokeStyle = COLOR
-        ctx.lineWidth = 2
+        ctx.lineWidth = 2 * s
         ctx.setLineDash([])
         ctx.beginPath()
         pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.sx, p.sy) : ctx.lineTo(p.sx, p.sy))
@@ -1413,7 +1521,7 @@ export function StructuralCanvas({
         const wx = node.x + deformationScale * d.u
         const wy = node.y + deformationScale * d.v
         const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-        drawSupportGlyph(ctx, sx, sy, "roller", false, COLOR)
+        drawSupportGlyph(ctx, sx, sy, "roller", false, COLOR, s)
       }
 
       // Pass 3: node labels (node ID at each deformed node position)
@@ -1429,7 +1537,7 @@ export function StructuralCanvas({
       }
 
     },
-    [model, analysisResult, deformationScale, showDeformNodeLabels]
+    [model, analysisResult, deformationScale, showDeformNodeLabels, adaptiveView, zoom]
   )
 
   const drawDeformHover = useCallback(
@@ -1440,8 +1548,9 @@ export function StructuralCanvas({
       if (!node || !d) return
 
       const COLOR = "#7c3aed"
-      const pad = 5
-      const lineH = 13
+      const s = adaptiveView ? 1 / zoom : 1
+      const pad = 5 * s
+      const lineH = 13 * s
       const wx = node.x + deformationScale * d.u
       const wy = node.y + deformationScale * d.v
       const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
@@ -1454,19 +1563,19 @@ export function StructuralCanvas({
       ]
 
       ctx.save()
-      ctx.font = DIAGRAM_LABEL_FONT
+      ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
       const boxW = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2
       const boxH = lines.length * lineH + pad * 2
 
       // Prefer placing above-right of the node dot
-      const bx = sx + 10
-      const by = sy - boxH - 6
+      const bx = sx + 10 * s
+      const by = sy - boxH - 6 * s
 
       ctx.fillStyle = "rgba(255,255,255,0.96)"
       ctx.strokeStyle = COLOR
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = 1.5 * s
       ctx.beginPath()
-      ctx.roundRect(bx, by, boxW, boxH, 4)
+      ctx.roundRect(bx, by, boxW, boxH, 4 * s)
       ctx.fill()
       ctx.stroke()
 
@@ -1474,30 +1583,31 @@ export function StructuralCanvas({
       ctx.fillStyle = COLOR
       ctx.textAlign = "left"
       ctx.textBaseline = "top"
-      ctx.font = `bold ${DIAGRAM_LABEL_FONT}`
+      ctx.font = adaptiveView ? `bold ${11 * s}px 'JetBrains Mono', monospace` : `bold ${DIAGRAM_LABEL_FONT}`
       ctx.fillText(lines[0], bx + pad, by + pad)
-      ctx.font = DIAGRAM_LABEL_FONT
+      ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
       lines.slice(1).forEach((line, i) =>
         ctx.fillText(line, bx + pad, by + pad + (i + 1) * lineH)
       )
 
       // Dot on the deformed node
       ctx.beginPath()
-      ctx.arc(sx, sy, 4, 0, Math.PI * 2)
+      ctx.arc(sx, sy, 4 * s, 0, Math.PI * 2)
       ctx.fillStyle = COLOR
       ctx.fill()
       ctx.restore()
     },
-    [model, analysisResult, deformationScale, deformHoverNodeId]
+    [model, analysisResult, deformationScale, deformHoverNodeId, adaptiveView, zoom]
   )
 
   const drawReactions = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
-      const SHAFT  = 40
-      const HEAD   = 12
-      const ARC_R  = 20
-      const OFFSET = 40   // clears deepest support glyph (roller ~35px)
+      const s = adaptiveView ? 1 / zoom : 1
+      const SHAFT  = 40 * s
+      const HEAD   = 12 * s
+      const ARC_R  = 20 * s
+      const OFFSET = 40 * s   // clears deepest support glyph (roller ~35px)
       const C_POS  = "#2563eb"   // blue  — positive reaction
       const C_NEG  = "#ef4444"   // red   — negative reaction
       const C_ZERO = "#94a3b8"   // gray  — zero reaction
@@ -1509,7 +1619,7 @@ export function StructuralCanvas({
         const { sx, sy } = worldToScreen(node, rect)
 
         ctx.save()
-        ctx.font = DIAGRAM_LABEL_FONT
+        ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
 
         // Draws arrow with tip AT (tx,ty), shaft starting at (ox,oy).
         // zero=true → dashed shaft, small circle instead of arrowhead.
@@ -1517,13 +1627,13 @@ export function StructuralCanvas({
         const arrow = (ox: number, oy: number, tx: number, ty: number, label: string, zero: boolean, color: string, labelOffsetX = 0, labelOffsetY = 0) => {
           ctx.strokeStyle = color
           ctx.fillStyle = color
-          ctx.lineWidth = 1.5
+          ctx.lineWidth = 1.5 * s
           ctx.globalAlpha = zero ? 0.5 : 1
           ctx.setLineDash(zero ? [3, 3] : [])
           ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(tx, ty); ctx.stroke()
           ctx.setLineDash([])
           if (zero) {
-            ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI * 2); ctx.fill()
+            ctx.beginPath(); ctx.arc(tx, ty, 3 * s, 0, Math.PI * 2); ctx.fill()
           } else {
             const ang = Math.atan2(ty - oy, tx - ox)
             ctx.beginPath()
@@ -1562,7 +1672,7 @@ export function StructuralCanvas({
           const cw = r.Mz >= 0   // CW on screen for positive Mz (standard structural sign convention)
           ctx.strokeStyle = color
           ctx.fillStyle = color
-          ctx.lineWidth = 1.5
+          ctx.lineWidth = 1.5 * s
 
           // 3/4 arc (270°) explicit for each direction
           if (cw) {
@@ -1597,20 +1707,20 @@ export function StructuralCanvas({
 
           ctx.fillStyle = color
           ctx.textAlign = "left"; ctx.textBaseline = "middle"
-          ctx.fillText(`${formatValue(r.Mz)} kN·m`, sx + ARC_R + 6, sy - ARC_R - 2)
+          ctx.fillText(`${formatValue(r.Mz)} kN·m`, sx + ARC_R + 6 * s, sy - ARC_R - 2 * s)
         }
 
         ctx.restore()
         if (showReactionNodeLabels) drawNodeIdTag(ctx, sx, sy, nodeId)
       }
     },
-    [model, analysisResult, showReactionNodeLabels]
+    [model, analysisResult, showReactionNodeLabels, adaptiveView, zoom]
   )
 
   const drawGlow = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       const GLOW_COLOR = "#fcd34d"
-      const GLOW_LINE_WIDTH = 8
+      const s = adaptiveView ? 1 / zoom : 1
 
       // Draw yellow circle for hovered node (POINT_LOAD tool)
       if (hoveredNodeId && activeTool === "POINT_LOAD") {
@@ -1620,7 +1730,7 @@ export function StructuralCanvas({
           ctx.save()
           ctx.fillStyle = "rgba(252, 211, 77, 0.4)"
           ctx.beginPath()
-          ctx.arc(sx, sy, NODE_RADIUS + 8, 0, Math.PI * 2)
+          ctx.arc(sx, sy, (NODE_RADIUS + 8) * s, 0, Math.PI * 2)
           ctx.fill()
           ctx.restore()
         }
@@ -1633,10 +1743,10 @@ export function StructuralCanvas({
           const { sx, sy } = worldToScreen(node, rect)
           ctx.save()
           ctx.strokeStyle = GLOW_COLOR
-          ctx.lineWidth = GLOW_LINE_WIDTH
+          ctx.lineWidth = 8 * s
           ctx.lineCap = "round"
           ctx.beginPath()
-          ctx.arc(sx, sy, NODE_RADIUS + 4, 0, Math.PI * 2)
+          ctx.arc(sx, sy, (NODE_RADIUS + 4) * s, 0, Math.PI * 2)
           ctx.stroke()
           ctx.restore()
         }
@@ -1646,7 +1756,7 @@ export function StructuralCanvas({
 
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, activeTool, hoveredNodeId, hoveredMemberId, hoveredLoadId]
+    [model, activeTool, hoveredNodeId, hoveredMemberId, hoveredLoadId, adaptiveView, zoom]
   )
 
   const draw = useCallback(() => {
@@ -1781,9 +1891,14 @@ export function StructuralCanvas({
       const rect  = container.getBoundingClientRect()
       const mx    = e.clientX - rect.left
       const my    = e.clientY - rect.top
-      const worldSizePx = 200 * SCALE   // 200 m world → 16 000 virtual px
-      const minZoom  = Math.max(rect.width, rect.height) / worldSizePx
-      const newZoom  = Math.max(minZoom, Math.min(1, curZoom * factor))
+      const minZoom  = 0.1
+      setMinZoom(minZoom)
+      let newZoom  = Math.max(minZoom, Math.min(MAX_ZOOM, curZoom * factor))
+      // Snap wheel zoom to marked values when passing through them
+      const WHEEL_SNAP = [0.25, 0.5, 1, 2]
+      for (const sv of WHEEL_SNAP) {
+        if (Math.abs(newZoom - sv) / sv < 0.08) { newZoom = sv; break }
+      }
       const rawPanX  = mx - (mx - curPanX) * (newZoom / curZoom)
       const rawPanY  = my - (my - curPanY) * (newZoom / curZoom)
       const clamped  = clampPan(rawPanX, rawPanY, newZoom, rect)
@@ -1823,7 +1938,8 @@ export function StructuralCanvas({
 
     const w = toWorldCoords(e)
     if (!w) return
-    const ws = snapWorld(w, gridSpacing)
+    const nodeHit = snapToNode ? hitTestNode(model, w, HIT_TOL_NODE) : null
+    const ws = nodeHit ? model.nodes[nodeHit] : (snapToGrid ? snapWorld(w, gridSpacing) : w)
     onMouseMove(ws.x, ws.y)
     if (activeTab === "Model" && (activeTool === "NODE" || activeTool === "MEMBER")) {
       setSnapped(ws)
@@ -1994,6 +2110,41 @@ export function StructuralCanvas({
     if (w) onCanvasClick?.(w.x, w.y)
   }
 
+  // Log-scale mapping between slider [0,1] and zoom [minZoom, MAX_ZOOM]
+  // slider=0 → minZoom (zoomed out), slider=0.5 → 1×, slider=1 → MAX_ZOOM (zoomed in)
+  const zoomToSlider = (z: number, mn: number) => {
+    const lo = Math.log(mn), hi = Math.log(MAX_ZOOM)
+    return (Math.log(Math.max(mn, Math.min(MAX_ZOOM, z))) - lo) / (hi - lo)
+  }
+
+  const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const sliderVal = parseFloat(e.target.value)
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const mn = 0.1
+    setMinZoom(mn)
+    const lo = Math.log(mn), hi = Math.log(MAX_ZOOM)
+    let newZoom = Math.exp(lo + sliderVal * (hi - lo))
+    // Snap to each marked value when within 6% of its slider position
+    const SNAP_POINTS = [0.25, 0.5, 1, 2]
+    for (const sv of SNAP_POINTS) {
+      const sp = (Math.log(sv) - lo) / (hi - lo)
+      if (Math.abs(sliderVal - sp) < 0.06) { newZoom = sv; break }
+    }
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    const rawPanX = cx - (cx - panX) * (newZoom / zoom)
+    const rawPanY = cy - (cy - panY) * (newZoom / zoom)
+    const clamped = clampPan(rawPanX, rawPanY, newZoom, rect)
+    zoomRef.current = newZoom
+    panXRef.current = clamped.px
+    panYRef.current = clamped.py
+    setZoom(newZoom)
+    setPanX(clamped.px)
+    setPanY(clamped.py)
+  }, [panX, panY, zoom])
+
   const cursorClass = isPanning
     ? "cursor-grabbing"
     : activeTool === "NODE" || activeTool === "MEMBER" || activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD"
@@ -2003,7 +2154,7 @@ export function StructuralCanvas({
     : "cursor-default"
 
   return (
-    <div ref={containerRef} className="w-full h-full">
+    <div ref={containerRef} className="relative w-full h-full">
       <canvas
         ref={canvasRef}
         className={`w-full h-full ${cursorClass}`}
@@ -2015,6 +2166,53 @@ export function StructuralCanvas({
         // Prevent context menu on middle-click
         onContextMenu={(e) => e.button === 1 && e.preventDefault()}
       />
+      {/* Zoom slider + Adaptive View overlay — top-right of canvas */}
+      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto transition-opacity duration-200 opacity-20 hover:opacity-100 bg-background/90 border-border">
+        <div className="flex items-center gap-2">
+          <ZoomOut className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          {/* Slider + snap tick marks */}
+          <div className="relative flex flex-col items-start">
+            <input
+              type="range"
+              min={0} max={1} step={0.001}
+              value={zoomToSlider(zoom, minZoom)}
+              onChange={handleSliderChange}
+              className="w-24 cursor-pointer"
+              style={{ height: "4px", accentColor: "#1a2f5e" }}
+            />
+            {/* Triangle ticks at snap positions. Each dims when thumb is at that value. */}
+            {([0.25, 0.5, 1, 2] as const).map(sv => {
+              const lo = Math.log(0.1), hi = Math.log(MAX_ZOOM)
+              const pct = ((Math.log(sv) - lo) / (hi - lo)) * 100
+              const isAt = Math.abs(zoom - sv) < 0.01
+              return (
+                <div
+                  key={sv}
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: `${pct}%`,
+                    top: "100%",
+                    transform: "translateX(-50%)",
+                    opacity: isAt ? 0.2 : 0.55,
+                    transition: "opacity 0.15s",
+                  }}
+                >
+                  <div style={{
+                    width: 0, height: 0,
+                    borderLeft: "2.5px solid transparent",
+                    borderRight: "2.5px solid transparent",
+                    borderBottom: "3.5px solid #1a2f5e",
+                  }} />
+                </div>
+              )
+            })}
+          </div>
+          <ZoomIn className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground w-10 text-right tabular-nums">
+            {zoom === 1 ? "1x" : `${zoom.toFixed(2)}x`}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -2025,72 +2223,74 @@ function drawSupportGlyph(
   y: number,
   type: SupportType,
   selected = false,
-  overrideColor?: string           // when set, overrides both fill and hatch colours
+  overrideColor?: string,           // when set, overrides both fill and hatch colours
+  s = 1                             // adaptive scale: 1/zoom when adaptive view is on
 ) {
   const fill  = overrideColor ?? (selected ? COLOR_SELECTION : COLOR_BRAND)
   const hatch = overrideColor ?? COLOR_SUPPORT_HATCH
+  const sz = SUPPORT_SIZE * s
   ctx.save()
   if (type === "pin") {
     ctx.beginPath()
-    ctx.moveTo(x, y + 4)
-    ctx.lineTo(x - SUPPORT_SIZE / 2, y + SUPPORT_SIZE + 4)
-    ctx.lineTo(x + SUPPORT_SIZE / 2, y + SUPPORT_SIZE + 4)
+    ctx.moveTo(x, y + 4 * s)
+    ctx.lineTo(x - sz / 2, y + sz + 4 * s)
+    ctx.lineTo(x + sz / 2, y + sz + 4 * s)
     ctx.closePath()
     ctx.fillStyle = fill
     ctx.fill()
 
     ctx.beginPath()
-    ctx.moveTo(x - SUPPORT_SIZE / 2 - 5, y + SUPPORT_SIZE + 8)
-    ctx.lineTo(x + SUPPORT_SIZE / 2 + 5, y + SUPPORT_SIZE + 8)
+    ctx.moveTo(x - sz / 2 - 5 * s, y + sz + 8 * s)
+    ctx.lineTo(x + sz / 2 + 5 * s, y + sz + 8 * s)
     ctx.strokeStyle = hatch
-    ctx.lineWidth = 2
+    ctx.lineWidth = 2 * s
     ctx.stroke()
   } else if (type === "roller") {
     ctx.beginPath()
-    ctx.moveTo(x, y + 4)
-    ctx.lineTo(x - SUPPORT_SIZE / 2, y + SUPPORT_SIZE + 4)
-    ctx.lineTo(x + SUPPORT_SIZE / 2, y + SUPPORT_SIZE + 4)
+    ctx.moveTo(x, y + 4 * s)
+    ctx.lineTo(x - sz / 2, y + sz + 4 * s)
+    ctx.lineTo(x + sz / 2, y + sz + 4 * s)
     ctx.closePath()
     ctx.fillStyle = fill
     ctx.fill()
 
-    const cy = y + SUPPORT_SIZE + 10
+    const cy = y + sz + 10 * s
     ctx.beginPath()
-    ctx.arc(x - 5, cy, 3, 0, Math.PI * 2)
+    ctx.arc(x - 5 * s, cy, 3 * s, 0, Math.PI * 2)
     ctx.fillStyle = "#ffffff"
     ctx.fill()
     ctx.strokeStyle = fill
-    ctx.lineWidth = 1.5
+    ctx.lineWidth = 1.5 * s
     ctx.stroke()
     ctx.beginPath()
-    ctx.arc(x + 5, cy, 3, 0, Math.PI * 2)
+    ctx.arc(x + 5 * s, cy, 3 * s, 0, Math.PI * 2)
     ctx.fillStyle = "#ffffff"
     ctx.fill()
     ctx.stroke()
 
     ctx.beginPath()
-    ctx.moveTo(x - SUPPORT_SIZE / 2 - 5, cy + 5)
-    ctx.lineTo(x + SUPPORT_SIZE / 2 + 5, cy + 5)
+    ctx.moveTo(x - sz / 2 - 5 * s, cy + 5 * s)
+    ctx.lineTo(x + sz / 2 + 5 * s, cy + 5 * s)
     ctx.strokeStyle = hatch
-    ctx.lineWidth = 2
+    ctx.lineWidth = 2 * s
     ctx.stroke()
   } else if (type === "fixed") {
-    const w = SUPPORT_SIZE + 6
-    const h = 8
+    const w = (SUPPORT_SIZE + 6) * s
+    const h = 8 * s
     ctx.fillStyle = fill
-    ctx.fillRect(x - w / 2, y + 4, w, h)
+    ctx.fillRect(x - w / 2, y + 4 * s, w, h)
 
     ctx.strokeStyle = hatch
-    ctx.lineWidth = 1.5
-    const baseY = y + 4 + h
+    ctx.lineWidth = 1.5 * s
+    const baseY = y + 4 * s + h
     ctx.beginPath()
-    ctx.moveTo(x - w / 2 - 3, baseY + 6)
-    ctx.lineTo(x + w / 2 + 3, baseY + 6)
+    ctx.moveTo(x - w / 2 - 3 * s, baseY + 6 * s)
+    ctx.lineTo(x + w / 2 + 3 * s, baseY + 6 * s)
     ctx.stroke()
-    for (let i = -w / 2; i <= w / 2; i += 5) {
+    for (let i = -w / 2; i <= w / 2; i += 5 * s) {
       ctx.beginPath()
       ctx.moveTo(x + i, baseY)
-      ctx.lineTo(x + i - 4, baseY + 6)
+      ctx.lineTo(x + i - 4 * s, baseY + 6 * s)
       ctx.stroke()
     }
   }

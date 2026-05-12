@@ -59,6 +59,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>("Model")
   const [activeTool, setActiveTool] = useState<ToolType>(null)
   const [unitSettings, setUnitSettings] = useState<UnitSettings>(DEFAULT_UNIT_SETTINGS)
+  const [snapToGrid, setSnapToGrid] = useState(true)
+  const [snapToNode, setSnapToNode] = useState(true)
+  const [adaptiveView, setAdaptiveView] = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
   const [cursorX, setCursorX] = useState(0)
   const [cursorY, setCursorY] = useState(0)
@@ -279,9 +282,17 @@ export default function App() {
     (wx: number, wy: number) => {
       const raw = { x: wx, y: wy }
 
+      const resolveSnap = (m: StructureModel, p: { x: number; y: number }) => {
+        if (snapToNode) {
+          const nodeId = hitTestNode(m, p, HIT_TOL_NODE)
+          if (nodeId) return m.nodes[nodeId]
+        }
+        return snapToGrid ? snapWorld(p, unitSettings.gridSpacing) : p
+      }
+
       if (activeTab === "Model" && activeTool) {
         if (activeTool === "NODE") {
-          const snapped = snapWorld(raw, unitSettings.gridSpacing)
+          const snapped = resolveSnap(model, raw)
           setModel((m) => {
             if (findNodeAt(m, snapped)) return m
             const memberHit = hitTestMember(m, snapped)
@@ -292,7 +303,7 @@ export default function App() {
         }
 
         if (activeTool === "MEMBER") {
-          const snapped = snapWorld(raw, unitSettings.gridSpacing)
+          const snapped = resolveSnap(model, raw)
           const { model: m2, id } = ensureNodeAt(model, snapped)
 
           if (!pendingFrameStart) {
@@ -482,7 +493,7 @@ export default function App() {
       activeTab, activeTool, activeSection, activeMemberType, activeSupportType,
       activePtInputMode, activePointLoadAxis, activePtMagnitude, activePtAngle, activeDistType, activeDistWStart, activeDistWEnd,
       activeDistMode, activeDistAxis, activeDistWxStart, activeDistWxEnd, activeDistWyStart, activeDistWyEnd,
-      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing,
+      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode,
     ]
   )
 
@@ -733,6 +744,10 @@ export default function App() {
             selection={selection}
             pendingFrameStart={pendingFrameStart}
             gridSpacing={unitSettings.gridSpacing}
+            snapToGrid={snapToGrid}
+            snapToNode={snapToNode}
+            lengthUnit={unitSettings.length}
+            adaptiveView={adaptiveView}
             onMouseMove={handleMouseMove}
             onCanvasClick={handleCanvasClick}
             onSelectItems={handleSelectItems}
@@ -820,6 +835,12 @@ export default function App() {
         showDimensions={showDimensions}
         cursorX={cursorX}
         cursorY={cursorY}
+        snapToGrid={snapToGrid}
+        onSnapToGridChange={setSnapToGrid}
+        snapToNode={snapToNode}
+        onSnapToNodeChange={setSnapToNode}
+        adaptiveView={adaptiveView}
+        onAdaptiveViewChange={setAdaptiveView}
         onUnitSettingsChange={setUnitSettings}
         onToggleDimensions={() => setShowDimensions(!showDimensions)}
       />

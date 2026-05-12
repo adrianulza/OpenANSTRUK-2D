@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Grid3X3, Check } from "lucide-react"
+import { Grid3X3 } from "lucide-react"
 import type { UnitSettings } from "@/lib/units"
 import { GridUnitsPanel } from "@/components/grid-units-panel"
 
@@ -13,6 +13,12 @@ interface StatusBarProps {
   showDimensions: boolean
   cursorX: number
   cursorY: number
+  snapToGrid: boolean
+  onSnapToGridChange: (v: boolean) => void
+  snapToNode: boolean
+  onSnapToNodeChange: (v: boolean) => void
+  adaptiveView: boolean
+  onAdaptiveViewChange: (v: boolean) => void
   onUnitSettingsChange: (next: UnitSettings) => void
   onToggleDimensions: () => void
 }
@@ -25,6 +31,12 @@ export function StatusBar({
   showDimensions,
   cursorX,
   cursorY,
+  snapToGrid,
+  onSnapToGridChange,
+  snapToNode,
+  onSnapToNodeChange,
+  adaptiveView,
+  onAdaptiveViewChange,
   onUnitSettingsChange,
   onToggleDimensions,
 }: StatusBarProps) {
@@ -66,26 +78,6 @@ export function StatusBar({
 
       {/* Right section - Controls */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleDimensions}
-          className={cn(
-            "h-7 px-2 text-xs gap-1.5",
-            showDimensions
-              ? "bg-[#2563eb]/10 text-[#2563eb] hover:bg-[#2563eb]/15"
-              : "text-gray-500 hover:bg-gray-100"
-          )}
-        >
-          <span className={cn(
-            "w-3.5 h-3.5 rounded-sm border flex items-center justify-center",
-            showDimensions ? "border-[#2563eb] bg-[#2563eb]" : "border-gray-300"
-          )}>
-            {showDimensions && <Check size={10} className="text-white" />}
-          </span>
-          DIMENSION
-        </Button>
-
         <div className="flex items-center gap-3 font-mono text-[#1e293b]">
           <span>
             <span className="text-gray-400">X:</span> {(cursorX * coordScale).toFixed(lenUnit === "mm" ? 0 : 3)} {lenUnit}
@@ -103,13 +95,21 @@ export function StatusBar({
               className="h-7 px-2 text-xs text-gray-500 hover:bg-gray-100 gap-1.5"
             >
               <Grid3X3 size={14} />
-              Grid and Units
+              Settings
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" className="w-56 p-0">
             <GridUnitsPanel
               unitSettings={unitSettings}
               onUnitSettingsChange={onUnitSettingsChange}
+              showDimensions={showDimensions}
+              onToggleDimensions={onToggleDimensions}
+              snapToGrid={snapToGrid}
+              onSnapToGridChange={onSnapToGridChange}
+              snapToNode={snapToNode}
+              onSnapToNodeChange={onSnapToNodeChange}
+              adaptiveView={adaptiveView}
+              onAdaptiveViewChange={onAdaptiveViewChange}
             />
           </PopoverContent>
         </Popover>
