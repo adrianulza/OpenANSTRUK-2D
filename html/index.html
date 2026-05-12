@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=1280">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenAnstruk</title>
   <link rel="icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -407,7 +407,7 @@
       line-height: 1.0;
       letter-spacing: -0.01em;
       color: #e8f3ff;
-      margin-bottom: 20px;
+      margin-bottom: 32px;
     }
     .sw-title em {
       font-style: italic;
@@ -591,6 +591,9 @@
       align-items: start;
       justify-content: center;
     }
+
+    .br-desktop { display: block; }
+    .br-mobile { display: none; }
 
     .oss-heading {
       font-family: var(--ff-serif);
@@ -800,6 +803,160 @@
     }
     .pillar { transition: transform 0.3s, border-color 0.3s; }
     .pillar:hover { transform: translateX(6px); border-color: rgba(180,210,255,0.3); }
+
+    /* ── HAMBURGER NAV (hidden on desktop) ───────────── */
+    .nav-hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      padding: 6px;
+      background: none;
+      border: none;
+      margin-left: auto;
+    }
+    .nav-hamburger span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--blueprint-text);
+      border-radius: 1px;
+      transition: transform 0.25s, opacity 0.25s;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .nav-mobile-menu {
+      display: none;
+      position: fixed;
+      top: 60px; left: 0; right: 0;
+      background: rgba(200, 216, 238, 0.95);
+      border-bottom: 2px solid #8aaacf;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      padding: 8px 24px 24px;
+      z-index: 200;
+      flex-direction: column;
+      gap: 0;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: visible;
+      height: auto;
+    }
+    .nav-mobile-menu.open { display: flex; }
+    .nav-mobile-menu.open a { display: block; }
+    .nav-mobile-menu a {
+      font-family: var(--ff-mono);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #1a3560;
+      text-decoration: none;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(26,53,96,0.12);
+      transition: color 0.2s;
+    }
+    .nav-mobile-menu a:last-child { border-bottom: none; padding-bottom: 1px; }
+    .nav-mobile-menu a:hover { color: #0b2550; }
+
+    /* ── MOBILE RESPONSIVE ───────────────────────────── */
+    @media (max-width: 768px) {
+
+      /* Nav */
+      nav { padding: 0 16px 0 8px; }
+      .nav-links { display: none; }
+      .nav-hamburger { display: flex; }
+
+      /* Hero */
+      .hero { padding: 90px 24px 60px; min-height: 60vh; }
+      #hero-canvas { opacity: 0.2; }
+      .hero-title { font-size: clamp(28px, 8vw, 42px); margin-bottom: 32px; }
+      .hero-sub { font-size: 14px; max-width: 100%; }
+      .hero-cta { flex-direction: column; align-items: center; }
+      .btn-blueprint { top: 0; padding: 12px 28px; font-size: 12px; }
+
+      /* Section shared */
+      .section-inner { padding: 72px 24px; min-height: unset; }
+      .sw-desc, .sw-features, .about-body, .about-right, .oss-body, .oss-pillars {
+        font-size: 14px;
+      }
+      .pillar p { font-size: 14px; }
+      .pillar-num { font-size: 16px; }
+      .contrib-path-title { font-size: 13px; }
+      .contrib-path-desc { font-size: 14px; }
+      .contribution-link { font-size: 13px; }
+      .btn-ink { font-size: 10px; }
+
+      /* Software section */
+      .carousel-section { overflow-x: hidden; }
+      .carousel-container { padding: 60px 24px; min-height: unset; width: 100%; box-sizing: border-box; }
+      .sw-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "label"
+          "title"
+          "desc"
+          "album"
+          "features";
+        column-gap: 0;
+        row-gap: 8px;
+        width: 100%;
+      }
+      /* Prevent grid children from overflowing their cell */
+      .sw-label, .sw-title, .sw-desc, .sw-album, .sw-features-col {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .sw-label { margin-bottom: 10px !important; }
+      .sw-title { font-size: clamp(28px, 7vw, 42px); max-width: 100%; word-spacing: 0; margin-bottom: 10px !important; }
+      .sw-desc { margin-bottom: 10px !important; }
+
+      /* Album: constrain image and thumbs fully */
+      .sw-album { width: 100%; }
+      .album-main { width: 100%; }
+      .album-main img { max-width: 100%; }
+      .album-thumbs { width: 100%; }
+      .album-thumb { width: 64px; height: 44px; flex-shrink: 0; }
+
+      .sw-features-col { margin-top: 4px; }
+
+      /* About section */
+      .section-label { margin-bottom: 12px !important; }
+      .about-grid { grid-template-columns: 1fr; gap: 16px; }
+      .about-heading { font-size: clamp(32px, 7vw, 48px); text-align: left; max-width: 100%; word-spacing: 0; margin-bottom: 0 !important; }
+      .about-right { border-left: none; border-top: none; padding-left: 0; padding-top: 0; }
+
+      /* OSS section */
+      .oss-inner {
+        grid-template-columns: 1fr;
+        padding: 72px 24px 24px;
+        min-height: unset;
+        gap: 8px;
+      }
+      .oss-heading { margin-bottom: 10px; font-size: clamp(28px, 7vw, 42px); }
+      .br-mobile { display: block; }
+      .br-desktop { display: inline; }
+      .br-desktop::after { content: ' '; }
+      .oss-body { margin-bottom: 8px !important; }
+      .contrib-box { padding: 0; }
+      .pillar { padding: 6px 0; }
+      .pillar:first-child { padding-bottom: 0; }
+
+      /* Pillar hover: disable translateX on mobile (no hover intent) */
+      .pillar:hover { transform: none; }
+
+      /* Footer */
+      footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 24px;
+      }
+      .footer-links { flex-wrap: wrap; gap: 16px; }
+
+      /* Mobile banner — hide since the page is now responsive */
+      #mobile-banner { display: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -816,6 +973,16 @@
     <li><a href="#oss">Open Source</a></li>
     <li><a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" class="nav-gh">GitHub ↗</a></li>
   </ul>
+  <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu" onclick="toggleMobileMenu()">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+<nav class="nav-mobile-menu" id="nav-mobile-menu">
+  <a href="#home"   onclick="closeMobileMenu()">Home</a>
+  <a href="#software" onclick="closeMobileMenu()">Software</a>
+  <a href="#about"  onclick="closeMobileMenu()">Who We Are</a>
+  <a href="#oss"    onclick="closeMobileMenu()">Open Source</a>
+  <a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" onclick="closeMobileMenu()">GitHub ↗</a>
 </nav>
 
 <!-- HERO -->
@@ -937,7 +1104,7 @@
     <div>
       <div class="section-label">Open Source</div>
       <h2 class="oss-heading">
-        Knowledge<br>should be<br><em>open.</em>
+        Knowledge<span class="br-desktop"></span><span class="br-mobile"></span>should be <em>open.</em>
       </h2>
       <p class="oss-body">
         The tools that protect lives should be auditable, improvable, and permanently available. We release everything under the MIT License. Use it, modify it, distribute it.
@@ -1095,8 +1262,13 @@
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       const scene = new THREE.Scene();
+      const isMobileView = window.innerWidth <= 768;
       const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-      camera.position.set(6.5, 4.2, 8);
+      camera.position.set(
+        isMobileView ? 11 : 6.5,
+        isMobileView ? 7   : 4.2,
+        isMobileView ? 14  : 8
+      );
       camera.lookAt(0, 0.6, 0);
 
       const lineMat = new THREE.LineBasicMaterial({ color: 0xb4d2ff, transparent: true, opacity: 0.35 });
@@ -1243,6 +1415,17 @@
       document.getElementById('mobile-banner').style.display = 'block';
     }
   })();
+
+  function toggleMobileMenu() {
+    const btn  = document.getElementById('nav-hamburger');
+    const menu = document.getElementById('nav-mobile-menu');
+    const open = menu.classList.toggle('open');
+    btn.classList.toggle('open', open);
+  }
+  function closeMobileMenu() {
+    document.getElementById('nav-hamburger').classList.remove('open');
+    document.getElementById('nav-mobile-menu').classList.remove('open');
+  }
 
   document.addEventListener('keydown', (e) => {
     const lbOpen = document.getElementById('lightbox').classList.contains('open');

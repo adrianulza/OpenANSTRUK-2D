@@ -11,6 +11,7 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, _res, next) => {
           if (req.url === '/') req.url = '/html/index.html'
+          if (req.url === '/app' || req.url === '/app/') req.url = '/html/app.html'
           next()
         })
       },

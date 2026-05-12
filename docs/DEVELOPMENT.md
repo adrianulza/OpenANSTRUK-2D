@@ -54,6 +54,10 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
    - Export model + diagram as PDF (via browser print or library)
    - Summary sheet (reactions, member forces, deflections)
 
+5. **Additional Features**
+   - Euler-Bernoulli vs. Timoshenko Beams switch button
+
+
 #### Scope Limitations
 - Design checks are simplified (no connection design, no optimization)
 - Load envelopes follow standard rules only

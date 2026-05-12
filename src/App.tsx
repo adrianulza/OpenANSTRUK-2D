@@ -627,7 +627,7 @@ export default function App() {
             <div className="text-2xl mb-1">🖥️</div>
             <h2 className="text-[#0b2550] font-semibold text-lg mb-2">Desktop Recommended</h2>
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              This app works best on a desktop browser with a keyboard and mouse.
+              This app works best on a PC desktop browser.
             </p>
             <button
               onClick={() => setShowMobileModal(false)}
