@@ -186,7 +186,10 @@ interface StructuralCanvasProps {
   hoveredLoadId?: LoadId | null
   moveNodeMode?: "coordinates" | "screen"
   moveNodeSelectedId?: NodeId | null
+  draggingNodeId?: NodeId | null
   onMoveNode?: (nodeId: NodeId, x: number, y: number) => void
+  onDragNodeStart?: (nodeId: NodeId) => void
+  onDragNodeEnd?: () => void
 }
 
 export function StructuralCanvas({
@@ -224,7 +227,10 @@ export function StructuralCanvas({
   hoveredLoadId,
   moveNodeMode = "coordinates",
   moveNodeSelectedId,
+  draggingNodeId,
   onMoveNode,
+  onDragNodeStart,
+  onDragNodeEnd,
 }: StructuralCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -251,6 +257,8 @@ export function StructuralCanvas({
   const snapToNodeRef = useRef(snapToNode)
   const gridSpacingRef = useRef(gridSpacing)
   const onMoveNodeRef = useRef(onMoveNode)
+  const onDragNodeStartRef = useRef(onDragNodeStart)
+  const onDragNodeEndRef = useRef(onDragNodeEnd)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   useEffect(() => { moveNodeModeRef.current = moveNodeMode }, [moveNodeMode])
   useEffect(() => { modelRef.current = model }, [model])
@@ -258,6 +266,8 @@ export function StructuralCanvas({
   useEffect(() => { snapToNodeRef.current = snapToNode }, [snapToNode])
   useEffect(() => { gridSpacingRef.current = gridSpacing }, [gridSpacing])
   useEffect(() => { onMoveNodeRef.current = onMoveNode }, [onMoveNode])
+  useEffect(() => { onDragNodeStartRef.current = onDragNodeStart }, [onDragNodeStart])
+  useEffect(() => { onDragNodeEndRef.current = onDragNodeEnd }, [onDragNodeEnd])
   const [minZoom, setMinZoom] = useState(0.1)
   // Refs always hold the committed values — used inside native event listeners (no stale closure)
   const panXRef = useRef(0)
@@ -414,7 +424,7 @@ export function StructuralCanvas({
         const selected = selection.nodeIds.includes(n.id)
         const isHovered = (activeTab === "Model" && activeTool === "DELETE") && n.id === hoveredNodeId
         const isMoveTarget = activeTab === "Model" && activeTool === "MOVE_NODE" && (
-          moveNodeMode === "screen" ? n.id === hoveredNodeId : n.id === moveNodeSelectedId
+          moveNodeMode === "screen" ? n.id === draggingNodeId : n.id === moveNodeSelectedId
         )
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
@@ -425,7 +435,7 @@ export function StructuralCanvas({
         ctx.stroke()
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, draggingNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
   )
 
   const drawSupports = useCallback(
@@ -1969,7 +1979,8 @@ export function StructuralCanvas({
       const { sx, sy } = axisCenter(rect)
       const mx = clientX - rect.left
       const my = clientY - rect.top
-      const { vmx, vmy } = toVirtual(mx, my)
+      const vmx = (mx - panXRef.current) / zoomRef.current
+      const vmy = (my - panYRef.current) / zoomRef.current
       return {
         x: parseFloat(((vmx - sx) / SCALE).toFixed(3)),
         y: parseFloat(((sy - vmy) / SCALE).toFixed(3)),
@@ -1991,6 +2002,7 @@ export function StructuralCanvas({
         const nodeId = hitTestNode(modelRef.current, w, HIT_TOL_NODE)
         if (nodeId) {
           dragNodeRef.current = { nodeId }
+          onDragNodeStartRef.current?.(nodeId)
           e.preventDefault()
           return
         }
@@ -2094,6 +2106,7 @@ export function StructuralCanvas({
       // MOVE_NODE screen drag — release
       if (dragNodeRef.current && e.touches.length === 0) {
         dragNodeRef.current = null
+        onDragNodeEndRef.current?.()
         e.preventDefault()
         return
       }

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState, startTransition } from "react"
+﻿import { useCallback, useEffect, useRef, useState, startTransition } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
@@ -100,8 +100,11 @@ export default function App() {
   const [selectedLoadIds, setSelectedLoadIds] = useState<string[]>([])
 
   const [moveNodeMode, setMoveNodeMode] = useState<"coordinates" | "screen">("coordinates")
+  const moveNodeModeRef = useRef<"coordinates" | "screen">("coordinates")
+  useEffect(() => { moveNodeModeRef.current = moveNodeMode }, [moveNodeMode])
   const [moveNodeCoordMode, setMoveNodeCoordMode] = useState<"set" | "offset">("set")
   const [moveNodeSelectedId, setMoveNodeSelectedId] = useState<NodeId | null>(null)
+  const [draggingNodeId, setDraggingNodeId] = useState<NodeId | null>(null)
 
   const [hoveredNodeId, setHoveredNodeId] = useState<NodeId | null>(null)
   const [hoveredMemberId, setHoveredMemberId] = useState<string | null>(null)
@@ -179,6 +182,7 @@ export default function App() {
     setSelection(emptySelection())
     setSelectedLoadId(null)
     setSelectedLoadIds([])
+    setMoveNodeSelectedId(null)
   }, [])
 
   const handleMouseMove = useCallback((x: number, y: number) => {
@@ -351,9 +355,10 @@ export default function App() {
           return
         }
 
-        if (activeTool === "MOVE_NODE" && moveNodeMode === "coordinates") {
+        if (activeTool === "MOVE_NODE" && moveNodeModeRef.current === "coordinates") {
           const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
           if (nodeId) setMoveNodeSelectedId(nodeId)
+          else setMoveNodeSelectedId(null)
           return
         }
       }
@@ -514,6 +519,14 @@ export default function App() {
       ...m,
       nodes: { ...m.nodes, [nodeId]: { ...m.nodes[nodeId], x, y } },
     }))
+  }, [])
+
+  const handleDragNodeStart = useCallback((nodeId: NodeId) => setDraggingNodeId(nodeId), [])
+  const handleDragNodeEnd = useCallback(() => setDraggingNodeId(null), [])
+
+  const handleMoveNodeModeChange = useCallback((mode: "coordinates" | "screen") => {
+    setMoveNodeMode(mode)
+    if (mode === "screen") setMoveNodeSelectedId(null)
   }, [])
 
   const handleSelectItems = useCallback(
@@ -701,6 +714,7 @@ export default function App() {
             activeTab={activeTab}
             activeTool={activeTool}
             onClose={handleCloseFlyout}
+            onToolSelect={handleToolSelect}
             model={model}
             selection={selection}
             activeSection={activeSection}
@@ -764,7 +778,7 @@ export default function App() {
             onShowDiagramMemberLabelsChange={setShowDiagramMemberLabels}
             analysisResult={analysisResult}
             moveNodeMode={moveNodeMode}
-            onMoveNodeModeChange={setMoveNodeMode}
+            onMoveNodeModeChange={handleMoveNodeModeChange}
             moveNodeCoordMode={moveNodeCoordMode}
             onMoveNodeCoordModeChange={setMoveNodeCoordMode}
             moveNodeSelectedId={moveNodeSelectedId}
@@ -805,7 +819,10 @@ export default function App() {
             hoveredLoadId={hoveredLoadId}
             moveNodeMode={moveNodeMode}
             moveNodeSelectedId={moveNodeSelectedId}
+            draggingNodeId={draggingNodeId}
             onMoveNode={handleMoveNode}
+            onDragNodeStart={handleDragNodeStart}
+            onDragNodeEnd={handleDragNodeEnd}
           />
         </main>
       </div>

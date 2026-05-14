@@ -124,6 +124,7 @@ interface FlyoutPanelProps {
   showDiagramMemberLabels?: boolean
   onShowDiagramMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
+  onToolSelect?: (tool: ToolType) => void
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -200,6 +201,7 @@ export function FlyoutPanel({
   showDiagramMemberLabels = true,
   onShowDiagramMemberLabelsChange,
   analysisResult,
+  onToolSelect,
   moveNodeMode = "coordinates",
   onMoveNodeModeChange,
   moveNodeCoordMode = "set",
@@ -301,6 +303,7 @@ export function FlyoutPanel({
           moveNodeSelectedId={moveNodeSelectedId}
           onMoveNodeSelectId={onMoveNodeSelectId}
           onMoveNode={onMoveNode}
+          onToolSelect={onToolSelect}
         />
       </div>
     </div>
@@ -822,7 +825,7 @@ function MoveNodeToolContent({
               ? "bg-[#1a2f5e] text-white border-[#1a2f5e]"
               : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
           )}
-          onClick={() => onMoveNodeModeChange?.("screen")}
+          onClick={() => { onMoveNodeModeChange?.("screen"); onMoveNodeSelectId?.(null) }}
         >On-Screen</button>
       </div>
 
