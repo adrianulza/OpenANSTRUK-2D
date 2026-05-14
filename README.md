@@ -16,11 +16,17 @@ A 2D structural analysis web application for modeling, loading, and analyzing fr
 ## Features
 
 - Interactive modeling: nodes, members (frame + truss), supports — snap-to-grid canvas
+- Zoom (scroll-wheel + pinch) with adaptive view scaling; snap-to-node and snap-to-grid toggles
 - Point loads and distributed loads (local-axis and global-axis modes)
 - Direct stiffness method (DSM) solver — runs entirely in the browser
 - Shear force, bending moment, axial force, and deformation diagrams
 - Parametric template builder for beams, frames, and trusses
+- Mobile-responsive landing page; touch panning on the app canvas
 - No installation — works offline after first load
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Documentation
 
@@ -59,7 +65,7 @@ React 19 · TypeScript · Vite 6 · Tailwind CSS v4 · shadcn/ui · Canvas API
 
 All contributions are welcome — code, bug reports, documentation, feedback. See [CONTRIBUTING.md](docs/CONTRIBUTING.md) to get started.
 
-**Email:** openanstruk@gmail.com  
+**Email:** team@openanstruk.org  
 **GitHub Issues:** for bug reports and feature requests
 
 ## License

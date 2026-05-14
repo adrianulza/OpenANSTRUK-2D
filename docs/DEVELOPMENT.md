@@ -1,8 +1,9 @@
 # OpenAnstruk Development Plan
 
-## Version 1.0.0 — Current Status
+## Version 1.0.1 — Current Status
 
-**Release Date:** 9 May 2026
+**Release Date:** 14 May 2026  
+**Previous:** v1.0.0 (9 May 2026) — see [CHANGELOG.md](../CHANGELOG.md)
 
 ### What We've Shipped
 
@@ -17,6 +18,9 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 - **Load Types** — Point loads and distributed loads (local and global axis modes)
 - **Member Types** — Frame (full moment transfer) and truss (pin-jointed)
 - **Reactions & Diagrams** — Full reaction display; invertible SFD/BMD; deformation visualization
+- **Zoom & Adaptive View** — Scroll-wheel/pinch zoom (0.1× – 3×); line widths and markers scale with zoom
+- **Snap Toggles** — Snap-to-grid and snap-to-node independently configurable; live dimension label while drawing
+- **Mobile Support** — Responsive landing page; touch panning on canvas; mobile-friendly modals and flyout
 
 #### Known Scope
 - 2D linear elastic analysis (frames and trusses)
@@ -132,7 +136,7 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 
 ## Technical Debt & Optimizations
 
-### Current (v1.0.0)
+### Current (v1.0.1)
 - [ ] Add undo/redo system (currently no history)
 - [ ] Memoize solver results (recomputed every render)
 - [ ] Code-split bundle (if performance issues emerge)
@@ -184,4 +188,4 @@ MIT License — all code and contributions are open for use, modification, and d
 
 ---
 
-**Questions?** Contact: openanstruk@gmail.com  
+**Questions?** Contact: team@openanstruk.org  
