@@ -1914,6 +1914,148 @@ export function StructuralCanvas({
     return () => canvas.removeEventListener("wheel", onWheel)
   }, [])
 
+  // Touch: single-finger pan + two-finger pinch-to-zoom (integrated with slider state)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // Track touch state in refs to avoid stale closures
+    const touchState = {
+      singleStart: null as { tx: number; ty: number; basePanX: number; basePanY: number } | null,
+      pinchDist: null as number | null,
+      pinchMidX: 0,
+      pinchMidY: 0,
+      hasPanned: false,  // true only after finger moved beyond drag threshold
+    }
+
+    const getTouchDist = (t1: Touch, t2: Touch) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
+
+    const getTouchMid = (t1: Touch, t2: Touch, rect: DOMRect) => ({
+      mx: (t1.clientX + t2.clientX) / 2 - rect.left,
+      my: (t1.clientY + t2.clientY) / 2 - rect.top,
+    })
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault()
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+
+      if (e.touches.length === 1) {
+        touchState.singleStart = {
+          tx: e.touches[0].clientX,
+          ty: e.touches[0].clientY,
+          basePanX: panXRef.current,
+          basePanY: panYRef.current,
+        }
+        touchState.pinchDist = null
+        touchState.hasPanned = false
+      } else if (e.touches.length === 2) {
+        touchState.singleStart = null
+        touchState.pinchDist = getTouchDist(e.touches[0], e.touches[1])
+        const mid = getTouchMid(e.touches[0], e.touches[1], rect)
+        touchState.pinchMidX = mid.mx
+        touchState.pinchMidY = mid.my
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+
+      if (e.touches.length === 1 && touchState.singleStart) {
+        // Single-finger pan
+        const dx = e.touches[0].clientX - touchState.singleStart.tx
+        const dy = e.touches[0].clientY - touchState.singleStart.ty
+        if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+          touchState.hasPanned = true
+          isPanningRef.current = true
+          setIsPanning(true)
+          const rawPx = touchState.singleStart.basePanX + dx
+          const rawPy = touchState.singleStart.basePanY + dy
+          const clamped = clampPan(rawPx, rawPy, zoomRef.current, rect)
+          panXRef.current = clamped.px
+          panYRef.current = clamped.py
+          setPanX(clamped.px)
+          setPanY(clamped.py)
+        }
+      } else if (e.touches.length === 2 && touchState.pinchDist !== null) {
+        // Two-finger pinch-to-zoom — anchored to midpoint
+        const newDist = getTouchDist(e.touches[0], e.touches[1])
+        const factor = newDist / touchState.pinchDist
+        touchState.pinchDist = newDist
+
+        const curZoom = zoomRef.current
+        const curPanX = panXRef.current
+        const curPanY = panYRef.current
+        const minZoom = 0.1
+        let newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, curZoom * factor))
+
+        // Update midpoint to current finger positions
+        const mid = getTouchMid(e.touches[0], e.touches[1], rect)
+        const mx = mid.mx
+        const my = mid.my
+
+        const rawPanX = mx - (mx - curPanX) * (newZoom / curZoom)
+        const rawPanY = my - (my - curPanY) * (newZoom / curZoom)
+        const clamped = clampPan(rawPanX, rawPanY, newZoom, rect)
+
+        zoomRef.current = newZoom
+        panXRef.current = clamped.px
+        panYRef.current = clamped.py
+        setZoom(newZoom)
+        setPanX(clamped.px)
+        setPanY(clamped.py)
+      }
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        const wasPanOrPinch = touchState.hasPanned || touchState.pinchDist !== null
+        touchState.singleStart = null
+        touchState.pinchDist = null
+        touchState.hasPanned = false
+        if (wasPanOrPinch) {
+          // Suppress the synthetic click that would follow this touch sequence
+          e.preventDefault()
+          isPanningRef.current = true
+          setIsPanning(true)
+          setTimeout(() => {
+            isPanningRef.current = false
+            setIsPanning(false)
+          }, 50)
+        } else {
+          // Stationary tap — let browser fire the synthetic click so handleClick runs
+          isPanningRef.current = false
+          setIsPanning(false)
+        }
+      } else if (e.touches.length === 1) {
+        // One finger lifted during pinch — switch to single-finger pan
+        e.preventDefault()
+        touchState.pinchDist = null
+        touchState.hasPanned = false
+        touchState.singleStart = {
+          tx: e.touches[0].clientX,
+          ty: e.touches[0].clientY,
+          basePanX: panXRef.current,
+          basePanY: panYRef.current,
+        }
+      }
+    }
+
+    canvas.addEventListener("touchstart", onTouchStart, { passive: false })
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false })
+    canvas.addEventListener("touchend", onTouchEnd, { passive: false })
+    return () => {
+      canvas.removeEventListener("touchstart", onTouchStart)
+      canvas.removeEventListener("touchmove", onTouchMove)
+      canvas.removeEventListener("touchend", onTouchEnd)
+    }
+  }, [])
+
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Pan if dragging
     if (panStartRef.current) {

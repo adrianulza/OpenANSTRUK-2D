@@ -107,6 +107,7 @@ export default function App() {
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   )
 
+
   useEffect(() => {
     if (activeTab !== "Analyze") return
     const r = analyze(model)
@@ -633,16 +634,26 @@ export default function App() {
   return (
     <div className="relative h-screen w-screen flex flex-col overflow-hidden bg-[#F0F2F5]">
       {showMobileModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl px-8 py-8 mx-6 flex flex-col items-center text-center max-w-sm w-full">
-            <div className="text-2xl mb-1">🖥️</div>
-            <h2 className="text-[#0b2550] font-semibold text-lg mb-2">Desktop Recommended</h2>
-            <p className="text-gray-500 text-sm leading-relaxed mb-6">
-              This app works best on a PC desktop browser.
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-10 flex flex-col items-center text-center" style={{ width: '92vw' }}>
+            <div className="flex items-center mb-5 text-[#0b2550] opacity-80">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+              </svg>
+            </div>
+            <h2 className="text-[#0b2550] font-semibold text-1xl mb-3 tracking-tight">
+              Better in Landscape Screen or Desktop PC
+            </h2>
+            <p className="text-gray-500 text-1xl leading-relaxed mb-2">
+              For the best experience, rotate your device to <strong>landscape</strong> or open this app on a <strong>PC or Mac desktop browser</strong>.
+            </p>
+            <p className="text-gray-400 text-1xl leading-relaxed mb-8">
+              OpenAnstruk-2D is designed for larger screens.
             </p>
             <button
               onClick={() => setShowMobileModal(false)}
-              className="w-full bg-[#0b2550] text-white text-sm font-medium py-2.5 rounded-lg hover:bg-[#0e2d60] transition-colors"
+              className="w-full bg-[#0b2550] text-white text-1xl font-medium py-3 rounded-xl hover:bg-[#0e2d60] transition-colors"
             >
               Continue Anyway
             </button>
