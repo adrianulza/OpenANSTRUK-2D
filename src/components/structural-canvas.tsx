@@ -1937,7 +1937,10 @@ export function StructuralCanvas({
     })
 
     const onTouchStart = (e: TouchEvent) => {
-      e.preventDefault()
+      // Two-finger: prevent default immediately to suppress browser pinch-zoom on the page.
+      // Single-finger: do NOT prevent default here — the browser needs this to fire a
+      // synthetic click after a stationary tap so handleClick can run.
+      if (e.touches.length === 2) e.preventDefault()
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
@@ -1971,6 +1974,10 @@ export function StructuralCanvas({
         const dx = e.touches[0].clientX - touchState.singleStart.tx
         const dy = e.touches[0].clientY - touchState.singleStart.ty
         if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+          // Prevent default here (first time past threshold) so the browser won't fire
+          // a synthetic click after this gesture ends. Before this point we must not
+          // prevent default, otherwise stationary taps lose their synthetic click.
+          if (!touchState.hasPanned) e.preventDefault()
           touchState.hasPanned = true
           isPanningRef.current = true
           setIsPanning(true)
