@@ -415,7 +415,7 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[600px] p-6"
+        className="bg-white rounded-xl shadow-2xl w-[600px] max-w-[calc(100vw-2rem)] p-6 overflow-y-auto max-h-[90dvh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -433,7 +433,7 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
         <div className="flex gap-5 items-start">
 
           {/* Left: type dropdown + preview */}
-          <div className="shrink-0 w-[248px]">
+          <div className="shrink-0 sm:w-[248px]">
             <div className="mb-3">
               <span className="block text-xs font-medium text-gray-500 mb-1.5">Frame type</span>
               <select
@@ -447,7 +447,8 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
               </select>
             </div>
 
-            <div className="bg-[#F0F2F5] rounded-lg p-2">
+            {/* Preview — hidden on small screens */}
+            <div className="hidden sm:block bg-[#F0F2F5] rounded-lg p-2">
               <FramePreview
                 numStories={numStories}
                 numBays={numBays}

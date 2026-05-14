@@ -172,7 +172,7 @@ export function BeamTemplateModal({ onConfirm, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[560px] p-6"
+        className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[calc(100vw-2rem)] p-6 overflow-y-auto max-h-[90dvh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -188,8 +188,8 @@ export function BeamTemplateModal({ onConfirm, onClose }: Props) {
 
         {/* Body */}
         <div className="flex gap-6 items-start">
-          {/* Preview */}
-          <div className="shrink-0 bg-[#F0F2F5] rounded-lg p-2">
+          {/* Preview — hidden on small screens */}
+          <div className="hidden sm:block shrink-0 bg-[#F0F2F5] rounded-lg p-2">
             <BeamPreview numSpans={numSpans} spanLength={spanLength} />
           </div>
 

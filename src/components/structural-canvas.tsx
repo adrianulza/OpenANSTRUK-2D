@@ -184,6 +184,9 @@ interface StructuralCanvasProps {
   hoveredNodeId?: NodeId | null
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
+  moveNodeMode?: "coordinates" | "screen"
+  moveNodeSelectedId?: NodeId | null
+  onMoveNode?: (nodeId: NodeId, x: number, y: number) => void
 }
 
 export function StructuralCanvas({
@@ -219,6 +222,9 @@ export function StructuralCanvas({
   hoveredNodeId,
   hoveredMemberId,
   hoveredLoadId,
+  moveNodeMode = "coordinates",
+  moveNodeSelectedId,
+  onMoveNode,
 }: StructuralCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -235,6 +241,23 @@ export function StructuralCanvas({
   const panStartRef = useRef<{ mx: number; my: number; basePanX: number; basePanY: number } | null>(null)
   const isPanningRef = useRef(false)
   const [isPanning, setIsPanning] = useState(false)
+  const dragNodeRef = useRef<{ nodeId: NodeId } | null>(null)
+
+  // Refs for values needed inside the touch useEffect (which has empty deps and uses stale closure)
+  const activeToolRef = useRef(activeTool)
+  const moveNodeModeRef = useRef(moveNodeMode)
+  const modelRef = useRef(model)
+  const snapToGridRef = useRef(snapToGrid)
+  const snapToNodeRef = useRef(snapToNode)
+  const gridSpacingRef = useRef(gridSpacing)
+  const onMoveNodeRef = useRef(onMoveNode)
+  useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
+  useEffect(() => { moveNodeModeRef.current = moveNodeMode }, [moveNodeMode])
+  useEffect(() => { modelRef.current = model }, [model])
+  useEffect(() => { snapToGridRef.current = snapToGrid }, [snapToGrid])
+  useEffect(() => { snapToNodeRef.current = snapToNode }, [snapToNode])
+  useEffect(() => { gridSpacingRef.current = gridSpacing }, [gridSpacing])
+  useEffect(() => { onMoveNodeRef.current = onMoveNode }, [onMoveNode])
   const [minZoom, setMinZoom] = useState(0.1)
   // Refs always hold the committed values — used inside native event listeners (no stale closure)
   const panXRef = useRef(0)
@@ -390,16 +413,19 @@ export function StructuralCanvas({
         const p = worldToScreen(n, rect)
         const selected = selection.nodeIds.includes(n.id)
         const isHovered = (activeTab === "Model" && activeTool === "DELETE") && n.id === hoveredNodeId
+        const isMoveTarget = activeTab === "Model" && activeTool === "MOVE_NODE" && (
+          moveNodeMode === "screen" ? n.id === hoveredNodeId : n.id === moveNodeSelectedId
+        )
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
-        ctx.fillStyle = "#ffffff"
+        ctx.fillStyle = isMoveTarget ? "#fef9c3" : "#ffffff"
         ctx.fill()
-        ctx.strokeStyle = selected ? COLOR_SELECTION : (isHovered ? "#fcd34d" : COLOR_BRAND)
-        ctx.lineWidth = (selected ? 3 : 2) * s
+        ctx.strokeStyle = selected ? COLOR_SELECTION : (isMoveTarget || isHovered ? "#fcd34d" : COLOR_BRAND)
+        ctx.lineWidth = (selected || isMoveTarget ? 3 : 2) * s
         ctx.stroke()
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
   )
 
   const drawSupports = useCallback(
@@ -411,11 +437,14 @@ export function StructuralCanvas({
         const { sx, sy } = worldToScreen(n, rect)
         const isSelected = selection.supportNodeIds.includes(s.nodeId)
         const isHovered = (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")) && s.nodeId === hoveredNodeId
-        const overrideColor = isHovered ? "#fcd34d" : undefined
+        const isMoveTarget = activeTab === "Model" && activeTool === "MOVE_NODE" && (
+          moveNodeMode === "screen" ? s.nodeId === hoveredNodeId : s.nodeId === moveNodeSelectedId
+        )
+        const overrideColor = (isHovered || isMoveTarget) ? "#fcd34d" : undefined
         drawSupportGlyph(ctx, sx, sy, s.type, isSelected, overrideColor, sc)
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
   )
 
   const drawPreview = useCallback(
@@ -1936,6 +1965,17 @@ export function StructuralCanvas({
       my: (t1.clientY + t2.clientY) / 2 - rect.top,
     })
 
+    const touchClientToWorld = (clientX: number, clientY: number, rect: DOMRect) => {
+      const { sx, sy } = axisCenter(rect)
+      const mx = clientX - rect.left
+      const my = clientY - rect.top
+      const { vmx, vmy } = toVirtual(mx, my)
+      return {
+        x: parseFloat(((vmx - sx) / SCALE).toFixed(3)),
+        y: parseFloat(((sy - vmy) / SCALE).toFixed(3)),
+      }
+    }
+
     const onTouchStart = (e: TouchEvent) => {
       // Two-finger: prevent default immediately to suppress browser pinch-zoom on the page.
       // Single-finger: do NOT prevent default here — the browser needs this to fire a
@@ -1944,6 +1984,17 @@ export function StructuralCanvas({
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
+
+      // MOVE_NODE screen drag — intercept single-finger touch on a node
+      if (e.touches.length === 1 && activeToolRef.current === "MOVE_NODE" && moveNodeModeRef.current === "screen") {
+        const w = touchClientToWorld(e.touches[0].clientX, e.touches[0].clientY, rect)
+        const nodeId = hitTestNode(modelRef.current, w, HIT_TOL_NODE)
+        if (nodeId) {
+          dragNodeRef.current = { nodeId }
+          e.preventDefault()
+          return
+        }
+      }
 
       if (e.touches.length === 1) {
         touchState.singleStart = {
@@ -1964,10 +2015,30 @@ export function StructuralCanvas({
     }
 
     const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault()
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
+
+      // MOVE_NODE screen drag — move node live with snap
+      if (dragNodeRef.current && e.touches.length === 1) {
+        e.preventDefault()
+        const w = touchClientToWorld(e.touches[0].clientX, e.touches[0].clientY, rect)
+        let target = w
+        if (snapToNodeRef.current) {
+          const nearNode = hitTestNode(modelRef.current, w, HIT_TOL_NODE)
+          if (nearNode && nearNode !== dragNodeRef.current.nodeId) {
+            target = modelRef.current.nodes[nearNode]
+          } else if (snapToGridRef.current) {
+            target = snapWorld(w, gridSpacingRef.current)
+          }
+        } else if (snapToGridRef.current) {
+          target = snapWorld(w, gridSpacingRef.current)
+        }
+        onMoveNodeRef.current?.(dragNodeRef.current.nodeId, target.x, target.y)
+        return
+      }
+
+      e.preventDefault()
 
       if (e.touches.length === 1 && touchState.singleStart) {
         // Single-finger pan
@@ -2020,6 +2091,13 @@ export function StructuralCanvas({
     }
 
     const onTouchEnd = (e: TouchEvent) => {
+      // MOVE_NODE screen drag — release
+      if (dragNodeRef.current && e.touches.length === 0) {
+        dragNodeRef.current = null
+        e.preventDefault()
+        return
+      }
+
       if (e.touches.length === 0) {
         const wasPanOrPinch = touchState.hasPanned || touchState.pinchDist !== null
         touchState.singleStart = null
@@ -2064,6 +2142,26 @@ export function StructuralCanvas({
   }, [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // MOVE_NODE screen drag — move node live with snap
+    if (dragNodeRef.current) {
+      const w = toWorldCoords(e)
+      if (w) {
+        let target: WorldPoint = w
+        if (snapToNode) {
+          const nearNode = hitTestNode(model, w, HIT_TOL_NODE)
+          if (nearNode && nearNode !== dragNodeRef.current.nodeId) {
+            target = model.nodes[nearNode]
+          } else if (snapToGrid) {
+            target = snapWorld(w, gridSpacing)
+          }
+        } else if (snapToGrid) {
+          target = snapWorld(w, gridSpacing)
+        }
+        onMoveNode?.(dragNodeRef.current.nodeId, target.x, target.y)
+      }
+      return
+    }
+
     // Pan if dragging
     if (panStartRef.current) {
       const dx = e.clientX - panStartRef.current.mx
@@ -2127,6 +2225,18 @@ export function StructuralCanvas({
   }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // MOVE_NODE screen drag — intercept before pan logic
+    if (activeTool === "MOVE_NODE" && moveNodeMode === "screen" && e.button === 0) {
+      const w = toWorldCoords(e)
+      if (w) {
+        const nodeId = hitTestNode(model, w, HIT_TOL_NODE)
+        if (nodeId) {
+          dragNodeRef.current = { nodeId }
+          return
+        }
+      }
+    }
+
     // Middle mouse or left-drag when not using SELECT/DELETE/MODIFY_LOAD box — start pan tracking
     const isMiddle = e.button === 1
     const isLoadModify = activeTab === "Load" && activeTool === "MODIFY_LOAD"
@@ -2152,6 +2262,11 @@ export function StructuralCanvas({
   }
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragNodeRef.current) {
+      dragNodeRef.current = null
+      return
+    }
+
     panStartRef.current = null
 
     if (e.button !== 0) return
@@ -2296,6 +2411,10 @@ export function StructuralCanvas({
 
   const cursorClass = isPanning
     ? "cursor-grabbing"
+    : dragNodeRef.current
+    ? "cursor-grabbing"
+    : activeTool === "MOVE_NODE" && moveNodeMode === "screen"
+    ? (hoveredNodeId ? "cursor-grab" : "cursor-default")
     : activeTool === "NODE" || activeTool === "MEMBER" || activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD"
     ? "cursor-crosshair"
     : activeTool === "SELECT" || activeTool === "DELETE" || activeTool === "SUPPORT" || activeTool === "MODIFY_LOAD" || activeTool === null
