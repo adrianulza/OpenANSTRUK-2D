@@ -98,7 +98,7 @@ export function StatusBar({
               Settings
             </Button>
           </PopoverTrigger>
-          <PopoverContent side="top" align="end" className="w-56 p-0">
+          <PopoverContent side="top" align="end" collisionPadding={8} className="w-56 p-0 max-h-[80dvh] overflow-y-auto">
             <GridUnitsPanel
               unitSettings={unitSettings}
               onUnitSettingsChange={onUnitSettingsChange}

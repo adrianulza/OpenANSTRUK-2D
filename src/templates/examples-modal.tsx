@@ -74,7 +74,7 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[720px] max-h-[85vh] overflow-y-auto p-6"
+        className="bg-white rounded-xl shadow-2xl w-[720px] max-w-[calc(100vw-2rem)] max-h-[85dvh] overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -89,7 +89,7 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex gap-6">
+        <div className="flex flex-col sm:flex-row gap-6">
           {/* Left column: Example selection, illustration, notes */}
           <div className="flex-1 flex flex-col gap-4">
             {/* Example dropdown */}

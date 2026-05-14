@@ -12,6 +12,7 @@ import {
   CircleDot,
   Anchor,
   Trash2,
+  Move,
 } from "lucide-react"
 
 export type TabType = "Model" | "Load" | "Analyze"
@@ -21,6 +22,7 @@ export type ToolType =
   | "MEMBER"
   | "SUPPORT"
   | "MATERIAL"
+  | "MOVE_NODE"
   | "DELETE"
   | "POINT_LOAD"
   | "DISTRIBUTED_LOAD"
@@ -52,6 +54,7 @@ const modelTools: Tool[] = [
   { id: "SUPPORT", label: "SUPPORT", icon: <Triangle size={18} /> },
   { id: "MATERIAL", label: "MATERIAL", icon: <Layers size={20} /> },
   { id: "SELECT", label: "MODIFY", icon: <Pencil size={20} /> },
+  { id: "MOVE_NODE", label: "MOVE\nNODE", icon: <Move size={20} /> },
   { id: "DELETE", label: "DELETE", icon: <Trash2 size={20} /> },
 ]
 

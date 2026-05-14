@@ -99,7 +99,8 @@ export function NavBar({
   const openDropdown = () => {
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
-      setDropdownPos({ top: r.bottom, left: r.left })
+      const safeLeft = Math.min(r.left, window.innerWidth - 200)
+      setDropdownPos({ top: r.bottom, left: safeLeft })
     }
     setFileOpen(true)
   }

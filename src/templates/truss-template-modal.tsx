@@ -655,7 +655,7 @@ export function TrussTemplateModal({ onConfirm, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-[580px] p-6"
+        className="bg-white rounded-xl shadow-2xl w-[580px] max-w-[calc(100vw-2rem)] p-6 overflow-y-auto max-h-[90dvh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -683,7 +683,8 @@ export function TrussTemplateModal({ onConfirm, onClose }: Props) {
                 <option key={t} value={t}>{TRUSS_LABELS[t]}</option>
               ))}
             </select>
-            <div className="bg-[#F0F2F5] rounded-lg p-2">
+            {/* Preview — hidden on small screens */}
+            <div className="hidden sm:flex bg-[#F0F2F5] rounded-lg p-2">
               <TrussPreview numDivisions={numDiv} trussType={trussType} />
             </div>
           </div>

@@ -99,6 +99,10 @@ export default function App() {
   const [selectedLoadId, setSelectedLoadId] = useState<LoadId | null>(null)
   const [selectedLoadIds, setSelectedLoadIds] = useState<string[]>([])
 
+  const [moveNodeMode, setMoveNodeMode] = useState<"coordinates" | "screen">("coordinates")
+  const [moveNodeCoordMode, setMoveNodeCoordMode] = useState<"set" | "offset">("set")
+  const [moveNodeSelectedId, setMoveNodeSelectedId] = useState<NodeId | null>(null)
+
   const [hoveredNodeId, setHoveredNodeId] = useState<NodeId | null>(null)
   const [hoveredMemberId, setHoveredMemberId] = useState<string | null>(null)
   const [hoveredLoadId, setHoveredLoadId] = useState<LoadId | null>(null)
@@ -166,6 +170,7 @@ export default function App() {
     setActiveTool(tool)
     setPendingFrameStart(null)
     setSelection(emptySelection())
+    setMoveNodeSelectedId(null)
   }, [])
 
   const handleCloseFlyout = useCallback(() => {
@@ -183,7 +188,7 @@ export default function App() {
     const raw = { x, y }
 
     // Detect hover targets based on active tool
-    if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE" || activeTool === "SUPPORT")) {
+    if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE" || activeTool === "SUPPORT" || activeTool === "MOVE_NODE")) {
       const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
       setHoveredNodeId(nodeId)
       if (!nodeId && (activeTool === "SELECT" || activeTool === "DELETE")) {
@@ -345,6 +350,12 @@ export default function App() {
           }))
           return
         }
+
+        if (activeTool === "MOVE_NODE" && moveNodeMode === "coordinates") {
+          const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
+          if (nodeId) setMoveNodeSelectedId(nodeId)
+          return
+        }
       }
 
       if (activeTab === "Load" && activeTool) {
@@ -494,9 +505,16 @@ export default function App() {
       activeTab, activeTool, activeSection, activeMemberType, activeSupportType,
       activePtInputMode, activePointLoadAxis, activePtMagnitude, activePtAngle, activeDistType, activeDistWStart, activeDistWEnd,
       activeDistMode, activeDistAxis, activeDistWxStart, activeDistWxEnd, activeDistWyStart, activeDistWyEnd,
-      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode,
+      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode, moveNodeMode,
     ]
   )
+
+  const handleMoveNode = useCallback((nodeId: NodeId, x: number, y: number) => {
+    setModel((m) => ({
+      ...m,
+      nodes: { ...m.nodes, [nodeId]: { ...m.nodes[nodeId], x, y } },
+    }))
+  }, [])
 
   const handleSelectItems = useCallback(
     (items: MultiSelection) => {
@@ -745,6 +763,13 @@ export default function App() {
             showDiagramMemberLabels={showDiagramMemberLabels}
             onShowDiagramMemberLabelsChange={setShowDiagramMemberLabels}
             analysisResult={analysisResult}
+            moveNodeMode={moveNodeMode}
+            onMoveNodeModeChange={setMoveNodeMode}
+            moveNodeCoordMode={moveNodeCoordMode}
+            onMoveNodeCoordModeChange={setMoveNodeCoordMode}
+            moveNodeSelectedId={moveNodeSelectedId}
+            onMoveNodeSelectId={setMoveNodeSelectedId}
+            onMoveNode={handleMoveNode}
           />
 
           <StructuralCanvas
@@ -778,6 +803,9 @@ export default function App() {
             hoveredNodeId={hoveredNodeId}
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
+            moveNodeMode={moveNodeMode}
+            moveNodeSelectedId={moveNodeSelectedId}
+            onMoveNode={handleMoveNode}
           />
         </main>
       </div>
