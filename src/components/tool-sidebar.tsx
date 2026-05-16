@@ -92,7 +92,7 @@ export function ToolSidebar({ activeTab, activeTool, onToolSelect }: ToolSidebar
   }
 
   return (
-    <aside className="w-[72px] bg-white border-r border-gray-200 flex flex-col items-center py-3 gap-1">
+    <aside className="w-[72px] bg-white border-r border-gray-200 flex flex-col items-center py-3 gap-1 overflow-y-auto scrollbar-hide">
       {tools.map((tool) => (
         <button
           key={tool.id}
