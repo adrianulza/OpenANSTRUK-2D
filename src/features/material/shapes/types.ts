@@ -9,8 +9,10 @@ export interface SectionProperties {
   A: number      // mm²
   I33: number    // mm⁴  — strong-axis bending inertia
   I22: number    // mm⁴  — weak-axis bending inertia
-  S33: number    // mm³  — elastic section modulus, strong
-  S22: number    // mm³  — elastic section modulus, weak
+  S33b: number   // mm³  — elastic section modulus, axis 3 (bottom fibre, governing)
+  S33t: number   // mm³  — elastic section modulus, axis 3 (top fibre)
+  S22L: number   // mm³  — elastic section modulus, axis 2 (left fibre)
+  S22R: number   // mm³  — elastic section modulus, axis 2 (right fibre)
   Z33: number    // mm³  — plastic section modulus, strong
   Z22: number    // mm³  — plastic section modulus, weak
   "Aκ2": number  // mm²  — shear area, direction 2 (in-plane)

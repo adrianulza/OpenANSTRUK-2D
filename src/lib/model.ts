@@ -26,7 +26,7 @@ export interface Support {
 }
 
 export type MaterialClass = "concrete" | "steel"
-export type SectionShape  = "rect" | "circle" | "iwf"
+export type SectionShape  = "rect" | "circle" | "iwf" | "tsection" | "lsection" | "pipe" | "rhs"
 
 export interface Section {
   id: SectionId
@@ -70,8 +70,10 @@ export interface Section {
    */
   derived?: {
     G:    number  // MPa
-    S33:  number  // mm³ — elastic section modulus, strong axis
-    S22:  number  // mm³ — elastic section modulus, weak axis
+    S33b: number  // mm³ — elastic section modulus, axis 3 (bottom fibre, governing)
+    S33t: number  // mm³ — elastic section modulus, axis 3 (top fibre); equals S33b for symmetric sections
+    S22L: number  // mm³ — elastic section modulus, axis 2 (left fibre)
+    S22R: number  // mm³ — elastic section modulus, axis 2 (right fibre)
     Z33:  number  // mm³ — plastic section modulus, strong axis
     Z22:  number  // mm³ — plastic section modulus, weak axis
     r33:  number  // mm   — radius of gyration, strong axis

@@ -19,13 +19,18 @@ export interface ParametricValidation {
   isValid:       boolean
 }
 
+function dimsForShape(mat: ReturnType<typeof materialDef>, shape: SectionShape): Record<string, number> {
+  return { ...shapeDef(shape).defaults, ...(mat.shapeDimDefaults?.[shape] ?? {}) }
+}
+
 export function defaultParametricFields(materialClass: MaterialClass = "concrete"): ParametricFields {
   const mat = materialDef(materialClass)
-  const shape = mat.allowedShapes[0]
+  // Default steel to RHS; other materials use their first allowed shape
+  const shape = materialClass === "steel" ? "rhs" : mat.allowedShapes[0]
   return {
     materialClass,
     shape,
-    dims: { ...shapeDef(shape).defaults },
+    dims: dimsForShape(mat, shape),
     strength: { ...mat.defaults },
   }
 }
@@ -68,13 +73,13 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
     onChange({
       materialClass: mc,
       shape: sh,
-      dims: { ...shapeDef(sh).defaults },
+      dims: dimsForShape(m, sh),
       strength: { ...m.defaults },
     })
   }
 
   const setShape = (sh: SectionShape) => {
-    onChange({ ...fields, shape: sh, dims: { ...shapeDef(sh).defaults } })
+    onChange({ ...fields, shape: sh, dims: dimsForShape(mat, sh) })
   }
 
   const setDim = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => {

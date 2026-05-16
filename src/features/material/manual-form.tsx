@@ -108,10 +108,10 @@ export function ManualForm({ fields, onChange, validation, u }: Props) {
   return (
     <div className="space-y-3">
       {field("Elastic Modulus, E",         "E",     labelE(u), validation.invalidE)}
-      {field("Moment of Inertia (strong), I33", "I33", labelI(u), validation.invalidI33)}
-      {field("Section Area, A",            "A",     labelA(u), validation.invalidA)}
-      {field("Poisson Ratio, ν",           "nu",    "",        validation.invalidNu,        "0 < ν < 0.5")}
-      {field("Shear Area (strong), Aκ2",   "Aκ2",   labelA(u), validation["invalidAκ2"],    "If set, must be > 0")}
+      {field("Moment of Inertia, I33",      "I33", labelI(u), validation.invalidI33)}
+      {field("Section Area, A",             "A",   labelA(u), validation.invalidA)}
+      {field("Poisson Ratio, ν",            "nu",  "",        validation.invalidNu,       "0 < ν < 0.5")}
+      {field("Shear Area, Aκ2",             "Aκ2", labelA(u), validation["invalidAκ2"],   "If set, must be > 0")}
       {field("Unit Weight, γ",             "gamma", "kN/m³",   validation.invalidGamma,     "Must be ≥ 0")}
     </div>
   )

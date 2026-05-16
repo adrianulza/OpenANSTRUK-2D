@@ -137,16 +137,18 @@ export function AdvancedDeck({
         <Row name="Poisson Ratio"               symbol="ν"   value={editable ? buf.nu : fmt(nu)}                    unit=""           editable={editable} onChange={(v) => setBuf({ ...buf, nu: v })} />
         <Row name="Unit Weight"                 symbol="γ"   value={editable ? buf.gamma : fmt(section.gamma ?? 0)}  unit="kN/m³"     editable={editable} onChange={(v) => setBuf({ ...buf, gamma: v })} />
         <Row name="Cross-section Area"          symbol="A"   value={editable ? buf.A   : fmt(displayA(section.A, u))} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, A: v })} />
-        <Row name="Moment of Inertia (strong)"  symbol="I33" value={editable ? buf.I33 : fmt(displayI(section.I33, u))} unit={labelI(u)} editable={editable} onChange={(v) => setBuf({ ...buf, I33: v })} />
-        <Row name="Moment of Inertia (weak)"    symbol="I22" value={section.I22 != null ? fmt(displayI(section.I22, u)) : "—"} unit={labelI(u)} />
-        <Row name="Section Modulus (strong)"    symbol="S33" value={section.derived?.S33 != null ? fmt(section.derived.S33) : "—"} unit="mm³" />
-        <Row name="Section Modulus (weak)"      symbol="S22" value={section.derived?.S22 != null ? fmt(section.derived.S22) : "—"} unit="mm³" />
-        <Row name="Plastic Modulus (strong)"    symbol="Z33" value={section.derived?.Z33 != null ? fmt(section.derived.Z33) : "—"} unit="mm³" />
-        <Row name="Plastic Modulus (weak)"      symbol="Z22" value={section.derived?.Z22 != null ? fmt(section.derived.Z22) : "—"} unit="mm³" />
-        <Row name="Shear Area (strong)"         symbol="Aκ2" value={editable ? buf["Aκ2"] : (section["Aκ2"] != null ? fmt(displayA(section["Aκ2"]!, u)) : "—")} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, "Aκ2": v })} />
-        <Row name="Shear Area (weak)"           symbol="Aκ3" value={section["Aκ3"] != null ? fmt(displayA(section["Aκ3"]!, u)) : "—"} unit={labelA(u)} />
-        <Row name="Radius of Gyration (strong)" symbol="r33" value={section.derived?.r33 != null ? fmt(section.derived.r33) : "—"} unit="mm" />
-        <Row name="Radius of Gyration (weak)"   symbol="r22" value={section.derived?.r22 != null ? fmt(section.derived.r22) : "—"} unit="mm" />
+        <Row name="Moment of Inertia, I33"  symbol="I33"  value={editable ? buf.I33 : fmt(displayI(section.I33, u))} unit={labelI(u)} editable={editable} onChange={(v) => setBuf({ ...buf, I33: v })} />
+        <Row name="Moment of Inertia, I22"  symbol="I22"  value={section.I22 != null ? fmt(displayI(section.I22, u)) : "—"} unit={labelI(u)} />
+        <Row name="Section Modulus (bottom)" symbol="S33b" value={section.derived?.S33b != null ? fmt(section.derived.S33b) : "—"} unit="mm³" />
+        <Row name="Section Modulus (top)"    symbol="S33t" value={section.derived?.S33t != null ? fmt(section.derived.S33t) : "—"} unit="mm³" />
+        <Row name="Section Modulus, S22L"    symbol="S22L" value={section.derived?.S22L != null ? fmt(section.derived.S22L) : "—"} unit="mm³" />
+        <Row name="Section Modulus, S22R"    symbol="S22R" value={section.derived?.S22R != null ? fmt(section.derived.S22R) : "—"} unit="mm³" />
+        <Row name="Plastic Modulus, Z33"     symbol="Z33"  value={section.derived?.Z33  != null ? fmt(section.derived.Z33)  : "—"} unit="mm³" />
+        <Row name="Plastic Modulus, Z22"     symbol="Z22"  value={section.derived?.Z22  != null ? fmt(section.derived.Z22)  : "—"} unit="mm³" />
+        <Row name="Shear Area, Aκ2"          symbol="Aκ2"  value={editable ? buf["Aκ2"] : (section["Aκ2"] != null ? fmt(displayA(section["Aκ2"]!, u)) : "—")} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, "Aκ2": v })} />
+        <Row name="Shear Area, Aκ3"          symbol="Aκ3"  value={section["Aκ3"] != null ? fmt(displayA(section["Aκ3"]!, u)) : "—"} unit={labelA(u)} />
+        <Row name="Radius of Gyration, r33"  symbol="r33"  value={section.derived?.r33  != null ? fmt(section.derived.r33)  : "—"} unit="mm" />
+        <Row name="Radius of Gyration, r22"  symbol="r22"  value={section.derived?.r22  != null ? fmt(section.derived.r22)  : "—"} unit="mm" />
         <Row name="Centroid (from base)"        symbol="ȳ"   value={section.derived?.yBar != null ? fmt(section.derived.yBar) : "—"} unit="mm" />
 
         {editable && (

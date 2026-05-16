@@ -31,8 +31,10 @@ export function computeSectionFromParametric(f: ParametricFields): Partial<Secti
     strength:       { ...f.strength },
     derived: {
       G,
-      S33:  props.S33,
-      S22:  props.S22,
+      S33b: props.S33b,
+      S33t: props.S33t,
+      S22L: props.S22L,
+      S22R: props.S22R,
       Z33:  props.Z33,
       Z22:  props.Z22,
       r33:  props.r33,

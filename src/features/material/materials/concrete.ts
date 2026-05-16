@@ -3,7 +3,7 @@ import type { MaterialDef } from "./types"
 export const concrete: MaterialDef = {
   kind: "concrete",
   label: "Concrete",
-  allowedShapes: ["rect", "circle"] as const,
+  allowedShapes: ["rect", "circle", "tsection"] as const,
   defaults: { fc: 25 },
   validate: ({ fc }) =>
     fc !== undefined && fc > 0

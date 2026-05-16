@@ -11,6 +11,8 @@ export interface MaterialDef {
   label: string
   /** Shape options offered to the user when this material class is chosen. */
   allowedShapes: readonly SectionShape[]
+  /** Per-shape dim overrides that take precedence over the shape's own defaults. */
+  shapeDimDefaults?: Partial<Record<SectionShape, Record<string, number>>>
   /** Compute (E, ν, γ) from user inputs. For steel, E is user-supplied. */
   compute: (strength: { fc?: number; fy?: number; fu?: number; E?: number }) => MaterialProps
   /** UI defaults used when the user first switches to this class. */

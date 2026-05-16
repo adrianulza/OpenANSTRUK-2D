@@ -15,9 +15,13 @@ interface Props {
 
 export function ShapePreview({ kind, dims }: Props) {
   let svg: React.ReactNode = null
-  if (kind === "rect")   svg = <RectSVG b={dims.b} h={dims.h} />
-  if (kind === "circle") svg = <CircleSVG d={dims.d} />
-  if (kind === "iwf")    svg = <IwfSVG b={dims.b} h={dims.h} tf={dims.tf} tw={dims.tw} />
+  if (kind === "rect")     svg = <RectSVG b={dims.b} h={dims.h} />
+  if (kind === "circle")   svg = <CircleSVG d={dims.d} />
+  if (kind === "iwf")      svg = <IwfSVG b={dims.b} h={dims.h} tf={dims.tf} tw={dims.tw} />
+  if (kind === "tsection") svg = <TsectionSVG bf={dims.bf} tf={dims.tf} bw={dims.bw} h={dims.h} />
+  if (kind === "lsection") svg = <LsectionSVG b={dims.b} t={dims.t} />
+  if (kind === "pipe")     svg = <PipeSVG d={dims.d} t={dims.t} />
+  if (kind === "rhs")      svg = <RhsSVG b={dims.b} h={dims.h} t={dims.t} />
 
   return (
     <div
@@ -166,6 +170,123 @@ function Leader({
       <text x={xL} y={yL} fontSize={LABEL_FONT} fill={DIM} textAnchor="middle" dominantBaseline="central" stroke="none">
         {label}
       </text>
+    </g>
+  )
+}
+
+function TsectionSVG({ bf, tf, bw, h }: { bf: number; tf: number; bw: number; h: number }) {
+  bf = safe(bf); tf = safe(tf); bw = safe(bw); h = safe(h)
+  const maxDim = Math.max(bf, h)
+  const scale = (VIEW - 2 * PAD) / maxDim
+  const BF = bf * scale, H = h * scale
+  const TF = tf * scale, BW = bw * scale
+  const hw = H - TF
+  const x = (VIEW - BF) / 2, y = (VIEW - H) / 2
+  const cx = x + BF / 2
+
+  const yDimTop    = y - PAD / 2
+  const xDimLeft   = x - PAD / 2
+  const yDimBottom = y + H + PAD / 2   // horizontal dim line below web for bw
+
+  // Leader for tf on the right edge of the flange
+  const tfTargetX = x + BF
+  const tfTargetY = y + TF / 2
+  const tfLabelX  = x + BF + PAD / 2
+  const tfLabelY  = y + TF / 2
+
+  return (
+    <g>
+      {/* flange */}
+      <rect x={x} y={y} width={BF} height={TF} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+      {/* web */}
+      <rect x={cx - BW / 2} y={y + TF} width={BW} height={hw} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+
+      <HDim x1={x}          x2={x + BF}       yDim={yDimTop}    yShape={y}        label="bf" />
+      <HDim x1={cx - BW/2}  x2={cx + BW/2}    yDim={yDimBottom} yShape={y + H}    label="bw" />
+      <VDim y1={y}           y2={y + H}         xDim={xDimLeft}   xShape={x}        label="h" />
+      <Leader xT={tfTargetX} yT={tfTargetY} xL={tfLabelX} yL={tfLabelY} label="tf" />
+    </g>
+  )
+}
+
+function LsectionSVG({ b, t }: { b: number; t: number }) {
+  b = safe(b); t = safe(t)
+  const scale = (VIEW - 2 * PAD) / b
+  const B = b * scale, T = t * scale
+  const x = (VIEW - B) / 2, y = (VIEW - B) / 2
+
+  const yDimRight  = x + B + PAD / 2
+  const yDimBottom = y + B + PAD / 2
+
+  // Leader for t pointing at the mid-thickness of the horizontal leg
+  const tTargetX = x + B / 2
+  const tTargetY = y + B - T / 2
+  const tLabelX  = x + B + PAD * 0.6
+  const tLabelY  = y + B - T / 2
+
+  return (
+    <g>
+      {/* horizontal leg */}
+      <rect x={x} y={y + B - T} width={B} height={T} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+      {/* vertical leg (above horizontal, shares left edge) */}
+      <rect x={x} y={y} width={T} height={B - T} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+
+      <VDim y1={y} y2={y + B} xDim={yDimRight}  xShape={x + B} label="b" />
+      <HDim x1={x} x2={x + B} yDim={yDimBottom} yShape={y + B} label="b" />
+      <Leader xT={tTargetX} yT={tTargetY} xL={tLabelX} yL={tLabelY} label="t" />
+    </g>
+  )
+}
+
+function PipeSVG({ d, t }: { d: number; t: number }) {
+  d = safe(d); t = Math.min(safe(t), d / 2 - 0.1)
+  const scale = (VIEW - 2 * PAD) / d
+  const ro = (d * scale) / 2
+  const ri = ((d - 2 * t) * scale) / 2
+  const cx = VIEW / 2, cy = VIEW / 2
+  const top   = cy - ro
+  const yDim  = top - PAD / 2
+  // Leader for wall thickness: points at mid-wall on right side
+  const tTargetX = cx + (ro + ri) / 2
+  const tTargetY = cy
+  const tLabelX  = cx + ro + PAD * 0.6
+  const tLabelY  = cy
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={ro} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+      <circle cx={cx} cy={cy} r={ri} fill="white" stroke={STROKE} strokeWidth={1.2} />
+      <HDim x1={cx - ro} x2={cx + ro} yDim={yDim} yShape={top} label="d" />
+      <Leader xT={tTargetX} yT={tTargetY} xL={tLabelX} yL={tLabelY} label="t" />
+    </g>
+  )
+}
+
+function RhsSVG({ b, h, t }: { b: number; h: number; t: number }) {
+  b = safe(b); h = safe(h); t = Math.min(safe(t), Math.min(b, h) / 2 - 0.1)
+  const maxDim = Math.max(b, h)
+  const scale = (VIEW - 2 * PAD) / maxDim
+  const W = b * scale, H = h * scale
+  const T = t * scale
+  const x = (VIEW - W) / 2, y = (VIEW - H) / 2
+
+  const yDimTop  = y - PAD / 2
+  const xDimLeft = x - PAD / 2
+
+  // Leader for wall thickness: points at mid-wall on right side
+  const tTargetX = x + W - T / 2
+  const tTargetY = y + H / 2
+  const tLabelX  = x + W + PAD * 0.6
+  const tLabelY  = y + H / 2
+
+  return (
+    <g>
+      {/* outer rect */}
+      <rect x={x} y={y} width={W} height={H} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+      {/* inner cutout */}
+      <rect x={x + T} y={y + T} width={W - 2 * T} height={H - 2 * T} fill="white" stroke={STROKE} strokeWidth={1.2} />
+      <HDim x1={x} x2={x + W} yDim={yDimTop}  yShape={y} label="b" />
+      <VDim y1={y} y2={y + H} xDim={xDimLeft} xShape={x} label="h" />
+      <Leader xT={tTargetX} yT={tTargetY} xL={tLabelX} yL={tLabelY} label="t" />
     </g>
   )
 }

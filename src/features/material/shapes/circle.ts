@@ -10,7 +10,7 @@ function compute(dims: Record<string, number>): SectionProperties {
   const r   = Math.sqrt(I33 / A)  // = d/4
   // Circle is rotationally symmetric: weak-axis equals strong-axis
   return {
-    A, I33, I22: I33, S33, S22: S33, Z33, Z22: Z33,
+    A, I33, I22: I33, S33b: S33, S33t: S33, S22L: S33, S22R: S33, Z33, Z22: Z33,
     "Aκ2": Aκ, "Aκ3": Aκ, r33: r, r22: r, yBar: d / 2,
   }
 }
