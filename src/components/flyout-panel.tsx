@@ -3,16 +3,10 @@ import { cn } from "@/lib/utils"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { TabType, ToolType } from "./tool-sidebar"
 import type { Section, SectionId, MultiSelection, StructureModel, SupportType, MemberType, Load, LoadId, PointLoad, DistributedLoad } from "@/lib/model"
-import { newSectionId } from "@/lib/model"
+import { MaterialFlyout } from "@/features/material/material-flyout"
 import type { AnalysisResult, NodeDisplacement } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import type { UnitSettings } from "@/lib/units"
-import {
-  DEFAULT_UNIT_SETTINGS,
-  displayE, parseE, labelE,
-  displayI, parseI, labelI,
-  displayA, parseA, labelA,
-} from "@/lib/units"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -214,6 +208,7 @@ export function FlyoutPanel({
 
   return (
     <div
+      data-flyout-root
       className={cn(
         "absolute top-3 left-3 w-[200px] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-10",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
@@ -447,7 +442,7 @@ function FlyoutContent({
         )
       case "MATERIAL":
         return (
-          <MaterialToolContent
+          <MaterialFlyout
             model={model}
             activeSection={activeSection ?? "iwf150"}
             onSectionChange={onSectionChange}
@@ -1015,228 +1010,6 @@ function SupportToolContent({
   )
 }
 
-const MAX_SECTIONS = 100
-
-function fmt(v: number) {
-  return parseFloat(v.toPrecision(6)).toString()
-}
-
-function MaterialToolContent({
-  model,
-  activeSection,
-  onSectionChange,
-  onSectionPropsChange,
-  onAddSection,
-  onDeleteSection,
-  unitSettings,
-}: {
-  model?: StructureModel
-  activeSection: SectionId
-  onSectionChange?: (id: SectionId) => void
-  onSectionPropsChange?: (id: SectionId, patch: Partial<Section>) => void
-  onAddSection?: (section: Section) => void
-  onDeleteSection?: (id: SectionId) => void
-  unitSettings?: UnitSettings
-}) {
-  const u = unitSettings ?? DEFAULT_UNIT_SETTINGS
-  const sections = model?.sections ?? {}
-  const s = sections[activeSection]
-  const sectionCount = Object.keys(sections).length
-
-  // ── Local form state ────────────────────────────────────────────────────────
-
-  type Fields = { name: string; E: string; I: string; A: string }
-
-  const fromSection = React.useCallback(
-    (sec: Section): Fields => ({
-      name: sec.name,
-      E:    fmt(displayE(sec.E, u)),
-      I:    fmt(displayI(sec.I, u)),
-      A:    fmt(displayA(sec.A, u)),
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [u.pressure, u.length, u.force]
-  )
-
-  const [saved, setSaved] = React.useState<Fields | null>(() => s ? fromSection(s) : null)
-  const [local, setLocal] = React.useState<Fields | null>(saved)
-
-  // Reset when section switches or units change
-  React.useEffect(() => {
-    if (!s) return
-    const f = fromSection(s)
-    setSaved(f)
-    setLocal(f)
-  }, [activeSection, fromSection, s]) // fromSection changes when units change
-
-  if (!s || !local || !saved) return null
-
-  const set = (key: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setLocal((prev) => prev ? { ...prev, [key]: e.target.value } : prev)
-
-  // ── Validation ──────────────────────────────────────────────────────────────
-
-  const validNum = (v: string) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 }
-
-  const nameEmpty = local.name.trim() === ""
-  const invalidE  = !validNum(local.E)
-  const invalidI  = !validNum(local.I)
-  const invalidA  = !validNum(local.A)
-  const isFormValid = !nameEmpty && !invalidE && !invalidI && !invalidA
-
-  // ── Dirty detection ─────────────────────────────────────────────────────────
-
-  const isNameDirty   = local.name !== saved.name
-  const isValuesDirty = local.E !== saved.E || local.I !== saved.I ||
-                        local.A !== saved.A
-
-  // Mutually exclusive: name changed → Add intent; values only → Modify intent
-  const canModify = isValuesDirty && !isNameDirty && isFormValid
-  const nameTaken = isNameDirty &&
-    Object.values(sections).some((sec) => sec.name === local.name && sec.id !== activeSection)
-  const canAdd    = isNameDirty && !nameTaken && sectionCount < MAX_SECTIONS && isFormValid
-  const canDelete = sectionCount > 1
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  const parsedFields = () => ({
-    E:  parseE(parseFloat(local.E), u),
-    I:  parseI(parseFloat(local.I), u),
-    A:  parseA(parseFloat(local.A), u),
-  })
-
-  const handleModify = () => {
-    if (!canModify) return
-    onSectionPropsChange?.(activeSection, parsedFields())
-    setSaved(local)
-  }
-
-  const handleAdd = () => {
-    if (!canAdd) return
-    const id = newSectionId()
-    onAddSection?.({ id, name: local.name, ...parsedFields() })
-    // activeSection will switch via onAddSection → parent calls setActiveSection
-    // local state will reset via useEffect when activeSection changes
-  }
-
-  const handleDelete = () => {
-    if (!canDelete) return
-    onDeleteSection?.(activeSection)
-  }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
-  const field = (
-    label: string,
-    key: keyof Fields,
-    unit: string,
-    invalid: boolean,
-    extra?: React.InputHTMLAttributes<HTMLInputElement>
-  ) => (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-gray-600">{label}</Label>
-      <div className="flex gap-2">
-        <Input
-          type="number"
-          value={local[key]}
-          onChange={set(key)}
-          className={cn("h-7 text-xs font-mono flex-1", invalid && "border-red-400 focus-visible:ring-red-300")}
-          {...extra}
-        />
-        {unit && <span className="text-xs text-gray-500 self-center whitespace-nowrap">{unit}</span>}
-      </div>
-      {invalid && <p className="text-[10px] text-red-500">Enter a valid positive value</p>}
-    </div>
-  )
-
-  return (
-    <div className="space-y-3">
-      <SectionSelect value={activeSection} sections={sections} onChange={onSectionChange} />
-
-      {/* Name */}
-      <div className="space-y-1.5">
-        <Label className="text-xs text-gray-600">Name</Label>
-        <Input
-          type="text"
-          value={local.name}
-          onChange={set("name")}
-          className={cn("h-7 text-xs flex-1", nameEmpty && "border-red-400 focus-visible:ring-red-300")}
-          placeholder="Section name"
-        />
-        {nameEmpty  && <p className="text-[10px] text-red-500">Name is required</p>}
-        {nameTaken  && <p className="text-[10px] text-red-500">Name already exists</p>}
-      </div>
-
-      {field("Elastic Modulus, E", "E", labelE(u), invalidE)}
-      {field("Inertia, I",         "I", labelI(u), invalidI)}
-      {field("Section Area, A",    "A", labelA(u), invalidA)}
-
-      {/* Add / Modify row */}
-      <div className="flex gap-2 pt-1">
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1 h-7 text-xs transition-colors"
-          style={canModify ? {
-            borderColor: FLYOUT_PANEL_COLORS.primary,
-            color: FLYOUT_PANEL_COLORS.primary,
-            backgroundColor: FLYOUT_PANEL_COLORS.primary + '08',
-          } : {
-            borderColor: '#e5e7eb',
-            color: '#9ca3af',
-          }}
-          disabled={!canModify}
-          onClick={handleModify}
-        >
-          Modify
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1 h-7 text-xs transition-colors"
-          style={canAdd ? {
-            borderColor: FLYOUT_PANEL_COLORS.primary,
-            color: FLYOUT_PANEL_COLORS.primary,
-            backgroundColor: FLYOUT_PANEL_COLORS.primary + '08',
-          } : {
-            borderColor: '#e5e7eb',
-            color: '#9ca3af',
-          }}
-          disabled={!canAdd}
-          onClick={handleAdd}
-        >
-          Add
-        </Button>
-      </div>
-
-      {/* Capacity hint */}
-      {sectionCount >= MAX_SECTIONS && (
-        <p className="text-[10px] text-gray-400 text-center">
-          Max {MAX_SECTIONS} materials reached
-        </p>
-      )}
-
-      {/* Delete */}
-      <div className="border-t pt-2" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
-        <Button
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "w-full h-7 text-xs gap-1.5 transition-colors",
-            canDelete
-              ? "text-red-500 hover:bg-red-50 hover:text-red-600"
-              : "text-gray-300 cursor-not-allowed"
-          )}
-          disabled={!canDelete}
-          onClick={handleDelete}
-        >
-          <Trash2 size={12} />
-          Delete Material
-        </Button>
-      </div>
-    </div>
-  )
-}
 
 // ── Numeric input that allows typing negative values ─────────────────────────
 // Uses local string state so the browser never resets mid-entry. Commits the

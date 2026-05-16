@@ -2,11 +2,11 @@ import type { StructureModel } from "@/lib/model"
 import { newNodeId, newMemberId, newLoadId, defaultSections } from "@/lib/model"
 
 const SECTION_DEFAULT: StructureModel["sections"][string] = {
-  id: "section", name: "section", E: 23500, I: 3125000, A: 150000,
+  id: "section", name: "section", E: 23500, I33: 3125000, A: 150000,
 }
 
 const SECTION_C30: StructureModel["sections"][string] = {
-  id: "section", name: "section", E: 30000, I: 480000000, A: 75000,
+  id: "section", name: "section", E: 30000, I33: 480000000, A: 75000,
 }
 
 /** Template 1 — Simply supported beam, L=5 m (2+3 m), P=10 kN downward at 2 m from left, distributed load on right */

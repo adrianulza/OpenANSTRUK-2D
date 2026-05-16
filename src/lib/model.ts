@@ -25,15 +25,61 @@ export interface Support {
   type: SupportType
 }
 
+export type MaterialClass = "concrete" | "steel"
+export type SectionShape  = "rect" | "circle" | "iwf"
+
 export interface Section {
   id: SectionId
   name: string
   /** Elastic modulus in MPa */
   E: number
-  /** Second moment of area in mm⁴ */
-  I: number
+  /** Second moment of area, strong-axis bending (about local axis 3), in mm⁴ */
+  I33: number
   /** Cross-sectional area in mm² */
   A: number
+
+  // ── Optional, additive fields ───────────────────────────────────────────────
+  /** Poisson ratio (dimensionless). Default 0.3 if absent (back-compat). */
+  nu?: number
+  /** Shear area in direction 2 (in-plane shear, Timoshenko), mm². */
+  "Aκ2"?: number
+  /** Second moment of area, weak-axis bending (about local axis 2), mm⁴. 3D. */
+  I22?: number
+  /** Shear area in direction 3 (out-of-plane shear, 3D), mm². */
+  "Aκ3"?: number
+  /** Torsion constant, mm⁴. Populated when 3D solver lands. */
+  J?: number
+  /** Unit weight in kN/m³ (self-weight, future). */
+  gamma?: number
+
+  /** Author mode. Absent → legacy section, treated as manual at UI layer. */
+  mode?: "parametric" | "manual"
+  materialClass?: MaterialClass
+  shape?: {
+    kind: SectionShape
+    dims: Record<string, number>  // keys: b, h, d, tf, tw (shape-dependent)
+  }
+  strength?: {
+    fc?: number   // concrete f'c in MPa
+    fy?: number   // steel yield in MPa
+    fu?: number   // steel ultimate in MPa
+  }
+  /**
+   * Derived properties cached when authored parametrically.
+   * Naming follows reference software local-axis convention (axis 3 = strong, axis 2 = weak).
+   */
+  derived?: {
+    G:    number  // MPa
+    S33:  number  // mm³ — elastic section modulus, strong axis
+    S22:  number  // mm³ — elastic section modulus, weak axis
+    Z33:  number  // mm³ — plastic section modulus, strong axis
+    Z22:  number  // mm³ — plastic section modulus, weak axis
+    r33:  number  // mm   — radius of gyration, strong axis
+    r22:  number  // mm   — radius of gyration, weak axis
+    yBar: number  // mm   — centroid from base
+  }
+  /** When true, advanced-panel edits are kept verbatim. */
+  overridden?: boolean
 }
 
 export interface PointLoad {
@@ -114,12 +160,36 @@ export function deleteMultiSelection(model: StructureModel, sel: MultiSelection)
   return m
 }
 
+// Local require avoids a static cycle through features/material/* at module load;
+// it's safe because compute.ts only imports types from this file.
+import { buildParametricSection } from "@/features/material/compute"
+
 export const defaultSections: Record<SectionId, Section> = {
-  // E in MPa, I in mm⁴, A in mm²
-  iwf150: { id: "iwf150", name: "IWF.100.100.6.8", E: 200000, I: 17000000, A: 1952 },
-  iwf200: { id: "iwf200", name: "IWF 200.100.5.5.8", E: 200000, I: 35000000, A: 2556 },
-  wf300:  { id: "wf300",  name: "H 300.300.10.15", E: 200000, I: 180000000, A: 10200 },
-  rc300x500: { id: "rc300x500", name: "RC 300x500", E: 23500, I: 3125000000, A: 150000 },
+  // Steel IWF sections — all parametric, values from physical dimensions.
+  iwf150: buildParametricSection({
+    id: "iwf150", name: "IWF 100×100×6×8",
+    materialClass: "steel", shape: "iwf",
+    dims: { b: 100, h: 100, tf: 8, tw: 6 },
+    strength: { fy: 240, fu: 400, E: 200000 },
+  }),
+  iwf200: buildParametricSection({
+    id: "iwf200", name: "IWF 200×100×5.5×8",
+    materialClass: "steel", shape: "iwf",
+    dims: { b: 100, h: 200, tf: 8, tw: 5.5 },
+    strength: { fy: 240, fu: 400, E: 200000 },
+  }),
+  wf300: buildParametricSection({
+    id: "wf300", name: "H 300×300×10×15",
+    materialClass: "steel", shape: "iwf",
+    dims: { b: 300, h: 300, tf: 15, tw: 10 },
+    strength: { fy: 240, fu: 400, E: 200000 },
+  }),
+  // RC 300x500 — parametric concrete, values match reference software exactly (verified).
+  rc300x500: buildParametricSection({
+    id: "rc300x500", name: "RC 300x500",
+    materialClass: "concrete", shape: "rect",
+    dims: { b: 300, h: 500 }, strength: { fc: 25 },
+  }),
 }
 
 let idCounter = 0

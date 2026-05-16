@@ -46,9 +46,9 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
   }
 
   const handleConfirm = () => {
-    const E_val = parseE(parseFloat(E) || 1, u)
-    const I_val = parseI(parseFloat(I) || 1, u)
-    const A_val = parseA(parseFloat(A) || 1, u)
+    const E_val   = parseE(parseFloat(E) || 1, u)
+    const I33_val = parseI(parseFloat(I) || 1, u)
+    const A_val   = parseA(parseFloat(A) || 1, u)
 
     const model = example.templateFn()
 
@@ -56,9 +56,9 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
     const newSection: Section = {
       id: sectionId,
       name: "section",
-      E: E_val,
-      I: I_val,
-      A: A_val,
+      E:   E_val,
+      I33: I33_val,
+      A:   A_val,
     }
 
     onConfirm(model, newSection)

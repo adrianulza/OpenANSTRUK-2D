@@ -165,7 +165,7 @@ export function analyze(model: StructureModel): SolverResult {
 
     // Convert to kN, m
     const E  = sec.E * 1000        // MPa → kN/m²
-    const I  = sec.I * 1e-12       // mm⁴ → m⁴
+    const I  = sec.I33 * 1e-12     // mm⁴ → m⁴ (strong-axis bending)
     const Ar = sec.A * 1e-6        // mm² → m²
     const EA = E * Ar
     const EI = E * I
@@ -308,7 +308,7 @@ export function analyze(model: StructureModel): SolverResult {
     const L  = Math.hypot(dx, dy)
     if (L < 1e-9) continue
 
-    const E  = sec.E * 1000; const I = sec.I * 1e-12; const Ar = sec.A * 1e-6
+    const E  = sec.E * 1000; const I = sec.I33 * 1e-12; const Ar = sec.A * 1e-6
     const EA = E * Ar; const EI = E * I
     const c = dx / L, s = dy / L
     const isTruss = member.memberType === "truss"
