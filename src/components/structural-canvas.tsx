@@ -284,8 +284,12 @@ export function StructuralCanvas({
     const vTop    = -panY / zoom
     const vRight  = vLeft + width  / zoom
     const vBottom = vTop  + height / zoom
-    const xStart  = Math.floor(vLeft / pixelGrid) * pixelGrid
-    const yStart  = Math.floor(vTop  / pixelGrid) * pixelGrid
+    // Anchor grid to world origin so a line always passes through (0,0).
+    const c = axisCenter({ width, height })
+    const phaseX = ((c.sx % pixelGrid) + pixelGrid) % pixelGrid
+    const phaseY = ((c.sy % pixelGrid) + pixelGrid) % pixelGrid
+    const xStart = Math.floor((vLeft - phaseX) / pixelGrid) * pixelGrid + phaseX
+    const yStart = Math.floor((vTop  - phaseY) / pixelGrid) * pixelGrid + phaseY
     ctx.strokeStyle = COLOR_GRID
     ctx.lineWidth = 0.5 / zoom   // keep at ~0.5 screen px regardless of zoom
     for (let x = xStart; x <= vRight + pixelGrid; x += pixelGrid) {
