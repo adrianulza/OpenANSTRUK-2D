@@ -38,34 +38,54 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 **Goal:** Make analysis results usable and persistent.
 
 #### Features
-1. **File I/O**
-   - Save/load analysis as JSON files (via browser download/upload)
+
+1. **More Shapes** (T-section, L-angle, C-channel, Pipe)
+   - New shape calculators in parametric section system
+   - Each shape: dimension inputs, SVG preview, full property computation
+   - Concrete gains T-section; Steel gains L-angle and C-channel
+
+2. **Load Cases & Combinations**
+   - Define named load cases (DL, LL, Wind, Seismic, etc.)
+   - Automatic load combination envelopes (ASCE 7 / SNI basic combinations)
+   - Critical combination highlighting in Analyze tab
+   - Required before self-weight and design checks
+
+3. **Self-Weight**
+   - Auto-generate gravity loads from section unit weight (γ, kN/m³)
+   - Self-weight distributed into a Dead Load case at solve time
+   - Project-level toggle (Include self-weight: on/off)
+   - Depends on load cases being available
+
+4. **Design Checks** (RC and Steel)
+   - Basic RC checks: ACI 318 / SNI 2847 — flexure (ϕMn ≥ Mu), shear (ϕVn ≥ Vu)
+   - Basic steel checks: AISC 360 / SNI 1729 — compactness, bending capacity, shear
+   - Pass/fail indicators on members; demand/capacity ratios in flyout
+   - New Design tab (4th tab after Analyze)
+   - Depends on stable shapes, self-weight, and load combinations
+
+5. **File I/O**
+   - Save/load structure as JSON (browser download/upload)
    - Export member forces to CSV
-   - Session persistence (localStorage; optional)
+   - Session persistence via localStorage (optional)
+   - Schema versioning to support future migration
 
-2. **Design Checks**
-   - Basic RC section checks (ACI 318 flexure, shear)
-   - Basic steel checks (AISC 360 bending, shear)
-   - Indonesian code (SNI 2847, SNI 1729) as reference
-   - Simple pass/fail indicators on members; no certification claims
+6. **Timoshenko Beam Mode**
+   - Shear deformation correction factor φ = 12EI/(GAκ·L²)
+   - Modifies local stiffness matrix; no change to load assembly or diagrams
+   - Project-level toggle (Beam theory: Euler-Bernoulli / Timoshenko)
+   - Manual sections without Aκ2 fall back to Euler-Bernoulli
 
-3. **Load Management**
-   - Define multiple load cases (DL, LL, wind, etc.)
-   - Automatic load combination envelopes (ASCE 7 basic combinations)
-   - Critical combination highlighting
-
-4. **Basic Reporting**
-   - Export model + diagram as PDF (via browser print or library)
-   - Summary sheet (reactions, member forces, deflections)
-
-5. **Additional Features**
-   - Euler-Bernoulli vs. Timoshenko Beams switch button
-
+7. **Basic Reporting**
+   - Export model + diagrams as PDF (browser print)
+   - Summary sheet: reactions, member forces, deflections, D/C ratios
+   - Available after design checks are complete
 
 #### Scope Limitations
-- Design checks are simplified (no connection design, no optimization)
-- Load envelopes follow standard rules only
-- PDF export uses standard browser rendering (not publication-quality)
+- Design checks: simplified code checks only (no connection design, no optimization)
+- Load envelopes: standard ASCE 7 / SNI combinations only (no user-defined combinations)
+- Timoshenko: 2D in-plane shear deformation only (no out-of-plane or torsion)
+- PDF export: browser print rendering (not publication-quality)
+- File I/O: JSON format only (no IFC, no DXF)
 
 ---
 
@@ -122,15 +142,16 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 ## Next Steps (Phase 2 Priority)
 
 | Priority | Feature | Effort | Impact |
-|----------|---------|--------|--------|-
-| **P0** | File save/load (JSON) | Low | High |
-| **P0** | Basic RC/Steel checks | Medium | High |
-| **P1** | Load combinations & envelopes | Low | Medium |
-| **P1** | PDF export (browser print) | Low | Medium |
-| **P2** | Modal analysis | High | Medium |
-| **P2** | 3D viewer prototype | High | Medium |
-| **P3** | IFC import/export | Very High | Low |
-| **P3** | BIM plug-ins | Very High | Medium |
+|----------|---------|--------|--------|
+| **P0** | More shapes (T, L, C, Pipe) | Low | Medium |
+| **P0** | Load cases & combinations | Medium-High | High |
+| **P1** | Self-weight | Low | High |
+| **P1** | Design checks RC/Steel | High | High |
+| **P2** | File save/load (JSON) | Medium | High |
+| **P2** | Timoshenko beam mode | Medium | Low |
+| **P3** | PDF / Report export | Medium | Medium |
+| **P3** | Modal analysis | High | Medium |
+| **P4** | 3D viewer prototype | High | Medium |
 
 ---
 
