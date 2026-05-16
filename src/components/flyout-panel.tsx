@@ -1015,7 +1015,7 @@ function SupportToolContent({
   )
 }
 
-const MAX_SECTIONS = 5
+const MAX_SECTIONS = 100
 
 function fmt(v: number) {
   return parseFloat(v.toPrecision(6)).toString()
