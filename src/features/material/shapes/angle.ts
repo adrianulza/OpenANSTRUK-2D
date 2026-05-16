@@ -74,8 +74,8 @@ function compute(dims: Record<string, number>): SectionProperties {
 }
 
 export const lsection: ShapeDef = {
-  kind: "lsection",
-  label: "L-Section",
+  kind: "angle",
+  label: "Angle",
   dimKeys: ["b", "t"] as const,
   defaults: { b: 100, t: 10 },
   validate: ({ b, t }) => {

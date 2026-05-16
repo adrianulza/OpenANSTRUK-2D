@@ -7,7 +7,7 @@ function compute(dims: Record<string, number>): SectionProperties {
   const I33  = (Math.PI / 64) * (d ** 4 - di ** 4)
   const S33  = I33 / (d / 2)
   const Z33  = (d ** 3 - di ** 3) / 6
-  // Shear area for hollow circular tube (Timoshenko): κ = 0.5 for thin-walled pipe
+  // Shear area: κ = 0.5 per AISC 360 for hollow circular sections
   const Aκ   = 0.5 * A
   const r    = Math.sqrt(I33 / A)
   return {
@@ -16,10 +16,10 @@ function compute(dims: Record<string, number>): SectionProperties {
   }
 }
 
-// 6-inch Schedule 40 pipe: OD = 168.3 mm, wall = 7.11 mm
-export const pipe: ShapeDef = {
-  kind: "pipe",
-  label: "Circular Pipe",
+// 6-inch Schedule 40 CHS: OD = 168.3 mm, wall = 7.11 mm
+export const chs: ShapeDef = {
+  kind: "chs",
+  label: "CHS",
   dimKeys: ["d", "t"] as const,
   defaults: { d: 168.3, t: 7.11 },
   validate: ({ d, t }) => {

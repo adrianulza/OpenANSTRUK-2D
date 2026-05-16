@@ -26,7 +26,7 @@ export interface Support {
 }
 
 export type MaterialClass = "concrete" | "steel"
-export type SectionShape  = "rect" | "circle" | "iwf" | "tsection" | "lsection" | "pipe" | "rhs"
+export type SectionShape  = "rect" | "circle" | "iwf" | "tee" | "angle" | "chs" | "rhs"
 
 export interface Section {
   id: SectionId

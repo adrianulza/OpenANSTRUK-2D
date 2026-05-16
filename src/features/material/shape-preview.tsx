@@ -18,9 +18,9 @@ export function ShapePreview({ kind, dims }: Props) {
   if (kind === "rect")     svg = <RectSVG b={dims.b} h={dims.h} />
   if (kind === "circle")   svg = <CircleSVG d={dims.d} />
   if (kind === "iwf")      svg = <IwfSVG b={dims.b} h={dims.h} tf={dims.tf} tw={dims.tw} />
-  if (kind === "tsection") svg = <TsectionSVG bf={dims.bf} tf={dims.tf} bw={dims.bw} h={dims.h} />
-  if (kind === "lsection") svg = <LsectionSVG b={dims.b} t={dims.t} />
-  if (kind === "pipe")     svg = <PipeSVG d={dims.d} t={dims.t} />
+  if (kind === "tee") svg = <TsectionSVG bf={dims.bf} tf={dims.tf} bw={dims.bw} h={dims.h} />
+  if (kind === "angle") svg = <LsectionSVG b={dims.b} t={dims.t} />
+  if (kind === "chs")      svg = <PipeSVG d={dims.d} t={dims.t} />
   if (kind === "rhs")      svg = <RhsSVG b={dims.b} h={dims.h} t={dims.t} />
 
   return (

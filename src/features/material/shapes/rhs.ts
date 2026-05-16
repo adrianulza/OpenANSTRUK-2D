@@ -32,7 +32,7 @@ function compute(dims: Record<string, number>): SectionProperties {
 // Default: 100×50 RHS, wall thickness 4 mm (common light structural tube)
 export const rhs: ShapeDef = {
   kind: "rhs",
-  label: "Rect. Hollow (RHS)",
+  label: "RHS",
   dimKeys: ["b", "h", "t"] as const,
   defaults: { b: 100, h: 50, t: 4 },
   validate: ({ b, h, t }) => {

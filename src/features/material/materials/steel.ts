@@ -3,10 +3,10 @@ import type { MaterialDef } from "./types"
 export const steel: MaterialDef = {
   kind: "steel",
   label: "Steel",
-  allowedShapes: ["rhs", "pipe", "lsection", "iwf", "tsection"] as const,
+  allowedShapes: ["chs", "rhs", "angle", "iwf", "tee"] as const,
   shapeDimDefaults: {
-    tsection: { bf: 100, tf: 8, bw: 5.5, h: 100 },
-    lsection: { b: 100, t: 10 },
+    tee: { bf: 100, tf: 8, bw: 5.5, h: 100 },
+    angle: { b: 100, t: 10 },
   },
   defaults: { fy: 240, fu: 400, E: 200000 },
   validate: ({ fy, fu, E }) => {

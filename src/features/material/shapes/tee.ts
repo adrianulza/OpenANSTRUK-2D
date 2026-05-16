@@ -84,8 +84,8 @@ function compute(dims: Record<string, number>): SectionProperties {
 }
 
 export const tsection: ShapeDef = {
-  kind: "tsection",
-  label: "T-Section",
+  kind: "tee",
+  label: "Tee",
   dimKeys: ["bf", "tf", "bw", "h"] as const,
   defaults: { bf: 1000, tf: 100, bw: 300, h: 600 },
   validate: ({ bf, tf, bw, h }) => {
