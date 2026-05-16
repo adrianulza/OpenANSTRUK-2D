@@ -139,8 +139,8 @@ export function MaterialFlyout({
   const handleStartAdd = () => {
     setAdding(true)
     setDeleteArmed(false)
-    // Seed with sensible defaults: parametric mode, empty name, mode defaults
-    setMode("parametric")
+    // Seed with sensible defaults: manual mode, empty name, mode defaults
+    setMode("manual")
     setName("")
     setParametric(defaultParametricFields())
     setManual(manualFieldsFromSection({ id: "", name: "", E: 200000, I33: 1, A: 1 }, u))

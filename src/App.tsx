@@ -66,7 +66,7 @@ export default function App() {
   const [cursorX, setCursorX] = useState(0)
   const [cursorY, setCursorY] = useState(0)
   const [model, setModel] = useState<StructureModel>(template1SimpleBeam)
-  const [activeSection, setActiveSection] = useState<SectionId>("iwf150")
+  const [activeSection, setActiveSection] = useState<SectionId>("section")
   const [activeMemberType, setActiveMemberType] = useState<MemberType>("frame")
   const [activeSupportType, setActiveSupportType] = useState<SupportType>("pin")
   const [selection, setSelection] = useState<MultiSelection>(emptySelection)

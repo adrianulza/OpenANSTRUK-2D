@@ -165,6 +165,12 @@ export function deleteMultiSelection(model: StructureModel, sel: MultiSelection)
 import { buildParametricSection } from "@/features/material/compute"
 
 export const defaultSections: Record<SectionId, Section> = {
+  // RC 300x500 — parametric concrete, values match reference software exactly (verified).
+  rc300x500: buildParametricSection({
+    id: "rc300x500", name: "Beam 300x500",
+    materialClass: "concrete", shape: "rect",
+    dims: { b: 300, h: 500 }, strength: { fc: 25 },
+  }),
   // Steel IWF sections — all parametric, values from physical dimensions.
   iwf150: buildParametricSection({
     id: "iwf150", name: "IWF 100×100×6×8",
@@ -183,12 +189,6 @@ export const defaultSections: Record<SectionId, Section> = {
     materialClass: "steel", shape: "iwf",
     dims: { b: 300, h: 300, tf: 15, tw: 10 },
     strength: { fy: 240, fu: 400, E: 200000 },
-  }),
-  // RC 300x500 — parametric concrete, values match reference software exactly (verified).
-  rc300x500: buildParametricSection({
-    id: "rc300x500", name: "RC 300x500",
-    materialClass: "concrete", shape: "rect",
-    dims: { b: 300, h: 500 }, strength: { fc: 25 },
   }),
 }
 

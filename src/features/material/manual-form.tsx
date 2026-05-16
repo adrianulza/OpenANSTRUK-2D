@@ -37,7 +37,7 @@ export function manualFieldsFromSection(s: Section, u: UnitSettings): ManualFiel
     I33:   fmt(displayI(s.I33, u)),
     A:     fmt(displayA(s.A, u)),
     nu:    fmt(s.nu ?? 0.3),
-    "Aκ2": aκ2 != null ? fmt(displayA(aκ2, u)) : "",
+    "Aκ2": aκ2 != null ? fmt(displayA(aκ2, u)) : "0",
     gamma: s.gamma != null ? fmt(s.gamma) : "0",
   }
 }
@@ -50,7 +50,8 @@ export function validateManual(f: ManualFields): ManualValidation {
   const invalidI33   = !numPos(f.I33)
   const invalidA     = !numPos(f.A)
   const invalidNu    = !numNuOK(f.nu)
-  const invalidAκ2   = f["Aκ2"].trim() !== "" && !numPos(f["Aκ2"])
+  const aκ2str = f["Aκ2"].trim(); const aκ2val = parseFloat(aκ2str)
+  const invalidAκ2   = aκ2str !== "" && aκ2val !== 0 && !numPos(f["Aκ2"])
   const invalidGamma = !numGeZero(f.gamma)
   return {
     invalidE, invalidI33, invalidA, invalidNu, "invalidAκ2": invalidAκ2, invalidGamma,
@@ -66,7 +67,8 @@ export function parseManualFields(f: ManualFields, u: UnitSettings): Partial<Sec
     nu:    parseFloat(f.nu),
     gamma: parseFloat(f.gamma),
   }
-  if (f["Aκ2"].trim() !== "") out["Aκ2"] = parseA(parseFloat(f["Aκ2"]), u)
+  const aκ2v = parseFloat(f["Aκ2"].trim())
+  if (f["Aκ2"].trim() !== "" && aκ2v !== 0) out["Aκ2"] = parseA(aκ2v, u)
   return out
 }
 
