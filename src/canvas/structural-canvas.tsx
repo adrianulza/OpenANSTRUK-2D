@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { ZoomIn, ZoomOut } from "lucide-react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
-import type { NodeId, MultiSelection, StructureModel, SupportType, LoadId } from "@/lib/model"
+import type { NodeId, MultiSelection, StructureModel, LoadId } from "@/lib/model"
 import type { AnalysisResult } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import { isEmptySelection } from "@/lib/model"
@@ -16,6 +16,14 @@ import {
   snapWorld,
   worldToScreen,
 } from "@/lib/geometry"
+import { drawNodeIdTag, drawMemberIdTag } from "@/canvas/id-tags"
+import { drawSupportGlyph, hitTestSupportGlyph } from "@/canvas/support-glyph"
+import {
+  computeBoxSelection,
+  computeBoxSelectionWithNodes,
+  computeBoxSelectionLoads,
+} from "@/canvas/box-selection"
+import { perpWorld, splitByZeroCrossings } from "@/lib/diagram-utils"
 import {
   SCALE,
   COLOR_BRAND,
@@ -27,7 +35,6 @@ import {
   COLOR_MEMBER_LABEL,
   COLOR_DIM_LINE,
   COLOR_DIM_TEXT,
-  COLOR_SUPPORT_HATCH,
   COLOR_CANVAS_BG,
   COLOR_LOAD_FILL,
   COLOR_LOAD_FILL_SEL,
@@ -51,7 +58,6 @@ import {
   DIAGRAM_LINE_WIDTH,
   DIAGRAM_LABEL_FONT,
   NODE_RADIUS,
-  SUPPORT_SIZE,
   GIZMO_AXIS_LENGTH,
   GIZMO_ARROW_SIZE,
   DIM_OFFSET_CELLS,
@@ -60,74 +66,6 @@ import {
   HIT_TOL_MEMBER,
   formatValue,
 } from "@/lib/constants"
-
-// Returns the CCW-perpendicular unit vector for a member (world space),
-// normalised so that ny ≥ 0 (or nx > 0 for vertical members).
-// In screen space the positive perp is (nx, -ny) due to the Y-axis flip.
-function perpWorld(ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax, dy = by - ay
-  let nx = -dy, ny = dx
-  if (ny < 0 || (ny === 0 && nx < 0)) { nx = -nx; ny = -ny }
-  const len = Math.hypot(dx, dy)
-  return len < 1e-9 ? { nx: 0, ny: 1 } : { nx: nx / len, ny: ny / len }
-}
-
-// Draw a small member-ID tag (pill with white background) at a screen position.
-// Used by all three diagram drawers; placed on the member axis so it doesn't
-// collide with force labels which are always offset perpendicular to the axis.
-function drawNodeIdTag(
-  ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  nodeId: string,
-) {
-  const text = "N" + nodeId.replace(/^\D+/, "")
-  const font = "bold 10px 'JetBrains Mono', monospace"
-  ctx.save()
-  ctx.font = font
-  const tw = ctx.measureText(text).width
-  const ph = 4, pw = 6
-  const bw = tw + pw * 2, bh = 14 + ph * 2
-  ctx.fillStyle = "rgba(255,255,255,0.92)"
-  ctx.strokeStyle = "#94a3b8"
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.roundRect(sx - bw / 2, sy - bh / 2, bw, bh, 3)
-  ctx.fill()
-  ctx.stroke()
-  ctx.fillStyle = "#475569"
-  ctx.textAlign = "center"
-  ctx.textBaseline = "middle"
-  ctx.fillText(text, sx, sy)
-  ctx.restore()
-}
-
-function drawMemberIdTag(
-  ctx: CanvasRenderingContext2D,
-  sx: number,
-  sy: number,
-  memberId: string,
-) {
-  const text = memberId.toUpperCase()
-  const font = "bold 10px 'JetBrains Mono', monospace"
-  ctx.save()
-  ctx.font = font
-  const tw = ctx.measureText(text).width
-  const ph = 4, pw = 6
-  const bw = tw + pw * 2, bh = 14 + ph * 2
-  ctx.fillStyle = "rgba(255,255,255,0.92)"
-  ctx.strokeStyle = "#94a3b8"
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.roundRect(sx - bw / 2, sy - bh / 2, bw, bh, 3)
-  ctx.fill()
-  ctx.stroke()
-  ctx.fillStyle = "#475569"
-  ctx.textAlign = "center"
-  ctx.textBaseline = "middle"
-  ctx.fillText(text, sx, sy)
-  ctx.restore()
-}
 
 // Clamp pan so the viewport never shows outside the ±100 m world bounds.
 // When the world is smaller than the viewport in one axis, centre it.
@@ -764,19 +702,6 @@ export function StructuralCanvas({
       }
 
       // Compute the "positive" perpendicular unit vector for a member in world space.
-      // Positive = upward component (or rightward for vertical members).
-      // Returns { nx, ny } in world coords (screen = nx, -ny due to Y-flip).
-      function memberPerpWorld(
-        ax: number, ay: number, bx: number, by: number
-      ): { nx: number; ny: number } {
-        const dx = bx - ax, dy = by - ay
-        let nx = -dy, ny = dx  // CCW perpendicular in world space
-        // Normalise so positive direction = up (ny >= 0) or right (for vertical members)
-        if (ny < 0 || (ny === 0 && nx < 0)) { nx = -nx; ny = -ny }
-        const len = Math.hypot(dx, dy)
-        return len < 1e-9 ? { nx: 0, ny: 1 } : { nx: nx / len, ny: ny / len }
-      }
-
       for (const load of Object.values(model.loads)) {
         const isSelected = load.id === selectedLoadId || selectedLoadIds.includes(load.id)
         const isHovered = load.id === hoveredLoadId
@@ -828,7 +753,7 @@ export function StructuralCanvas({
 
           const PA = worldToScreen(A, rect)
           const PB = worldToScreen(B, rect)
-          const { nx, ny } = memberPerpWorld(A.x, A.y, B.x, B.y)
+          const { nx, ny } = perpWorld(A.x, A.y, B.x, B.y)
           // In screen space the positive perp is (nx, -ny)
           const snx = nx, sny = -ny
 
@@ -1219,49 +1144,7 @@ export function StructuralCanvas({
         // Draw filled segments (split at sign changes) then outline
         ctx.save()
 
-        // Build segments split at zero crossings
-        type Seg = { member: Array<[number, number]>; diagram: Array<[number, number]>; positive: boolean }
-        const segments: Seg[] = []
-        let current: Seg | null = null
-
-        const addPoint = (mx: number, my: number, dpx: number, dpy: number) => {
-          if (current) {
-            current.member.push([mx, my])
-            current.diagram.push([mx + dpx, my + dpy])
-          }
-        }
-
-        for (let i = 0; i < pts.length; i++) {
-          const p = pts[i]
-          const positive = p.V >= 0
-          if (!current || current.positive !== positive) {
-            // Interpolate zero crossing between i-1 and i
-            if (current && i > 0) {
-              const prev = pts[i - 1]
-              if (Math.abs(prev.V - p.V) > 1e-12) {
-                const t0 = -prev.V / (p.V - prev.V)
-                const zx = prev.mx + t0 * (p.mx - prev.mx)
-                const zy = prev.my + t0 * (p.my - prev.my)
-                current.member.push([zx, zy])
-                current.diagram.push([zx, zy])
-              }
-              segments.push(current)
-            }
-            current = { member: [], diagram: [], positive }
-            if (i > 0) {
-              const prev = pts[i - 1]
-              if (Math.abs(prev.V - p.V) > 1e-12) {
-                const t0 = -prev.V / (p.V - prev.V)
-                const zx = prev.mx + t0 * (p.mx - prev.mx)
-                const zy = prev.my + t0 * (p.my - prev.my)
-                current.member.push([zx, zy])
-                current.diagram.push([zx, zy])
-              }
-            }
-          }
-          addPoint(p.mx, p.my, p.dpx, p.dpy)
-        }
-        if (current) segments.push(current)
+        const segments = splitByZeroCrossings(pts, (p) => p.V)
 
         // Fill each segment
         for (const seg of segments) {
@@ -1386,48 +1269,7 @@ export function StructuralCanvas({
 
         ctx.save()
 
-        // Build segments split at sign changes (same approach as SFD)
-        type Seg = { member: Array<[number, number]>; diagram: Array<[number, number]>; positive: boolean }
-        const segments: Seg[] = []
-        let current: Seg | null = null
-
-        const addPoint = (mx: number, my: number, dpx: number, dpy: number) => {
-          if (current) {
-            current.member.push([mx, my])
-            current.diagram.push([mx + dpx, my + dpy])
-          }
-        }
-
-        for (let i = 0; i < pts.length; i++) {
-          const p = pts[i]
-          const positive = p.M >= 0
-          if (!current || current.positive !== positive) {
-            if (current && i > 0) {
-              const prev = pts[i - 1]
-              if (Math.abs(prev.M - p.M) > 1e-12) {
-                const t0 = -prev.M / (p.M - prev.M)
-                const zx = prev.mx + t0 * (p.mx - prev.mx)
-                const zy = prev.my + t0 * (p.my - prev.my)
-                current.member.push([zx, zy])
-                current.diagram.push([zx, zy])
-              }
-              segments.push(current)
-            }
-            current = { member: [], diagram: [], positive }
-            if (i > 0) {
-              const prev = pts[i - 1]
-              if (Math.abs(prev.M - p.M) > 1e-12) {
-                const t0 = -prev.M / (p.M - prev.M)
-                const zx = prev.mx + t0 * (p.mx - prev.mx)
-                const zy = prev.my + t0 * (p.my - prev.my)
-                current.member.push([zx, zy])
-                current.diagram.push([zx, zy])
-              }
-            }
-          }
-          addPoint(p.mx, p.my, p.dpx, p.dpy)
-        }
-        if (current) segments.push(current)
+        const segments = splitByZeroCrossings(pts, (p) => p.M)
 
         // Fill and outline each segment
         for (const seg of segments) {
@@ -2500,205 +2342,4 @@ export function StructuralCanvas({
       </div>
     </div>
   )
-}
-
-function drawSupportGlyph(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  type: SupportType,
-  selected = false,
-  overrideColor?: string,           // when set, overrides both fill and hatch colours
-  s = 1                             // adaptive scale: 1/zoom when adaptive view is on
-) {
-  const fill  = overrideColor ?? (selected ? COLOR_SELECTION : COLOR_BRAND)
-  const hatch = overrideColor ?? COLOR_SUPPORT_HATCH
-  const sz = SUPPORT_SIZE * s
-  ctx.save()
-  if (type === "pin") {
-    ctx.beginPath()
-    ctx.moveTo(x, y + 4 * s)
-    ctx.lineTo(x - sz / 2, y + sz + 4 * s)
-    ctx.lineTo(x + sz / 2, y + sz + 4 * s)
-    ctx.closePath()
-    ctx.fillStyle = fill
-    ctx.fill()
-
-    ctx.beginPath()
-    ctx.moveTo(x - sz / 2 - 5 * s, y + sz + 8 * s)
-    ctx.lineTo(x + sz / 2 + 5 * s, y + sz + 8 * s)
-    ctx.strokeStyle = hatch
-    ctx.lineWidth = 2 * s
-    ctx.stroke()
-  } else if (type === "roller") {
-    ctx.beginPath()
-    ctx.moveTo(x, y + 4 * s)
-    ctx.lineTo(x - sz / 2, y + sz + 4 * s)
-    ctx.lineTo(x + sz / 2, y + sz + 4 * s)
-    ctx.closePath()
-    ctx.fillStyle = fill
-    ctx.fill()
-
-    const cy = y + sz + 10 * s
-    ctx.beginPath()
-    ctx.arc(x - 5 * s, cy, 3 * s, 0, Math.PI * 2)
-    ctx.fillStyle = "#ffffff"
-    ctx.fill()
-    ctx.strokeStyle = fill
-    ctx.lineWidth = 1.5 * s
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.arc(x + 5 * s, cy, 3 * s, 0, Math.PI * 2)
-    ctx.fillStyle = "#ffffff"
-    ctx.fill()
-    ctx.stroke()
-
-    ctx.beginPath()
-    ctx.moveTo(x - sz / 2 - 5 * s, cy + 5 * s)
-    ctx.lineTo(x + sz / 2 + 5 * s, cy + 5 * s)
-    ctx.strokeStyle = hatch
-    ctx.lineWidth = 2 * s
-    ctx.stroke()
-  } else if (type === "fixed") {
-    const w = (SUPPORT_SIZE + 6) * s
-    const h = 8 * s
-    ctx.fillStyle = fill
-    ctx.fillRect(x - w / 2, y + 4 * s, w, h)
-
-    ctx.strokeStyle = hatch
-    ctx.lineWidth = 1.5 * s
-    const baseY = y + 4 * s + h
-    ctx.beginPath()
-    ctx.moveTo(x - w / 2 - 3 * s, baseY + 6 * s)
-    ctx.lineTo(x + w / 2 + 3 * s, baseY + 6 * s)
-    ctx.stroke()
-    for (let i = -w / 2; i <= w / 2; i += 5 * s) {
-      ctx.beginPath()
-      ctx.moveTo(x + i, baseY)
-      ctx.lineTo(x + i - 4 * s, baseY + 6 * s)
-      ctx.stroke()
-    }
-  }
-  ctx.restore()
-}
-
-function computeBoxSelection(
-  model: StructureModel,
-  wx1: number, wy1: number, wx2: number, wy2: number
-): MultiSelection {
-  const minX = Math.min(wx1, wx2)
-  const maxX = Math.max(wx1, wx2)
-  const minY = Math.min(wy1, wy2)
-  const maxY = Math.max(wy1, wy2)
-
-  const memberIds: string[] = []
-  const supportNodeIds: string[] = []
-
-  const inside = (x: number, y: number) =>
-    x >= minX && x <= maxX && y >= minY && y <= maxY
-
-  for (const m of Object.values(model.members)) {
-    const a = model.nodes[m.a]
-    const b = model.nodes[m.b]
-    if (a && b && inside(a.x, a.y) && inside(b.x, b.y)) memberIds.push(m.id)
-  }
-
-  for (const s of Object.values(model.supports)) {
-    const n = model.nodes[s.nodeId]
-    if (n && inside(n.x, n.y)) supportNodeIds.push(s.nodeId)
-  }
-
-  return { nodeIds: [], memberIds, supportNodeIds }
-}
-
-function computeBoxSelectionWithNodes(
-  model: StructureModel,
-  wx1: number, wy1: number, wx2: number, wy2: number
-): MultiSelection {
-  const minX = Math.min(wx1, wx2)
-  const maxX = Math.max(wx1, wx2)
-  const minY = Math.min(wy1, wy2)
-  const maxY = Math.max(wy1, wy2)
-
-  const nodeIds: string[] = []
-  const memberIds: string[] = []
-  const supportNodeIds: string[] = []
-
-  const inside = (x: number, y: number) =>
-    x >= minX && x <= maxX && y >= minY && y <= maxY
-
-  for (const n of Object.values(model.nodes)) {
-    if (inside(n.x, n.y)) nodeIds.push(n.id)
-  }
-
-  for (const m of Object.values(model.members)) {
-    const a = model.nodes[m.a]
-    const b = model.nodes[m.b]
-    if (a && b && inside(a.x, a.y) && inside(b.x, b.y)) memberIds.push(m.id)
-  }
-
-  for (const s of Object.values(model.supports)) {
-    const n = model.nodes[s.nodeId]
-    if (n && inside(n.x, n.y)) supportNodeIds.push(s.nodeId)
-  }
-
-  return { nodeIds, memberIds, supportNodeIds }
-}
-
-function computeBoxSelectionLoads(
-  model: StructureModel,
-  wx1: number, wy1: number, wx2: number, wy2: number
-): string[] {
-  const minX = Math.min(wx1, wx2)
-  const maxX = Math.max(wx1, wx2)
-  const minY = Math.min(wy1, wy2)
-  const maxY = Math.max(wy1, wy2)
-
-  const inside = (x: number, y: number) =>
-    x >= minX && x <= maxX && y >= minY && y <= maxY
-
-  const result: string[] = []
-
-  for (const load of Object.values(model.loads)) {
-    if (load.type === "point") {
-      const node = model.nodes[load.nodeId]
-      if (node && inside(node.x, node.y)) result.push(load.id)
-    } else if (load.type === "distributed") {
-      const member = model.members[load.memberId]
-      if (!member) continue
-      const a = model.nodes[member.a]
-      const b = model.nodes[member.b]
-      if (!a || !b) continue
-      // Include if either endpoint or the full member span overlaps the box
-      const minMx = Math.min(a.x, b.x), maxMx = Math.max(a.x, b.x)
-      const minMy = Math.min(a.y, b.y), maxMy = Math.max(a.y, b.y)
-      if (maxMx >= minX && minMx <= maxX && maxMy >= minY && minMy <= maxY) {
-        result.push(load.id)
-      }
-    }
-  }
-
-  return result
-}
-
-function hitTestSupportGlyph(
-  model: StructureModel,
-  mx: number,
-  my: number,
-  rect: Rect
-): string | null {
-  for (const s of Object.values(model.supports)) {
-    const n = model.nodes[s.nodeId]
-    if (!n) continue
-    const { sx, sy } = worldToScreen(n, rect)
-    // Glyph occupies roughly x±(SUPPORT_SIZE/2+5), y+4 to y+SUPPORT_SIZE+14
-    if (
-      Math.abs(mx - sx) <= SUPPORT_SIZE / 2 + 5 &&
-      my >= sy + 4 &&
-      my <= sy + SUPPORT_SIZE + 14
-    ) {
-      return s.nodeId
-    }
-  }
-  return null
 }

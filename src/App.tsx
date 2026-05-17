@@ -2,7 +2,7 @@
 import { NavBar } from "@/components/nav-bar"
 import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
-import { StructuralCanvas } from "@/components/structural-canvas"
+import { StructuralCanvas } from "@/canvas/structural-canvas"
 import { StatusBar } from "@/components/status-bar"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { UnitSettings } from "@/lib/units"
@@ -128,8 +128,15 @@ export default function App() {
     setSelection(emptySelection())
   }, [])
 
+  // Picks the first available section key, or falls back to a known default.
+  // Used after loading a new model to ensure activeSection is never stale.
+  const firstSectionId = (m: StructureModel): SectionId =>
+    Object.keys(m.sections)[0] ?? "iwf150"
+
   const handleNewFile = useCallback(() => {
-    setModel(createEmptyModel())
+    const m = createEmptyModel()
+    setModel(m)
+    setActiveSection(firstSectionId(m))
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
@@ -146,7 +153,9 @@ export default function App() {
       4: template4PortalLateral,
       5: template5AsymmetricRafter,
     }
-    setModel(builders[template]())
+    const m = builders[template]()
+    setModel(m)
+    setActiveSection(firstSectionId(m))
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
@@ -156,10 +165,12 @@ export default function App() {
   }, [])
 
   const handleExampleConfirm = useCallback((model: StructureModel, section: Section) => {
-    setModel({
+    const merged: StructureModel = {
       ...model,
       sections: { ...model.sections, [section.id]: section },
-    })
+    }
+    setModel(merged)
+    setActiveSection(section.id)
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
@@ -183,6 +194,21 @@ export default function App() {
     setSelectedLoadId(null)
     setSelectedLoadIds([])
     setMoveNodeSelectedId(null)
+  }, [])
+
+  // Shared by all three template modals (Beam / Frame / Truss).
+  // Examples modal uses handleExampleConfirm instead because it also
+  // merges the example's section into the model.
+  const handleTemplateConfirm = useCallback((m: StructureModel) => {
+    setModel(m)
+    setActiveSection(firstSectionId(m))
+    setActiveTab("Model")
+    setActiveTool(null)
+    setPendingFrameStart(null)
+    setSelection(emptySelection())
+    setAnalysisResult(null)
+    setSelectedLoadId(null)
+    setTemplateModal(null)
   }, [])
 
   const handleMouseMove = useCallback((x: number, y: number) => {
@@ -830,46 +856,19 @@ export default function App() {
       {/* Template modals */}
       {templateModal === "beam" && (
         <BeamTemplateModal
-          onConfirm={(m) => {
-            setModel(m)
-            setActiveTab("Model")
-            setActiveTool(null)
-            setPendingFrameStart(null)
-            setSelection(emptySelection())
-            setAnalysisResult(null)
-            setSelectedLoadId(null)
-            setTemplateModal(null)
-          }}
+          onConfirm={handleTemplateConfirm}
           onClose={() => setTemplateModal(null)}
         />
       )}
       {templateModal === "frame" && (
         <FrameTemplateModal
-          onConfirm={(m) => {
-            setModel(m)
-            setActiveTab("Model")
-            setActiveTool(null)
-            setPendingFrameStart(null)
-            setSelection(emptySelection())
-            setAnalysisResult(null)
-            setSelectedLoadId(null)
-            setTemplateModal(null)
-          }}
+          onConfirm={handleTemplateConfirm}
           onClose={() => setTemplateModal(null)}
         />
       )}
       {templateModal === "truss" && (
         <TrussTemplateModal
-          onConfirm={(m) => {
-            setModel(m)
-            setActiveTab("Model")
-            setActiveTool(null)
-            setPendingFrameStart(null)
-            setSelection(emptySelection())
-            setAnalysisResult(null)
-            setSelectedLoadId(null)
-            setTemplateModal(null)
-          }}
+          onConfirm={handleTemplateConfirm}
           onClose={() => setTemplateModal(null)}
         />
       )}

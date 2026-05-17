@@ -162,9 +162,9 @@ export function deleteMultiSelection(model: StructureModel, sel: MultiSelection)
   return m
 }
 
-// Local require avoids a static cycle through features/material/* at module load;
+// Local require avoids a static cycle through lib/sections/* at module load;
 // it's safe because compute.ts only imports types from this file.
-import { buildParametricSection } from "@/features/material/compute"
+import { buildParametricSection } from "@/lib/sections/compute"
 
 export const defaultSections: Record<SectionId, Section> = {
   // RC 300x500 — parametric concrete, values match reference software exactly (verified).

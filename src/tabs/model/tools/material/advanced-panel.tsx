@@ -11,7 +11,7 @@ import {
   displayI, parseI, labelI,
   displayA, parseA, labelA,
 } from "@/lib/units"
-import { shearModulus } from "./materials"
+import { shearModulus } from "@/lib/sections/materials"
 import { fmt } from "./section-select"
 
 interface Props {

@@ -6,10 +6,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import type { Section, MaterialClass, SectionShape } from "@/lib/model"
-import { SHAPES, shapeDef } from "./shapes"
-import { MATERIALS, materialDef } from "./materials"
+import { SHAPES, shapeDef } from "@/lib/sections/shapes"
+import { MATERIALS, materialDef } from "@/lib/sections/materials"
 import { ShapePreview } from "./shape-preview"
-import { computeSectionFromParametric, type ParametricFields } from "./compute"
+import { computeSectionFromParametric, type ParametricFields } from "@/lib/sections/compute"
 
 export { computeSectionFromParametric, type ParametricFields }
 

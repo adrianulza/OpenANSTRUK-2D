@@ -18,61 +18,99 @@ Each step maps to a tab in the UI. The user builds a structure, assigns loads, t
 
 ## Project Layout
 
+The codebase follows a **tab-sliced** structure: each of the four major areas (`lib`, `canvas`, `tabs`, `components`) owns one concern. Adding a new tool means adding one file under the right `tabs/` subfolder.
+
 ```
 OpenAnstruk-2D/
 ├── README.md
-├── html/                        # Static HTML entry points
-│   ├── index.html               # Landing page (standalone, no Vite — DM Serif/Sans fonts)
-│   └── app.html                 # React app shell (loads /src/main.tsx via Vite)
-├── public/                      # Static assets copied as-is to dist/
-│   ├── demo/                    # Demo screenshots (1.png–8.png) used on landing page
-│   ├── _headers                 # Netlify/CDN response headers
-│   ├── _redirects               # Netlify SPA redirect rules
-├── src/                         # All React/TS source
-│   ├── App.tsx                  # Root component — all state, canvas handlers
-│   ├── main.tsx                 # Vite entry point, mounts <App />
-│   ├── globals.css              # Tailwind v4 import + @theme design tokens
-│   ├── components/
-│   │   ├── nav-bar.tsx          # Tab switcher + file/template dropdown menus
-│   │   ├── tool-sidebar.tsx     # Per-tab tool palette; exports TabType, ToolType
-│   │   ├── structural-canvas.tsx# Canvas rendering (structure, loads, diagrams)
-│   │   ├── flyout-panel.tsx     # Contextual property panel (right side)
-│   │   ├── status-bar.tsx       # Bottom status bar (cursor coords, info)
-│   │   ├── grid-units-panel.tsx # Grid spacing + unit system settings panel
-│   │   ├── theme-provider.tsx   # shadcn dark/light theme wrapper
-│   │   └── ui/                  # shadcn/ui primitives (button, input, dialog, …)
-│   ├── lib/
-│   │   ├── model.ts             # StructureModel types + model mutation helpers
-│   │   ├── solver.ts            # DSM finite element solver
-│   │   ├── geometry.ts          # Coordinate transforms, hit-testing, snap
-│   │   ├── constants.ts         # All shared magic numbers and colors
-│   │   ├── units.ts             # UnitSettings, display/parse helpers
-│   │   ├── svg-renderer.ts      # Renders StructureModel → static SVG string
-│   │   └── utils.ts             # shadcn cn() utility
-│   │   └── flyout-panel-colors.ts # Controling flyout colors
+├── html/                              # Static HTML entry points
+│   ├── index.html                     # Landing page (standalone, no Vite)
+│   └── app.html                       # React app shell (loads /src/main.tsx via Vite)
+├── public/                            # Static assets copied as-is to dist/
+│   ├── demo/                          # Demo screenshots used on landing page
+│   ├── _headers                       # Netlify/CDN response headers
+│   ├── _redirects                     # Netlify SPA redirect rules
+│   └── OpenAnstruk-*.svg              # Brand logo/label SVGs
+├── src/                               # All React/TS source
+│   ├── App.tsx                        # Root component — top-level state, click handlers, modal wiring
+│   ├── main.tsx                       # Vite entry, mounts <App />
+│   ├── globals.css                    # Tailwind v4 + @theme design tokens
+│   │
+│   ├── lib/                           # Pure domain logic (no React imports)
+│   │   ├── model.ts                   # StructureModel types + immutable update helpers
+│   │   ├── solver.ts                  # DSM finite element solver
+│   │   ├── geometry.ts                # Coordinate transforms, hit-testing, snap
+│   │   ├── diagram-utils.ts           # perpWorld + splitByZeroCrossings
+│   │   ├── constants.ts               # Shared magic numbers, colors, formatValue()
+│   │   ├── units.ts                   # UnitSettings + display/parse helpers
+│   │   ├── flyout-panel-colors.ts     # FLYOUT_PANEL_COLORS palette
+│   │   ├── svg-renderer.ts            # renderModelToSVG() for example thumbnails
+│   │   ├── utils.ts                   # shadcn cn()
+│   │   └── sections/                  # Section/material domain (pure, no React)
+│   │       ├── compute.ts             # buildParametricSection, computeSectionFromParametric
+│   │       ├── materials/             # types, concrete, steel, index
+│   │       └── shapes/                # types + rect, circle, iwf, tee, angle, chs, rhs
+│   │
+│   ├── canvas/                        # Canvas shell + tab-agnostic draw primitives
+│   │   ├── structural-canvas.tsx      # Viewport, pan/zoom, event routing, draw() loop
+│   │   ├── id-tags.ts                 # drawNodeIdTag, drawMemberIdTag
+│   │   ├── support-glyph.ts           # drawSupportGlyph, hitTestSupportGlyph
+│   │   └── box-selection.ts           # computeBoxSelection / WithNodes / Loads
+│   │
+│   ├── tabs/                          # Per-tab vertical slices
+│   │   ├── model/tools/               # select, delete, move-node, node, member, support + material/
+│   │   ├── load/tools/                # point-load, dist-load, modify-load, delete-load
+│   │   └── analyze/tools/             # select, reaction, diagram, deformation
+│   │
+│   ├── components/                    # Shared, tab-agnostic UI
+│   │   ├── nav-bar.tsx                # Tab switcher + file/template menus
+│   │   ├── tool-sidebar.tsx           # Per-tab tool palette; exports TabType, ToolType
+│   │   ├── flyout-panel.tsx           # Thin router (props interface + FlyoutContent switch)
+│   │   ├── flyout-shared.tsx          # Simple flat SectionSelect (used by Model-tab tools)
+│   │   ├── status-bar.tsx             # Bottom status bar
+│   │   ├── grid-units-panel.tsx       # Grid spacing + unit system panel
+│   │   ├── theme-provider.tsx         # shadcn dark/light theme wrapper
+│   │   └── ui/                        # shadcn primitives + project atoms
+│   │       ├── numeric-input.tsx      # Controlled numeric input
+│   │       ├── support-icons.tsx      # pinIcon, rollerIcon, fixedIcon
+│   │       └── …                      # button, dialog, input, label, select, …
+│   │
 │   ├── hooks/
-│   │   ├── use-toast.ts         # Toast notification hook
-│   │   └── use-mobile.ts        # Mobile breakpoint hook
+│   │   ├── use-toast.ts
+│   │   └── use-mobile.ts
 │   └── templates/
-│       ├── examples.ts          # Five static example model builder functions
-│       ├── examples-data.ts     # ExampleDefinition metadata + SVG illustrations
-│       ├── examples-modal.tsx   # Examples picker modal (card grid with SVG thumbs)
-│       ├── beam-template-modal.tsx   # Parametric multi-span beam builder modal
-│       ├── frame-template-modal.tsx  # Parametric portal frame builder modal
-│       └── truss-template-modal.tsx  # Parametric truss builder modal
-├── config/                      # Build tooling config (isolated from project root)
+│       ├── examples.ts                # 5 static example builders (template1–5)
+│       ├── examples-data.ts           # Metadata + SVG illustrations
+│       ├── examples-modal.tsx
+│       ├── beam-template-modal.tsx    # Parametric multi-span beam
+│       ├── frame-template-modal.tsx   # Parametric portal frame
+│       └── truss-template-modal.tsx   # Parametric truss
+│
+├── config/                            # Build tooling (isolated from project root)
 │   ├── vite.config.ts
 │   ├── eslint.config.js
 │   └── tsconfig.json
 ├── docs/
-│   ├── ARCHITECTURE.md          # Codebase structure and design decisions (for contributors)
-│   ├── CONTRIBUTING.md          # How to contribute (code, bugs, docs, feedback)
-│   └── USER_GUIDE.md            # End-user usage guide
-├── tsconfig.json                # Root tsconfig (references config/tsconfig.json)
+│   ├── ARCHITECTURE.md                # This file
+│   ├── CONTRIBUTING.md
+│   └── USER_GUIDE.md
+├── tsconfig.json                      # Root tsconfig (references config/tsconfig.json)
 ├── package.json
 ├── package-lock.json
-├── LICENSE                      # MIT License
+├── REFACTOR_PLAN.md                   # Tab-structure refactor plan + smoke matrix
+├── LICENSE                            # MIT
 ```
+
+### Why four top-level src/ folders?
+
+| Folder | Rule | Cannot import from |
+|--------|------|--------------------|
+| `lib/` | Pure TypeScript domain. No React. | `canvas/`, `tabs/`, `components/` |
+| `canvas/` | Canvas shell + shared draw primitives. | `tabs/` |
+| `tabs/` | Per-tab vertical slices (tools = sidebar + flyout content + tab-specific draws). | `canvas/structural-canvas.tsx` |
+| `components/` | Tab-agnostic shared UI (nav, status bar, flyout shell, ui/ primitives). | `tabs/` |
+
+This rule keeps domain code testable in isolation (nothing in `lib/` depends on React), and prevents tabs from depending on each other.
 
 ---
 
@@ -83,29 +121,41 @@ All state is owned by `App.tsx` and passed down via props. There is no Context, 
 The central piece of state is `model: StructureModel` — a plain immutable object that is the single source of truth for the entire structure. Every user action that changes the structure produces a new model object via `setModel(...)`.
 
 Other important state buckets in `App.tsx`:
-- **UI state**: `activeTab`, `activeTool`, `selection`, `pendingFrameStart`
-- **Tool settings**: `activeSection`, `activeMemberType`, `activeSupportType`
-- **Load input**: `activePtInputMode`, `activeDistMode`, `activeDistType`, and their magnitude fields
-- **Analyze state**: `analysisResult`, `diagramScale`, `invertSFD`, `invertBMD`, `deformationScale`
-- **Hover state**: `hoveredNodeId`, `hoveredMemberId`, `hoveredLoadId`
+- **Tab/tool**: `activeTab`, `activeTool`, `pendingFrameStart`
+- **Selection**: `selection` (nodes/members/supports), `selectedLoadId`, `selectedLoadIds`
+- **Tool settings**: `activeSection`, `activeMemberType`, `activeSupportType`, move-node state
+- **Load input**: `activePtInputMode`, `activeDistMode`, `activeDistType`, and the magnitude fields
+- **View**: `unitSettings`, `cursorX/Y`, `showDimensions`, `snapToGrid`, `snapToNode`, `adaptiveView`
+- **Analyze**: `analysisResult`, `diagramScale`, `invertSFD`, `invertBMD`, `deformationScale`, label toggles
+- **Modals**: `templateModal`, `showExamplesModal`, `showMobileModal`
+- **Hover**: `hoveredNodeId`, `hoveredMemberId`, `hoveredLoadId`
 
 ### Data Flow
 
 ```
 User interaction (canvas click / flyout input)
         ↓
-handleCanvasClick / handler in App.tsx
+handler in App.tsx (handleCanvasClick / tool-specific setter)
         ↓
-setModel(newModel)          ← immutable update
+setModel(newModel)              ← immutable update
         ↓
-StructuralCanvas re-renders ← draws updated structure
+StructuralCanvas re-renders     ← draws updated structure
         ↓
-analyze(model)              ← runs on every model change when Analyze tab is active
+analyze(model)                  ← runs on every model change when Analyze tab is active
         ↓
 setAnalysisResult(result)
         ↓
-StructuralCanvas re-renders ← draws diagrams
+StructuralCanvas re-renders     ← draws diagrams
 ```
+
+### Flyout routing
+
+`flyout-panel.tsx` is a thin router. It owns:
+- The `FlyoutPanelProps` interface (the superset of every tool's needed props)
+- The header (title + close button)
+- A `FlyoutContent` switch on `(activeTab, activeTool)` that renders the right tool content component from `src/tabs/{tab}/tools/`
+
+Each tool file declares its own narrow prop type. The router passes through what each tool needs from the superset.
 
 ---
 
@@ -118,17 +168,30 @@ StructureModel {
   nodes:    Record<NodeId, ModelNode>     // {id, x, y} in metres
   members:  Record<MemberId, Member>      // {id, a, b, section, memberType?}
   supports: Record<NodeId, Support>       // {nodeId, type: "pin"|"roller"|"fixed"}
-  sections: Record<SectionId, Section>    // material + cross-section properties
+  sections: Record<SectionId, Section>    // parametric + manual sections
   loads:    Record<LoadId, Load>          // PointLoad | DistributedLoad
 }
 ```
 
 **Key design decisions:**
-- IDs are string-keyed monotonic counters (`"n1"`, `"m1"`, `"l1"`, …). They never reset during a session.
+- IDs are string-keyed monotonic counters (`"n1"`, `"m1"`, `"l1"`, `"s1"`, …). They never reset during a session.
 - One load per node (point loads), one load per member (distributed loads) — enforced by the UI.
-- Members have an optional `memberType`: `"frame"` (default, full beam-column with moment stiffness) or `"truss"` (pin-jointed, axial only).
+- Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (pin-jointed, axial only).
 - `PointLoad` stores `{fx, fy}` global components in kN. The flyout supports both direct component input and angular input (magnitude + angle) — conversion happens in the UI layer.
 - `DistributedLoad` supports two modes: `"local-axis"` (perpendicular to member, the default) and `"global-axis"` (X/Y world components).
+- `Section` supports two authoring modes: `manual` (E, I, A entered directly) and `parametric` (materialClass + shape + dimensions, computed via `lib/sections/compute.ts`).
+
+---
+
+## Section / Material Domain (`src/lib/sections/`)
+
+The section catalogue and parametric computation live in `lib/sections/` (pure TypeScript, no React):
+
+- `materials/` — material catalogue. `concrete.ts` and `steel.ts` define defaults; `index.ts` exports `MATERIALS` map plus `materialDef` / `shearModulus` helpers.
+- `shapes/` — geometric shapes. Each shape (`rect`, `circle`, `iwf`, `tee`, `angle`, `chs`, `rhs`) exports a `ShapeDef` with `defaults`, `validate`, and `compute(dims) → SectionProperties`. `index.ts` exports `SHAPES` map + `shapeDef` helper.
+- `compute.ts` — `buildParametricSection({id, name, materialClass, shape, dims, strength})` produces a complete `Section` with `derived` fields (E, G, A, I33, I22, S33b/t, S22L/R, Z33, Z22, r33, r22, yBar). `computeSectionFromParametric` is used by the parametric form.
+
+The React UI for authoring sections lives separately in `src/tabs/model/tools/material/`.
 
 ---
 
@@ -146,7 +209,7 @@ The solver implements the **Direct Stiffness Method (DSM)** for 2D frame/truss e
 ### Sign Conventions
 
 | Quantity | Positive direction |
-|----------|-------------------|
+|----------|--------------------|
 | Axial N  | Tension |
 | Shear V  | Left portion pushing right portion upward (horizontal member) |
 | Moment M | Sagging (concave upward) |
@@ -167,11 +230,15 @@ M(x) = M1 − V1·x + q1·x²/2 + (q2−q1)·x³/(6L)
 
 where `x` is distance from the i-end along the member.
 
+> **Note:** `solver.ts` was untouched by the tab-sliced refactor. If a diagram looks wrong, suspect the display layer (perpendicular direction, invert toggle, vertical-member flip) before the solver.
+
 ---
 
-## Canvas Rendering (`src/components/structural-canvas.tsx`)
+## Canvas Rendering (`src/canvas/structural-canvas.tsx`)
 
 The app uses the browser Canvas 2D API for all structural drawing — no SVG, no WebGL.
+
+`structural-canvas.tsx` is the shell. It owns the viewport (`panX`, `panY`, `zoom`), mounts the canvas element, handles pointer/wheel events, and orchestrates the draw loop. Reusable atoms (`drawNodeIdTag`, `drawMemberIdTag`, `drawSupportGlyph`, `hitTestSupportGlyph`, box-selection helpers) live in sibling files under `src/canvas/`.
 
 ### Coordinate Systems
 
@@ -187,16 +254,20 @@ Scale: **80 px/m** (`SCALE`). Grid cell: **40 px** = **0.5 m** (`GRID`, `SNAP`).
 ### Draw Order
 
 1. Grid
-2. Structure (members, nodes, supports)
-3. Loads (arrows and distributed load fills)
-4. Selections (highlight overlay)
-5. Diagrams (SFD / BMD / AFD — Analyze tab only)
-6. Annotations (dimension lines, axis gizmo)
-7. Previews (rubber-band line, box-select rectangle)
+2. Members
+3. Supports
+4. Nodes
+5. Gizmo (axes)
+6. Dimensions (if `showDimensions`)
+7. Preview (Model tab — rubber-band, ghost node)
+8. Loads (Load tab — arrows and distributed fills)
+9. Glow (hover highlight)
+10. Reactions / Axial / Shear / Moment / Deformed shape (Analyze tab, per-tool)
+11. Box-selection rubber-band (drawn after `ctx.restore()` so it's in screen space)
 
 ### Diagram Rendering
 
-Each diagram (shear, moment, axial) samples 60 points per member, fills regions between the baseline and curve in blue (positive) or red (negative), and offsets perpendicular to the member.
+Each diagram (shear, moment, axial) samples 60 points per member, then uses `splitByZeroCrossings` from `lib/diagram-utils.ts` to break the sampled curve into positive and negative segments (blue / red fills). The segments are offset perpendicular to the member.
 
 The moment diagram is **negated before offsetting** so that positive (sagging) moments draw on the tension fiber side — the structural convention.
 
@@ -204,24 +275,52 @@ For vertical members, the perpendicular direction is reversed so positive values
 
 `invertSFD` and `invertBMD` flags allow the user to flip diagram orientation without changing the underlying sign convention.
 
+### Diagram Utilities (`src/lib/diagram-utils.ts`)
+
+- `perpWorld(ax, ay, bx, by)` → unit CCW-perpendicular in world space, normalized so `ny ≥ 0` (or `nx > 0` for vertical).
+- `splitByZeroCrossings<P>(pts, valueOf)` → generic zero-crossing splitter, used by both SFD (`valueOf = p => p.V`) and BMD (`valueOf = p => p.M`).
+
+---
+
+## Tabs and Tools
+
+Each tab in `src/tabs/` owns a `tools/` folder. Each tool file is one React component (or a small set of co-located components) that renders the flyout content for that tool.
+
+```
+tabs/
+├── model/tools/        select, delete, move-node, node, member, support
+│   └── material/       material-tool (entry) + parametric/manual forms, shape-preview, …
+├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
+└── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
+```
+
+**Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
+
 ---
 
 ## Adding Features
 
 ### New tool
-1. Add the tool ID to `ToolType` in [tool-sidebar.tsx](../src/components/tool-sidebar.tsx)
-2. Add the canvas handler in `handleCanvasClick` in [App.tsx](../src/App.tsx)
-3. Add the flyout UI in [flyout-panel.tsx](../src/components/flyout-panel.tsx)
-4. Add canvas preview rendering in [structural-canvas.tsx](../src/components/structural-canvas.tsx) if needed
+1. Add the tool ID to `ToolType` in [tool-sidebar.tsx](../src/components/tool-sidebar.tsx) and register it in the appropriate `*Tools` array.
+2. Create the flyout content as `src/tabs/{tab}/tools/{name}-tool.tsx`.
+3. Import + route in `components/flyout-panel.tsx`'s `FlyoutContent` switch.
+4. Add the canvas-click branch in `handleCanvasClick` in [App.tsx](../src/App.tsx).
+5. Add canvas preview rendering in [canvas/structural-canvas.tsx](../src/canvas/structural-canvas.tsx) if needed.
 
 ### New load type
-1. Extend the `Load` union in [model.ts](../src/lib/model.ts)
-2. Add assembly logic in [solver.ts](../src/lib/solver.ts)
-3. Add UI in [flyout-panel.tsx](../src/components/flyout-panel.tsx)
-4. Add canvas rendering in [structural-canvas.tsx](../src/components/structural-canvas.tsx)
+1. Extend the `Load` union in [model.ts](../src/lib/model.ts).
+2. Add assembly logic in [solver.ts](../src/lib/solver.ts).
+3. Add a tool file in `src/tabs/load/tools/` and route from `flyout-panel.tsx`.
+4. Add canvas rendering in [structural-canvas.tsx](../src/canvas/structural-canvas.tsx) (`drawLoads` block).
+
+### New section shape
+1. Add the kind to `SectionShape` union in [model.ts](../src/lib/model.ts).
+2. Create `lib/sections/shapes/{kind}.ts` exporting a `ShapeDef` (defaults, validate, compute).
+3. Register in `lib/sections/shapes/index.ts`'s `SHAPES` map.
+4. The parametric form picks it up automatically.
 
 ### Modifying the solver
-Edit [solver.ts](../src/lib/solver.ts). Always verify with multiple member orientations (horizontal, vertical, diagonal) and both load types. The sign convention table above is the reference.
+Edit [solver.ts](../src/lib/solver.ts). Always verify with multiple member orientations (horizontal, vertical, diagonal) and both load types. **`template4PortalLateral` is the strongest canary** — it exercises vertical columns, lateral loads, and all three support types. The sign convention table above is the reference.
 
 ---
 
@@ -229,16 +328,25 @@ Edit [solver.ts](../src/lib/solver.ts). Always verify with multiple member orien
 
 All shared numbers and colors live in [`src/lib/constants.ts`](../src/lib/constants.ts). Do not hardcode pixel sizes, tolerances, or hex colors elsewhere.
 
-Key groups: coordinate scale, hit-test tolerances, canvas colors, load drawing sizes, diagram rendering parameters.
+Key groups:
+- **Coordinate**: `SCALE=80`, `GRID=40`, `SNAP=0.5`
+- **Hit tolerances**: `HIT_TOL_NODE=0.2`, `HIT_TOL_MEMBER=0.15`, `HIT_TOL_NODE_SNAP=0.05`
+- **Canvas colors**: brand, accent, selection, grid, load (fill/stroke/label), diagram (blue/red/orange/stroke)
+- **Load drawing sizes**: arrow length, arrowhead, line widths, distributed arrow count
+- **Diagram parameters**: pixels per kN, pixels per kN·m, label font
+
+The flyout-panel palette is separately in [`src/lib/flyout-panel-colors.ts`](../src/lib/flyout-panel-colors.ts).
 
 ---
 
 ## Test Suite
 
-There are currently no automated tests. Manual testing is done by loading templates from the NavBar and verifying diagram correctness:
+There are currently no automated tests. Manual testing relies on the smoke matrix in [`REFACTOR_PLAN.md`](../REFACTOR_PLAN.md) (steps S1–S21) and on loading templates from the NavBar:
 
-- **template1** — simple beam, basic SFD/BMD
-- **template1** — cantilever beam, basic SFD/BMD
+- **template1** — simple beam (pin–roller); basic SFD/BMD
+- **template2** — cantilever; basic SFD/BMD
 - **template3** — portal frame, gravity load
-- **template4** — portal frame, lateral load (best for vertical member diagrams)
-- **template5** — asymmetric rafter, mixed member orientations
+- **template4** — portal frame, lateral load — best canary for vertical-member diagrams
+- **template5** — asymmetric rafter; mixed member orientations
+
+If you're touching the solver, the canvas, or sign math: load each template in turn and visually compare against expected diagram shapes before opening a PR.
