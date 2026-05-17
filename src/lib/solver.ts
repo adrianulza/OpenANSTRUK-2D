@@ -183,10 +183,8 @@ export function analyze(model: StructureModel): SolverResult {
         K[dofs[i]][dofs[j]] += Kg[i][j]
 
     // Distributed load on this member (truss elements carry no transverse load).
-    // Positive w = in the "normalised" perpendicular direction used by the renderer:
-    //   CCW perp of (c,s) is (-s,c); renderer flips it when ny<0 or (ny=0 & nx<0),
-    //   i.e. when c<0 or (c=0 & s>0).  Mirror that flip here so the solver's
-    //   local-y force direction always matches the displayed arrows.
+    // Positive local-axis w acts in the +local-2 direction (= local-1 rotated +90° CCW).
+    // No quadrant flip — the same single rule for every member orientation.
     let q1 = 0, q2 = 0
     let qx1 = 0, qx2 = 0  // axial components (local-x)
     if (!isTruss) {
@@ -196,23 +194,18 @@ export function analyze(model: StructureModel): SolverResult {
           if (mode === "local-axis") {
             q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
           } else {
-            // Global-axis mode: convert global X,Y components to local coordinates
-            // Local-x: along member direction (c, s)
-            // Local-y: perpendicular direction (-s, c)
+            // Global-axis mode: project global X,Y components onto local axes
+            // Local-1: (c, s); Local-2: (-s, c)
             const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
             const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
-            // Project onto local-x and local-y
-            // qx_local = qx_global * c + qy_global * s
-            // qy_local = -qx_global * s + qy_global * c
             qx1 = qxStart * c + qyStart * s  // axial component at start
             qx2 = qxEnd * c + qyEnd * s      // axial component at end
-            q1 = -qxStart * s + qyStart * c  // perpendicular component at start
-            q2 = -qxEnd * s + qyEnd * c      // perpendicular component at end
+            q1 = -qxStart * s + qyStart * c  // +local-2 component at start
+            q2 = -qxEnd * s + qyEnd * c      // +local-2 component at end
           }
           break
         }
       }
-      if (c < 0 || (c === 0 && s > 0)) { q1 = -q1; q2 = -q2 }
     }
 
     const FEF = fixedEndForces(q1, q2, L)
@@ -322,9 +315,7 @@ export function analyze(model: StructureModel): SolverResult {
     const FEF    = fefStore[member.id] ?? [0,0,0,0,0,0]
     const f      = f_raw.map((v, i) => v - FEF[i])   // element end forces (local)
 
-    // Distributed load for interpolation — must use the same sign-flipped q that was
-    // used to build the FEF, otherwise V1/M1 (computed from that FEF) are inconsistent
-    // with the q used in memberInternalForces, producing wrong interpolated V and M.
+    // Distributed load for interpolation — same q values used in assembly (no flip).
     let q1 = 0, q2 = 0
     if (!isTruss) {
       for (const load of loads) {
@@ -333,7 +324,6 @@ export function analyze(model: StructureModel): SolverResult {
           if (mode === "local-axis") {
             q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
           } else {
-            // Global-axis mode: convert global X,Y components to local coordinates
             const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
             const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
             q1 = -qxStart * s + qyStart * c
@@ -342,16 +332,15 @@ export function analyze(model: StructureModel): SolverResult {
           break
         }
       }
-      if (c < 0 || (c === 0 && s > 0)) { q1 = -q1; q2 = -q2 }
     }
 
     memberEndForces[member.id] = {
       N1: -f[0],                        // tension positive
-      V1:  isTruss ? 0 : -f[1],         // reference software: positive = force on +face in +local-2 dir
-      M1:  isTruss ? 0 : -f[2],         // sagging positive (CCW on left face)
-      N2:  f[3],                         // tension positive at end 2
-      V2:  isTruss ? 0 :  f[4],         // reference software: symmetric at J-end
-      M2:  isTruss ? 0 : f[5],          // sagging positive
+      V1:  isTruss ? 0 : -f[1],         // positive = force on +face in +local-2 direction
+      M1:  isTruss ? 0 : -f[2],         // sagging positive — tension on −local-2 side
+      N2:  f[3],
+      V2:  isTruss ? 0 :  f[4],
+      M2:  isTruss ? 0 : f[5],
       q1, q2,
     }
   }

@@ -74,7 +74,7 @@ export default function App() {
 
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [diagramScale, setDiagramScale] = useState(10)
-  const [invertSFD, setInvertSFD] = useState(true)
+  const [invertSFD, setInvertSFD] = useState(false)
   const [invertBMD, setInvertBMD] = useState(false)
   const [deformationScale, setDeformationScale] = useState(25)
   const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(true)

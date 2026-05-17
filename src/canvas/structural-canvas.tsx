@@ -23,7 +23,7 @@ import {
   computeBoxSelectionWithNodes,
   computeBoxSelectionLoads,
 } from "@/canvas/box-selection"
-import { perpWorld, splitByZeroCrossings } from "@/lib/diagram-utils"
+import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
 import {
   SCALE,
   COLOR_BRAND,
@@ -753,9 +753,9 @@ export function StructuralCanvas({
 
           const PA = worldToScreen(A, rect)
           const PB = worldToScreen(B, rect)
-          const { nx, ny } = perpWorld(A.x, A.y, B.x, B.y)
-          // In screen space the positive perp is (nx, -ny)
-          const snx = nx, sny = -ny
+          const { l2x, l2y } = local2World(A.x, A.y, B.x, B.y)
+          // In screen space the positive local-2 is (l2x, -l2y) due to Y-flip
+          const snx = l2x, sny = -l2y
 
           const NUM_ARROWS = LOAD_DIST_NUM_ARROWS
           const mode = load.mode ?? "local-axis"
@@ -1032,8 +1032,8 @@ export function StructuralCanvas({
 
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
-        const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
-        const spx = nx, spy = -ny
+        const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
+        const spx = l2x, spy = -l2y
 
         if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
@@ -1118,13 +1118,10 @@ export function StructuralCanvas({
 
         if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
-        const dx = nB.x - nA.x
-        const isVertical = Math.abs(dx) < 1e-6  // vertical member (or near-vertical)
-        const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
-        // screen perp: nx unchanged, ny flipped (world Y-up → screen Y-down)
-        let spx = nx, spy = -ny
-        if (isVertical) { spx = -spx; spy = -spy }
-        if (invertSFD)  { spx = -spx; spy = -spy }
+        const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
+        // screen local-2: l2x unchanged, l2y flipped (world Y-up → screen Y-down)
+        let spx = l2x, spy = -l2y
+        if (invertSFD) { spx = -spx; spy = -spy }
 
         // Sample V at N_PTS+1 points
         const pts: Array<{ mx: number; my: number; dpx: number; dpy: number; V: number }> = []
@@ -1244,15 +1241,12 @@ export function StructuralCanvas({
 
         if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
-        const dx = nB.x - nA.x
-        const isVertical = Math.abs(dx) < 1e-6  // vertical member (or near-vertical)
-        const { nx, ny } = perpWorld(nA.x, nA.y, nB.x, nB.y)
-        let spx = nx, spy = -ny
-        if (isVertical) { spx = -spx; spy = -spy }
-        if (invertBMD)  { spx = -spx; spy = -spy }
+        const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
+        let spx = l2x, spy = -l2y
+        if (invertBMD) { spx = -spx; spy = -spy }
 
-        // Positive M = sagging = tension at bottom → draw BELOW member
-        // offset = -M * BASE * (spx, spy)  so positive M goes in -perp direction
+        // Positive M (sagging) draws on −local-2 side (tension fiber).
+        // offset = -M * BASE * (spx, spy)  → positive M goes in -local-2 direction
         const pts: Array<{ mx: number; my: number; dpx: number; dpy: number; M: number }> = []
         for (let i = 0; i <= N_PTS; i++) {
           const t = i / N_PTS

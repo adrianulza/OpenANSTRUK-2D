@@ -96,7 +96,7 @@ function DistributedLoadEditor({
               </div>
             )}
           </div>
-          <p className="text-[10px] text-gray-400 leading-snug">⊥ perpendicular to member  ·  + outward  ·  − inward</p>
+          <p className="text-[10px] text-gray-400 leading-snug">⊥ along +local-2 (i→j rotated 90° CCW)  ·  + that direction  ·  − opposite</p>
         </>
       )}
 

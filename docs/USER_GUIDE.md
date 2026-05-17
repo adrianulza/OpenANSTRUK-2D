@@ -62,10 +62,10 @@ Click a node to assign a point load. One load per node. In the flyout:
 Click a member to assign a distributed load. One load per member. In the flyout:
 - **Uniform** — same intensity along the full member length
 - **Asymmetric** — different intensity at each end (trapezoidal)
-- **Local axis** — load acts perpendicular to the member
+- **Local axis** — load acts along the member's **+local-2** direction (local-1 = i→j unit vector, local-2 = local-1 rotated +90° CCW)
 - **Global axis** — load acts along global X and/or Y directions
 
-Intensity in kN/m. Positive values follow the perpendicular CCW convention (local axis) or the positive axis direction (global axis).
+Intensity in kN/m. Positive values point in +local-2 (local-axis mode) or in +X / +Y (global-axis mode). The physical direction of a local-axis load depends on which end you drew first — reversing the member's start/end nodes rotates +local-2 by 180°.
 
 ### MODIFY
 Click a load to select it and edit its parameters in the flyout. The delete button in the flyout removes the load.

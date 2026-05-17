@@ -40,7 +40,7 @@ OpenAnstruk-2D/
 │   │   ├── model.ts                   # StructureModel types + immutable update helpers
 │   │   ├── solver.ts                  # DSM finite element solver
 │   │   ├── geometry.ts                # Coordinate transforms, hit-testing, snap
-│   │   ├── diagram-utils.ts           # perpWorld + splitByZeroCrossings
+│   │   ├── diagram-utils.ts           # local2World + splitByZeroCrossings
 │   │   ├── constants.ts               # Shared magic numbers, colors, formatValue()
 │   │   ├── units.ts                   # UnitSettings + display/parse helpers
 │   │   ├── flyout-panel-colors.ts     # FLYOUT_PANEL_COLORS palette
@@ -178,7 +178,7 @@ StructureModel {
 - One load per node (point loads), one load per member (distributed loads) — enforced by the UI.
 - Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (pin-jointed, axial only).
 - `PointLoad` stores `{fx, fy}` global components in kN. The flyout supports both direct component input and angular input (magnitude + angle) — conversion happens in the UI layer.
-- `DistributedLoad` supports two modes: `"local-axis"` (perpendicular to member, the default) and `"global-axis"` (X/Y world components).
+- `DistributedLoad` supports two modes: `"local-axis"` (default — `wStart`/`wEnd` act in the +local-2 direction, where local-2 = i→j unit vector rotated +90° CCW) and `"global-axis"` (X/Y world components).
 - `Section` supports two authoring modes: `manual` (E, I, A entered directly) and `parametric` (materialClass + shape + dimensions, computed via `lib/sections/compute.ts`).
 
 ---
@@ -206,20 +206,24 @@ The solver implements the **Direct Stiffness Method (DSM)** for 2D frame/truss e
 3. **Solve** — `K·d = F` solved for nodal displacements `d`.
 4. **Recovery** — Member end forces extracted from element stiffness and `d`. Internal force distributions interpolated along each member.
 
-### Sign Conventions
+### Sign Conventions (Theory-Pure)
+
+One rule for every member: local-1 = i→j unit vector `(c, s) = (dx/L, dy/L)`; local-2 = local-1 rotated **+90° CCW** = `(-s, c)`. No normalization, no quadrant flips, no special cases for vertical members.
 
 | Quantity | Positive direction |
 |----------|--------------------|
 | Axial N  | Tension |
-| Shear V  | Left portion pushing right portion upward (horizontal member) |
-| Moment M | Sagging (concave upward) |
+| Shear V  | Force on +face in **+local-2** direction (right-hand rule) |
+| Moment M | Sagging — CCW about +local-3 on +face; tension on **−local-2** side |
 | Rx reaction | Support pushes structure rightward |
 | Ry reaction | Support pushes structure upward |
 | Mz reaction | Support applies CCW moment to structure |
 
-### Distributed Load Sign Flip
+### Distributed Load (local-axis mode)
 
-When a member points left (`dx < 0`) or upward (`dy > 0`), the local load parameters `q1`/`q2` are negated in both the assembly and recovery phases. This keeps sign conventions consistent regardless of which direction a member was drawn.
+`wStart`/`wEnd` are taken as the perpendicular component along **+local-2**, with no quadrant flip. The same `q1, q2` values are used by both the fixed-end-force formula (assembly) and the internal-force interpolation (recovery), so end values and the curve between them stay consistent.
+
+A consequence of this pure convention: the physical direction of a `local-axis` load depends on the member's i→j ordering. Reversing the a/b nodes rotates +local-2 by 180° and flips the load direction. This is a property of the local-axis convention, not a bug.
 
 ### Internal Force Interpolation
 
@@ -230,7 +234,7 @@ M(x) = M1 − V1·x + q1·x²/2 + (q2−q1)·x³/(6L)
 
 where `x` is distance from the i-end along the member.
 
-> **Note:** `solver.ts` was untouched by the tab-sliced refactor. If a diagram looks wrong, suspect the display layer (perpendicular direction, invert toggle, vertical-member flip) before the solver.
+> **Note:** `solver.ts` numerical math (`localStiffness`, `transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
 
 ---
 
@@ -267,17 +271,15 @@ Scale: **80 px/m** (`SCALE`). Grid cell: **40 px** = **0.5 m** (`GRID`, `SNAP`).
 
 ### Diagram Rendering
 
-Each diagram (shear, moment, axial) samples 60 points per member, then uses `splitByZeroCrossings` from `lib/diagram-utils.ts` to break the sampled curve into positive and negative segments (blue / red fills). The segments are offset perpendicular to the member.
+Each diagram (shear, moment, axial) samples 60 points per member, then uses `splitByZeroCrossings` from `lib/diagram-utils.ts` to break the sampled curve into positive and negative segments (blue / red fills). The segments are offset along the member's local-2 axis — the same single rule for every member orientation.
 
-The moment diagram is **negated before offsetting** so that positive (sagging) moments draw on the tension fiber side — the structural convention.
+The moment diagram is **negated before offsetting** so that positive (sagging) moments draw on the −local-2 side (the tension fiber).
 
-For vertical members, the perpendicular direction is reversed so positive values appear on the left of the centerline.
-
-`invertSFD` and `invertBMD` flags allow the user to flip diagram orientation without changing the underlying sign convention.
+`invertSFD` and `invertBMD` flags are pure user preferences: they flip the display side, swap colors, and negate label signs without changing the underlying solver values. Both default to **off**.
 
 ### Diagram Utilities (`src/lib/diagram-utils.ts`)
 
-- `perpWorld(ax, ay, bx, by)` → unit CCW-perpendicular in world space, normalized so `ny ≥ 0` (or `nx > 0` for vertical).
+- `local2World(ax, ay, bx, by)` → unit local-2 vector `(-dy/L, dx/L)` in world space. No normalization, no quadrant flip — the pure right-hand-rule perpendicular for every member orientation.
 - `splitByZeroCrossings<P>(pts, valueOf)` → generic zero-crossing splitter, used by both SFD (`valueOf = p => p.V`) and BMD (`valueOf = p => p.M`).
 
 ---
@@ -346,7 +348,7 @@ There are currently no automated tests. Manual testing relies on the smoke matri
 - **template1** — simple beam (pin–roller); basic SFD/BMD
 - **template2** — cantilever; basic SFD/BMD
 - **template3** — portal frame, gravity load
-- **template4** — portal frame, lateral load — best canary for vertical-member diagrams
+- **template4** — portal frame, lateral load — best canary: exercises horizontal + vertical members, all three support types, and a `local-axis` distributed load on a vertical column
 - **template5** — asymmetric rafter; mixed member orientations
 
 If you're touching the solver, the canvas, or sign math: load each template in turn and visually compare against expected diagram shapes before opening a PR.

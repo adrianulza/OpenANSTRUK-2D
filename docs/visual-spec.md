@@ -4,7 +4,14 @@ Reference for manually verifying canvas output after changes to `structural-canv
 
 ---
 
-## Sign Conventions (Solver — reference software)
+## Sign Conventions (Theory-Pure)
+
+One rule for every member regardless of orientation. **No quadrant flips, no special cases.**
+
+### Local Axes (from i-end to j-end)
+- **Local-1 (x̂)**: `(c, s) = (dx/L, dy/L)` — unit vector i→j
+- **Local-2 (ŷ)**: `(-s, c)` — local-1 rotated +90° CCW. No normalization.
+- **Local-3 (ẑ)**: +Z, out of screen.
 
 ### Member Internal Forces
 These are the values the solver produces, which drive all diagram rendering.
@@ -12,8 +19,8 @@ These are the values the solver produces, which drive all diagram rendering.
 | Force | Positive means | Negative means |
 |---|---|---|
 | N (axial) | Tension | Compression |
-| V (shear) | Force on +face in +local-y direction (left portion pushes right portion upward for horizontal member) | Opposite |
-| M (moment) | Sagging (CCW on left face) | Hogging |
+| V (shear) | Force on +face acts in **+local-2** direction (right-hand rule) | Opposite |
+| M (moment) | Sagging — CCW about +local-3 on +face; tension on **−local-2** side | Hogging |
 
 ### Member End Force Extraction from local stiffness vector `f`
 ```
@@ -36,12 +43,12 @@ Formula gives the force the support exerts **on the structure** (not reaction on
 | Ry | Support pushes structure **upward** |
 | Mz | Support applies **CCW** moment to structure |
 
-### Distributed Load Sign Flip (Critical)
-When a member points **left** (`dx < 0`) or **upward** (`dy > 0`), `q1`/`q2` are negated in both:
-- Assembly phase (before computing fixed-end forces)
-- Recovery phase (before interpolating internal forces)
+### Distributed Load (local-axis mode)
+Positive `wStart`/`wEnd` acts in the **+local-2 direction**. The same `q1, q2` values flow into:
+- Assembly (fixed-end force formula)
+- Recovery (internal-force interpolation)
 
-This keeps the sign used for force interpolation consistent with what went into the FEF computation.
+No quadrant flip — they are equal everywhere. A consequence: the physical direction of a `local-axis` load depends on the member's i→j ordering. Reversing the a/b nodes rotates +local-2 by 180° and flips the load direction.
 
 ---
 
@@ -59,28 +66,28 @@ This keeps the sign used for force interpolation consistent with what went into 
 
 ## Shear Diagram (SFD)
 
-- Positive shear → fills **blue** on +perp side of member
-- Negative shear → fills **red** on -perp side
-- Vertical members → positive shear appears on **left** of centerline
+- Positive shear → fills **blue** on **+local-2** side of member
+- Negative shear → fills **red** on **−local-2** side
+- Same rule for every member (horizontal, vertical, diagonal) — no special cases
 - Sign change → diagram crosses member centerline cleanly, no gap or overlap
-- Simple beam with midspan download → left half positive (blue), right half negative (red)
+- Simple beam (drawn left→right) with midspan download → left half positive (blue, above), right half negative (red, below)
 
 ---
 
 ## Moment Diagram (BMD)
 
-- Sagging / positive → fills **blue** on tension-fiber side (below centerline for horizontal beam)
-- Hogging / negative → fills **red**
+- Sagging / positive → fills **blue** on **−local-2** (tension-fiber) side; below centerline for a horizontal beam drawn left→right
+- Hogging / negative → fills **red** on +local-2 side
 - Cantilever free end → moment returns to zero at tip
 - Simple beam midspan → peak positive (blue) at load point, zero at both supports
-- Diagram offset is **negated** relative to SFD — sagging draws opposite to +perp direction
+- Diagram offset is **negated** relative to SFD — sagging draws on the opposite side from +local-2
 
 ---
 
 ## Axial Diagram (AFD)
 
-- Tension / positive → fills **blue** on +perp side
-- Compression / negative → fills **red** on -perp side
+- Tension / positive → fills **blue** on +local-2 side
+- Compression / negative → fills **red** on −local-2 side
 - Truss members under pure axial → uniform color along full length
 - Zero axial → no fill, flat line on centerline
 
@@ -125,25 +132,22 @@ This keeps the sign used for force interpolation consistent with what went into 
 
 ## Invert Diagram Toggles
 
-Two independent invert flags exist in `App.tsx`: `invertSFD` (default **on**) and `invertBMD` (default **off**).
+Two independent invert flags exist in `App.tsx`: `invertSFD` and `invertBMD`. **Both default to off.** They are **pure user preferences** — they do not fix anything in the solver, they simply mirror the display to the opposite side for engineers who prefer that drawing style.
 
 ### What invert does
-Flips the perpendicular draw direction and swaps blue/red colors. Effectively mirrors the diagram to the other side of the member centerline.
+Flips the draw direction (to −local-2 instead of +local-2), swaps blue/red colors, and negates the label signs together — so "blue = the value the user is looking at as positive" stays consistent.
 
 | State | Effect |
 |---|---|
-| `invertSFD = true` (default) | SFD draws on opposite side — positive shear appears below centerline for horizontal beam |
-| `invertSFD = false` | SFD draws on standard +perp side |
-| `invertBMD = false` (default) | BMD sagging (positive) draws on tension-fiber side (below for horizontal beam) |
-| `invertBMD = true` | BMD flips — sagging draws above centerline |
-
-### Why invertSFD defaults to true
-reference software convention displays positive shear on the compression side (below beam for gravity load). The invert flag achieves this without changing solver sign logic.
+| `invertSFD = false` (default) | SFD draws on +local-2 side (theory-pure) |
+| `invertSFD = true` | SFD mirrors to −local-2 side; colors swap; labels negate |
+| `invertBMD = false` (default) | BMD draws sagging on −local-2 (tension-fiber) side |
+| `invertBMD = true` | BMD mirrors to +local-2 side; colors swap; labels negate |
 
 ### Verifying invert behavior
-- Toggle invert ON → diagram should mirror exactly to opposite side, colors swap (blue↔red)
-- Toggle invert OFF → diagram returns to standard side
-- Numeric labels should also negate when invert is on (sign flipped in label output)
+- Toggle invert ON → diagram mirrors exactly to opposite side, colors swap (blue↔red), labels negate
+- Toggle invert OFF → diagram returns to theory-pure side, original sign
+- Magnitudes are unchanged in both states (invert never touches the solver)
 - Applies only to SFD and BMD — AFD has no invert toggle
 
 ---
@@ -154,6 +158,6 @@ reference software convention displays positive shear on the compression side (b
 |---|---|
 | template1 (simple beam) | SFD left+/right−, BMD sagging blue at midspan |
 | template2 (cantilever) | BMD hogging red along full span, zero at free end |
-| template3 (portal gravity) | Combined vertical + perpendicular loads on frame |
-| template4 (portal lateral) | Vertical column diagrams, perpendicular direction correct |
-| template5 (asymmetric rafter) | Mixed member orientations, distributed load on inclined member |
+| template3 (portal gravity) | Combined gravity + lateral loads on frame |
+| template4 (portal lateral) | Vertical column diagrams — local-2 direction consistent with horizontal beam |
+| template5 (asymmetric rafter) | Mixed member orientations, distributed load on inclined member, sides predictable from i→j |

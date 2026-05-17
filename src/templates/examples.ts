@@ -198,7 +198,7 @@ export function template4PortalLateral(): StructureModel {
   const lDist = newLoadId()
   const lPt   = newLoadId()
 
-  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, mode: "local-axis", wStart: 10, wEnd: 10 }
+  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, mode: "local-axis", wStart: -10, wEnd: -10 }
   // Rightward lateral point load at joint A
   loads[lPt]   = { id: lPt,   type: "point", nodeId: nTL, fx: 10, fy: 0 }
 

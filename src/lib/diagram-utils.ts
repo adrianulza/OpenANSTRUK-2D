@@ -1,16 +1,16 @@
 // Geometry + segment-splitting helpers shared by the AFD/SFD/BMD diagram drawers.
 
 /**
- * Returns the CCW-perpendicular unit vector for a member, in world space.
- * Normalised so that ny ≥ 0 (or nx > 0 for vertical members).
- * In screen space the positive perp is (nx, -ny) due to the Y-axis flip.
+ * Returns the unit local-2 axis for a member, in world space.
+ * Local-1 is the i→j unit vector (c, s) = (dx/L, dy/L).
+ * Local-2 = local-1 rotated +90° CCW = (-s, c) = (-dy/L, dx/L).
+ * No normalization, no quadrant flip — the same single rule for every member orientation.
+ * In screen space the positive local-2 is (l2x, -l2y) due to the Y-axis flip.
  */
-export function perpWorld(ax: number, ay: number, bx: number, by: number): { nx: number; ny: number } {
+export function local2World(ax: number, ay: number, bx: number, by: number): { l2x: number; l2y: number } {
   const dx = bx - ax, dy = by - ay
-  let nx = -dy, ny = dx
-  if (ny < 0 || (ny === 0 && nx < 0)) { nx = -nx; ny = -ny }
   const len = Math.hypot(dx, dy)
-  return len < 1e-9 ? { nx: 0, ny: 1 } : { nx: nx / len, ny: ny / len }
+  return len < 1e-9 ? { l2x: 0, l2y: 1 } : { l2x: -dy / len, l2y: dx / len }
 }
 
 export interface DiagramPoint {
