@@ -39,19 +39,19 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 
 #### Features
 
-1. **More Shapes** (T-section, L-angle, C-channel, Pipe)
-   - New shape calculators in parametric section system
-   - Each shape: dimension inputs, SVG preview, full property computation
-   - Concrete gains T-section; Steel gains L-angle and C-channel
+1. **More Shapes** (T-section, L-angle, C-channel, Pipe) (DONE)
+   - New shape calculators in parametric section system  (DONE)
+   - Each shape: dimension inputs, SVG preview, full property computation  (DONE)
+   - Concrete gains T-section; Steel gains L-angle and C-channel (DONE)
 
 2. **Load Cases & Combinations**
-   - Define named load cases (DL, LL, Wind, Seismic, etc.)
-   - Automatic load combination envelopes (ASCE 7 / SNI basic combinations)
+   - Define named load cases (DL (SWDL and SIDL), LL, Wind, Seismic, etc.)
+   - Automatic load combination envelopes (ASCE 7-16 / SNI basic combinations)
    - Critical combination highlighting in Analyze tab
    - Required before self-weight and design checks
 
 3. **Self-Weight**
-   - Auto-generate gravity loads from section unit weight (γ, kN/m³)
+   - Auto-generate gravity loads from section unit weight, SW (γ, kN/m³)
    - Self-weight distributed into a Dead Load case at solve time
    - Project-level toggle (Include self-weight: on/off)
    - Depends on load cases being available
