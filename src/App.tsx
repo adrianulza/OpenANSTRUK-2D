@@ -20,6 +20,7 @@ import type {
 } from "@/lib/model"
 import { analyze } from "@/lib/solver"
 import type { AnalysisResult } from "@/lib/solver"
+import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
 import { FrameTemplateModal } from "@/templates/frame-template-modal"
 import { TrussTemplateModal } from "@/templates/truss-template-modal"
@@ -54,6 +55,19 @@ import {
 } from "@/lib/geometry"
 import { newMemberId } from "@/lib/model"
 import { HIT_TOL_NODE, HIT_TOL_MEMBER, LOAD_PT_ARROW_LEN_PX, LOAD_DIST_MAX_ARROW_PX } from "@/lib/constants"
+import {
+  type LoadCase,
+  type LoadCaseId,
+  type LoadCombination,
+  type LoadComboId,
+  type CodePreset,
+  DEFAULT_LOAD_CASES,
+  newLoadCaseId,
+  newLoadComboId,
+  nextPaletteColor,
+} from "@/lib/load-cases"
+import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
+import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>("Model")
@@ -98,6 +112,149 @@ export default function App() {
   const [activeDistWyEnd, setActiveDistWyEnd] = useState(5)
   const [selectedLoadId, setSelectedLoadId] = useState<LoadId | null>(null)
   const [selectedLoadIds, setSelectedLoadIds] = useState<string[]>([])
+
+  // ─── Load Cases & Combinations ─────────────────────────────────────────────
+  const [loadCases, setLoadCases] = useState<Record<LoadCaseId, LoadCase>>(DEFAULT_LOAD_CASES)
+  const [activeLoadCaseId, setActiveLoadCaseId] = useState<LoadCaseId>("dead")
+  const [combinations, setCombinations] = useState<Record<LoadComboId, LoadCombination>>({})
+  const [combinationsEnabled, setCombinationsEnabled] = useState(false)
+  const [combinationMode, setCombinationMode] = useState<"manual" | "code">("code")
+  const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("SNI1726-2019")
+  const [editingCombinationId, setEditingCombinationId] = useState<LoadComboId | null>(null)
+  // Analyze view selector
+  const [analyzeViewMode, setAnalyzeViewMode] = useState<AnalyzeViewMode>("case")
+  const [selectedCaseId, setSelectedCaseId] = useState<LoadCaseId>("dead")
+  const [selectedCombinationId, setSelectedCombinationId] = useState<LoadComboId | null>(null)
+
+  // Generate (or regenerate) preset combinations on demand. Auto-creates
+  // any missing load cases the preset needs (matched by kind, not name) and
+  // then replaces all preset-sourced combinations. Custom combos are kept.
+  const handleGenerateCodeCombinations = useCallback(() => {
+    // First, ensure every required kind has a corresponding case. We compute
+    // the final case map synchronously so the combo generator sees it too.
+    const needed = requiredKindsForPreset(selectedCodePreset)
+    const finalCases: Record<LoadCaseId, LoadCase> = { ...loadCases }
+    let paletteIdx = Object.keys(finalCases).length
+    for (const kind of needed) {
+      const exists = Object.values(finalCases).some((c) => c.kind === kind)
+      if (exists) continue
+      const id = newLoadCaseId()
+      finalCases[id] = {
+        id,
+        name: kind,
+        kind,
+        color: nextPaletteColor(paletteIdx++),
+      }
+    }
+    setLoadCases(finalCases)
+
+    // Replace all preset combos; keep custom combos.
+    setCombinations((prev) => {
+      const kept: Record<LoadComboId, LoadCombination> = {}
+      for (const [id, c] of Object.entries(prev)) {
+        if (c.source === "custom") kept[id] = c
+      }
+      const generated = generateCodeCombinations(selectedCodePreset, finalCases)
+      for (const c of generated) kept[c.id] = c
+      return kept
+    })
+  }, [selectedCodePreset, loadCases])
+
+  const handleAddLoadCase = useCallback(() => {
+    setLoadCases((prev) => {
+      const id = newLoadCaseId()
+      const count = Object.keys(prev).length
+      const newCase: LoadCase = {
+        id,
+        name: `Case ${count + 1}`,
+        kind: "Live",
+        color: nextPaletteColor(count),
+      }
+      return { ...prev, [id]: newCase }
+    })
+  }, [])
+
+  const handleDeleteLoadCase = useCallback(
+    (id: LoadCaseId) => {
+      if (loadCases[id]?.locked) return
+      setLoadCases((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      // If the deleted case was active, fall back to the first remaining case.
+      setActiveLoadCaseId((cur) => {
+        if (cur !== id) return cur
+        const remaining = Object.keys(loadCases).filter((k) => k !== id)
+        return remaining[0] ?? "dead"
+      })
+      // Drop any combinations referencing only this case; trim terms in others.
+      setCombinations((prev) => {
+        const next: Record<LoadComboId, LoadCombination> = {}
+        for (const [cid, combo] of Object.entries(prev)) {
+          const filteredTerms = combo.terms.filter((t) => t.caseId !== id)
+          if (filteredTerms.length === 0) continue
+          next[cid] = { ...combo, terms: filteredTerms }
+        }
+        return next
+      })
+      if (selectedCaseId === id) setSelectedCaseId("dead")
+    },
+    [loadCases, selectedCaseId]
+  )
+
+  const handlePatchLoadCase = useCallback(
+    (id: LoadCaseId, patch: Partial<LoadCase>) => {
+      setLoadCases((prev) => {
+        const existing = prev[id]
+        if (!existing) return prev
+        // Locked cases can only patch includeSelfWeight + color.
+        if (existing.locked) {
+          const safePatch: Partial<LoadCase> = {}
+          if ("includeSelfWeight" in patch) safePatch.includeSelfWeight = patch.includeSelfWeight
+          if ("color" in patch) safePatch.color = patch.color
+          return { ...prev, [id]: { ...existing, ...safePatch } }
+        }
+        return { ...prev, [id]: { ...existing, ...patch } }
+      })
+    },
+    []
+  )
+
+  const handleAddCombination = useCallback(() => {
+    const id = newLoadComboId()
+    const firstCaseId = Object.keys(loadCases)[0] ?? "dead"
+    const newCombo: LoadCombination = {
+      id,
+      name: `Combination ${Object.values(combinations).filter((c) => c.source === "custom").length + 1}`,
+      terms: [{ factor: 1.0, caseId: firstCaseId }],
+      source: "custom",
+      enabled: true,
+    }
+    setCombinations((prev) => ({ ...prev, [id]: newCombo }))
+    setEditingCombinationId(id)
+  }, [loadCases, combinations])
+
+  const handleDeleteCombination = useCallback((id: LoadComboId) => {
+    setCombinations((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    setEditingCombinationId((cur) => (cur === id ? null : cur))
+    setSelectedCombinationId((cur) => (cur === id ? null : cur))
+  }, [])
+
+  const handlePatchCombination = useCallback(
+    (id: LoadComboId, patch: Partial<LoadCombination>) => {
+      setCombinations((prev) => {
+        const existing = prev[id]
+        if (!existing) return prev
+        return { ...prev, [id]: { ...existing, ...patch } }
+      })
+    },
+    []
+  )
 
   const [moveNodeMode, setMoveNodeMode] = useState<"coordinates" | "screen">("coordinates")
   const moveNodeModeRef = useRef<"coordinates" | "screen">("coordinates")
@@ -736,6 +893,19 @@ export default function App() {
         />
 
         <main className="flex-1 relative overflow-hidden">
+          {activeTab === "Analyze" && (
+            <AnalyzeViewSelector
+              combinationsEnabled={combinationsEnabled}
+              loadCases={loadCases}
+              combinations={combinations}
+              analyzeViewMode={analyzeViewMode}
+              onAnalyzeViewModeChange={setAnalyzeViewMode}
+              selectedCaseId={selectedCaseId}
+              onSelectedCaseIdChange={setSelectedCaseId}
+              selectedCombinationId={selectedCombinationId}
+              onSelectedCombinationIdChange={setSelectedCombinationId}
+            />
+          )}
           <FlyoutPanel
             activeTab={activeTab}
             activeTool={activeTool}
@@ -810,6 +980,25 @@ export default function App() {
             moveNodeSelectedId={moveNodeSelectedId}
             onMoveNodeSelectId={setMoveNodeSelectedId}
             onMoveNode={handleMoveNode}
+            loadCases={loadCases}
+            activeLoadCaseId={activeLoadCaseId}
+            onActiveLoadCaseChange={setActiveLoadCaseId}
+            onAddLoadCase={handleAddLoadCase}
+            onDeleteLoadCase={handleDeleteLoadCase}
+            onPatchLoadCase={handlePatchLoadCase}
+            combinations={combinations}
+            combinationsEnabled={combinationsEnabled}
+            onCombinationsEnabledChange={setCombinationsEnabled}
+            combinationMode={combinationMode}
+            onCombinationModeChange={setCombinationMode}
+            selectedCodePreset={selectedCodePreset}
+            onSelectedCodePresetChange={setSelectedCodePreset}
+            onAddCombination={handleAddCombination}
+            onDeleteCombination={handleDeleteCombination}
+            onPatchCombination={handlePatchCombination}
+            onGenerateCodeCombinations={handleGenerateCodeCombinations}
+            editingCombinationId={editingCombinationId}
+            onEditingCombinationIdChange={setEditingCombinationId}
           />
 
           <StructuralCanvas

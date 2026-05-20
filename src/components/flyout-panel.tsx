@@ -21,6 +21,15 @@ import { ReactionToolContent } from "@/tabs/analyze/tools/reaction-tool"
 import { AnalyzeSelectContent } from "@/tabs/analyze/tools/select-tool"
 import { DiagramToolContent } from "@/tabs/analyze/tools/diagram-tool"
 import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
+import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
+import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
+import type {
+  LoadCase,
+  LoadCaseId,
+  LoadCombination,
+  LoadComboId,
+  CodePreset,
+} from "@/lib/load-cases"
 
 export type SelectedLoadType = "point" | "uniform" | "asymmetric" | null
 
@@ -92,6 +101,26 @@ interface FlyoutPanelProps {
   onShowDiagramMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   onToolSelect?: (tool: ToolType) => void
+  // Load cases & combinations
+  loadCases?: Record<LoadCaseId, LoadCase>
+  activeLoadCaseId?: LoadCaseId
+  onActiveLoadCaseChange?: (id: LoadCaseId) => void
+  onAddLoadCase?: () => void
+  onDeleteLoadCase?: (id: LoadCaseId) => void
+  onPatchLoadCase?: (id: LoadCaseId, patch: Partial<LoadCase>) => void
+  combinations?: Record<LoadComboId, LoadCombination>
+  combinationsEnabled?: boolean
+  onCombinationsEnabledChange?: (v: boolean) => void
+  combinationMode?: "manual" | "code"
+  onCombinationModeChange?: (m: "manual" | "code") => void
+  selectedCodePreset?: CodePreset
+  onSelectedCodePresetChange?: (p: CodePreset) => void
+  onAddCombination?: () => void
+  onDeleteCombination?: (id: LoadComboId) => void
+  onPatchCombination?: (id: LoadComboId, patch: Partial<LoadCombination>) => void
+  onGenerateCodeCombinations?: () => void
+  editingCombinationId?: LoadComboId | null
+  onEditingCombinationIdChange?: (id: LoadComboId | null) => void
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -176,14 +205,36 @@ export function FlyoutPanel({
   moveNodeSelectedId,
   onMoveNodeSelectId,
   onMoveNode,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
+  onAddLoadCase,
+  onDeleteLoadCase,
+  onPatchLoadCase,
+  combinations,
+  combinationsEnabled,
+  onCombinationsEnabledChange,
+  combinationMode,
+  onCombinationModeChange,
+  selectedCodePreset,
+  onSelectedCodePresetChange,
+  onAddCombination,
+  onDeleteCombination,
+  onPatchCombination,
+  onGenerateCodeCombinations,
+  editingCombinationId,
+  onEditingCombinationIdChange,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
+
+  const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
 
   return (
     <div
       data-flyout-root
       className={cn(
-        "absolute top-3 left-3 w-[200px] bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-10",
+        "absolute top-3 left-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-10",
+        wide ? "w-[640px]" : "w-[200px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}
@@ -272,6 +323,25 @@ export function FlyoutPanel({
           onMoveNodeSelectId={onMoveNodeSelectId}
           onMoveNode={onMoveNode}
           onToolSelect={onToolSelect}
+          loadCases={loadCases}
+          activeLoadCaseId={activeLoadCaseId}
+          onActiveLoadCaseChange={onActiveLoadCaseChange}
+          onAddLoadCase={onAddLoadCase}
+          onDeleteLoadCase={onDeleteLoadCase}
+          onPatchLoadCase={onPatchLoadCase}
+          combinations={combinations}
+          combinationsEnabled={combinationsEnabled}
+          onCombinationsEnabledChange={onCombinationsEnabledChange}
+          combinationMode={combinationMode}
+          onCombinationModeChange={onCombinationModeChange}
+          selectedCodePreset={selectedCodePreset}
+          onSelectedCodePresetChange={onSelectedCodePresetChange}
+          onAddCombination={onAddCombination}
+          onDeleteCombination={onDeleteCombination}
+          onPatchCombination={onPatchCombination}
+          onGenerateCodeCombinations={onGenerateCodeCombinations}
+          editingCombinationId={editingCombinationId}
+          onEditingCombinationIdChange={onEditingCombinationIdChange}
         />
       </div>
     </div>
@@ -360,6 +430,25 @@ function FlyoutContent({
   moveNodeSelectedId,
   onMoveNodeSelectId,
   onMoveNode,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
+  onAddLoadCase,
+  onDeleteLoadCase,
+  onPatchLoadCase,
+  combinations,
+  combinationsEnabled,
+  onCombinationsEnabledChange,
+  combinationMode,
+  onCombinationModeChange,
+  selectedCodePreset,
+  onSelectedCodePresetChange,
+  onAddCombination,
+  onDeleteCombination,
+  onPatchCombination,
+  onGenerateCodeCombinations,
+  editingCombinationId,
+  onEditingCombinationIdChange,
 }: FlyoutContentProps) {
   if (activeTab === "Model") {
     switch (activeTool) {
@@ -432,6 +521,36 @@ function FlyoutContent({
 
   if (activeTab === "Load") {
     switch (activeTool) {
+      case "LOAD_CASE":
+        return (
+          <LoadCaseToolContent
+            loadCases={loadCases ?? {}}
+            activeLoadCaseId={activeLoadCaseId ?? "dead"}
+            onActiveLoadCaseChange={onActiveLoadCaseChange ?? (() => {})}
+            onAddLoadCase={onAddLoadCase ?? (() => {})}
+            onDeleteLoadCase={onDeleteLoadCase ?? (() => {})}
+            onPatchLoadCase={onPatchLoadCase ?? (() => {})}
+          />
+        )
+      case "LOAD_COMBINATION":
+        return (
+          <LoadCombinationToolContent
+            loadCases={loadCases ?? {}}
+            combinations={combinations ?? {}}
+            combinationsEnabled={combinationsEnabled ?? false}
+            onCombinationsEnabledChange={onCombinationsEnabledChange ?? (() => {})}
+            combinationMode={combinationMode ?? "code"}
+            onCombinationModeChange={onCombinationModeChange ?? (() => {})}
+            selectedCodePreset={selectedCodePreset ?? "SNI1726-2019"}
+            onSelectedCodePresetChange={onSelectedCodePresetChange ?? (() => {})}
+            onAddCombination={onAddCombination ?? (() => {})}
+            onDeleteCombination={onDeleteCombination ?? (() => {})}
+            onPatchCombination={onPatchCombination ?? (() => {})}
+            onGenerateCodeCombinations={onGenerateCodeCombinations ?? (() => {})}
+            editingCombinationId={editingCombinationId ?? null}
+            onEditingCombinationIdChange={onEditingCombinationIdChange ?? (() => {})}
+          />
+        )
       case "POINT_LOAD":
         return (
           <PointLoadToolContent
@@ -443,6 +562,9 @@ function FlyoutContent({
             onMagnitudeChange={onPtMagnitudeChange}
             angle={activePtAngle ?? 90}
             onAngleChange={onPtAngleChange}
+            loadCases={loadCases}
+            activeLoadCaseId={activeLoadCaseId}
+            onActiveLoadCaseChange={onActiveLoadCaseChange}
           />
         )
       case "DISTRIBUTED_LOAD":
@@ -466,6 +588,9 @@ function FlyoutContent({
             onWxEndChange={onDistWxEndChange}
             onWyStartChange={onDistWyStartChange}
             onWyEndChange={onDistWyEndChange}
+            loadCases={loadCases}
+            activeLoadCaseId={activeLoadCaseId}
+            onActiveLoadCaseChange={onActiveLoadCaseChange}
           />
         )
       case "MODIFY_LOAD": {
@@ -477,6 +602,9 @@ function FlyoutContent({
             model={model ?? null}
             onModify={onModifyLoad}
             onModifyByType={onModifyLoadsByType}
+            loadCases={loadCases}
+            activeLoadCaseId={activeLoadCaseId}
+            onActiveLoadCaseChange={onActiveLoadCaseChange}
           />
         )
       }
@@ -486,6 +614,9 @@ function FlyoutContent({
             selectedLoadIds={selectedLoadIds}
             model={model}
             onDelete={onDeleteLoadIds}
+            loadCases={loadCases}
+            activeLoadCaseId={activeLoadCaseId}
+            onActiveLoadCaseChange={onActiveLoadCaseChange}
           />
         )
       }

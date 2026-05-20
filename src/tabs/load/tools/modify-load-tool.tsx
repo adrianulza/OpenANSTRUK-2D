@@ -4,6 +4,8 @@ import type { Load, DistributedLoad, PointLoad, StructureModel } from "@/lib/mod
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { CaseSelectorRow } from "./case-selector-row"
+import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
 function DistributedLoadEditor({
   load,
@@ -150,12 +152,18 @@ export function ModifyLoadToolContent({
   selectedLoadIds = [],
   model,
   onModifyByType,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
 }: {
   selectedLoad: Load | null
   selectedLoadIds?: string[]
   model: StructureModel | null
   onModify?: (patch: Partial<Load>) => void
   onModifyByType?: (type: "point" | "distributed", patch: Partial<Load>) => void
+  loadCases?: Record<LoadCaseId, LoadCase>
+  activeLoadCaseId?: LoadCaseId
+  onActiveLoadCaseChange?: (id: LoadCaseId) => void
 }) {
   const [editFx, setEditFx] = React.useState<number>(0)
   const [editFy, setEditFy] = React.useState<number>(0)
@@ -185,11 +193,23 @@ export function ModifyLoadToolContent({
     setEditFy(firstPoint.fy)
   }, [firstPoint])
 
+  const caseSelector =
+    loadCases && activeLoadCaseId && onActiveLoadCaseChange ? (
+      <CaseSelectorRow
+        loadCases={loadCases}
+        value={activeLoadCaseId}
+        onChange={onActiveLoadCaseChange}
+      />
+    ) : null
+
   if (totalCount === 0) {
     return (
-      <p className="text-xs text-gray-500 leading-relaxed">
-        Click a load or drag a box on the canvas to select loads
-      </p>
+      <div className="space-y-3">
+        {caseSelector}
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Click a load or drag a box on the canvas to select loads
+        </p>
+      </div>
     )
   }
 
@@ -203,6 +223,7 @@ export function ModifyLoadToolContent({
 
   return (
     <div className="space-y-3">
+      {caseSelector}
       {totalCount > 1 && (
         <div className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5">
           <span className="text-xs text-gray-600">{totalCount} loads selected</span>

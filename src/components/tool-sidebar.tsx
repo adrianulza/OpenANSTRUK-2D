@@ -13,6 +13,8 @@ import {
   Anchor,
   Trash2,
   Move,
+  ListChecks,
+  Combine,
 } from "lucide-react"
 
 export type TabType = "Model" | "Load" | "Analyze"
@@ -24,6 +26,8 @@ export type ToolType =
   | "MATERIAL"
   | "MOVE_NODE"
   | "DELETE"
+  | "LOAD_CASE"
+  | "LOAD_COMBINATION"
   | "POINT_LOAD"
   | "DISTRIBUTED_LOAD"
   | "MODIFY_LOAD"
@@ -59,6 +63,8 @@ const modelTools: Tool[] = [
 ]
 
 const loadTools: Tool[] = [
+  { id: "LOAD_CASE", label: "LOAD\nCASE", icon: <ListChecks size={20} /> },
+  { id: "LOAD_COMBINATION", label: "LOAD\nCOMBO", icon: <Combine size={20} /> },
   { id: "POINT_LOAD", label: "POINT", icon: <ArrowDown size={20} /> },
   { id: "DISTRIBUTED_LOAD", label: "DISTRIBUTED", icon: <AlignVerticalJustifyEnd size={20} /> },
   { id: "MODIFY_LOAD", label: "MODIFY", icon: <Pencil size={20} /> },

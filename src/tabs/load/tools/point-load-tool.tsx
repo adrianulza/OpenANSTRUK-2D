@@ -2,6 +2,8 @@ import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { CaseSelectorRow } from "./case-selector-row"
+import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
 export function PointLoadToolContent({
   inputMode,
@@ -12,6 +14,9 @@ export function PointLoadToolContent({
   onMagnitudeChange,
   angle,
   onAngleChange,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
 }: {
   inputMode: "principal" | "angular"
   onInputModeChange?: (mode: "principal" | "angular") => void
@@ -21,9 +26,19 @@ export function PointLoadToolContent({
   onMagnitudeChange?: (v: number) => void
   angle: number
   onAngleChange?: (angle: number) => void
+  loadCases?: Record<LoadCaseId, LoadCase>
+  activeLoadCaseId?: LoadCaseId
+  onActiveLoadCaseChange?: (id: LoadCaseId) => void
 }) {
   return (
     <div className="space-y-3">
+      {loadCases && activeLoadCaseId && onActiveLoadCaseChange && (
+        <CaseSelectorRow
+          loadCases={loadCases}
+          value={activeLoadCaseId}
+          onChange={onActiveLoadCaseChange}
+        />
+      )}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Input Mode</Label>
         <div className="flex gap-1">

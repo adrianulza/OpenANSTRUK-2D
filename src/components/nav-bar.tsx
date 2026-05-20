@@ -13,6 +13,11 @@ interface NavBarProps {
   onOpenFrameTemplate: () => void
   onOpenTrussTemplate: () => void
   onOpenExamplesModal: () => void
+  /**
+   * Optional sub-bar rendered immediately below the tab row.
+   * Used by App.tsx to surface the Analyze view selector on the Analyze tab.
+   */
+  subBar?: React.ReactNode
 }
 
 const tabs: TabType[] = ["Model", "Load", "Analyze"]
@@ -91,6 +96,7 @@ export function NavBar({
   onOpenFrameTemplate,
   onOpenTrussTemplate,
   onOpenExamplesModal,
+  subBar,
 }: NavBarProps) {
   const [fileOpen, setFileOpen] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 })
@@ -225,6 +231,8 @@ export function NavBar({
           ))}
         </nav>
       </div>
+
+      {subBar}
 
       {dropdown}
     </header>

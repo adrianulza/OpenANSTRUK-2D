@@ -1,20 +1,41 @@
 import type { StructureModel } from "@/lib/model"
 import { Trash2 } from "lucide-react"
+import { CaseSelectorRow } from "./case-selector-row"
+import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
 export function DeleteLoadToolContent({
   selectedLoadIds,
   model,
   onDelete,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
 }: {
   selectedLoadIds: string[]
   model?: StructureModel | null
   onDelete?: () => void
+  loadCases?: Record<LoadCaseId, LoadCase>
+  activeLoadCaseId?: LoadCaseId
+  onActiveLoadCaseChange?: (id: LoadCaseId) => void
 }) {
+  const caseSelector =
+    loadCases && activeLoadCaseId && onActiveLoadCaseChange ? (
+      <CaseSelectorRow
+        label="Filter by case"
+        loadCases={loadCases}
+        value={activeLoadCaseId}
+        onChange={onActiveLoadCaseChange}
+      />
+    ) : null
+
   if (selectedLoadIds.length === 0) {
     return (
-      <p className="text-xs text-gray-500 leading-relaxed">
-        Click a load or drag a box on the canvas to select loads
-      </p>
+      <div className="space-y-3">
+        {caseSelector}
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Click a load or drag a box on the canvas to select loads
+        </p>
+      </div>
     )
   }
 
@@ -26,6 +47,7 @@ export function DeleteLoadToolContent({
 
   return (
     <div className="space-y-3">
+      {caseSelector}
       <div className="px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-100 text-[12px] text-gray-600">
         {parts.join(", ")} selected
       </div>

@@ -1,6 +1,8 @@
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { CaseSelectorRow } from "./case-selector-row"
+import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
 export function DistributedLoadToolContent({
   distType,
@@ -21,6 +23,9 @@ export function DistributedLoadToolContent({
   onWxEndChange,
   onWyStartChange,
   onWyEndChange,
+  loadCases,
+  activeLoadCaseId,
+  onActiveLoadCaseChange,
 }: {
   distType: "uniform" | "asymmetric"
   distMode: "local-axis" | "global-axis"
@@ -40,9 +45,19 @@ export function DistributedLoadToolContent({
   onWxEndChange?: (v: number) => void
   onWyStartChange?: (v: number) => void
   onWyEndChange?: (v: number) => void
+  loadCases?: Record<LoadCaseId, LoadCase>
+  activeLoadCaseId?: LoadCaseId
+  onActiveLoadCaseChange?: (id: LoadCaseId) => void
 }) {
   return (
     <div className="space-y-3">
+      {loadCases && activeLoadCaseId && onActiveLoadCaseChange && (
+        <CaseSelectorRow
+          loadCases={loadCases}
+          value={activeLoadCaseId}
+          onChange={onActiveLoadCaseChange}
+        />
+      )}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Input Mode</Label>
         <div className="flex gap-1">
