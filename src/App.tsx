@@ -285,6 +285,12 @@ export default function App() {
     setActiveTool(tab === "Analyze" ? "REACTION" : null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
+    setSelectedLoadId(null)
+    setSelectedLoadIds([])
+    setMoveNodeSelectedId(null)
+    setHoveredNodeId(null)
+    setHoveredMemberId(null)
+    setHoveredLoadId(null)
   }, [])
 
   // Picks the first available section key, or falls back to a known default.
@@ -343,7 +349,12 @@ export default function App() {
     setActiveTool(tool)
     setPendingFrameStart(null)
     setSelection(emptySelection())
+    setSelectedLoadId(null)
+    setSelectedLoadIds([])
     setMoveNodeSelectedId(null)
+    setHoveredNodeId(null)
+    setHoveredMemberId(null)
+    setHoveredLoadId(null)
   }, [])
 
   const handleCloseFlyout = useCallback(() => {
@@ -353,6 +364,9 @@ export default function App() {
     setSelectedLoadId(null)
     setSelectedLoadIds([])
     setMoveNodeSelectedId(null)
+    setHoveredNodeId(null)
+    setHoveredMemberId(null)
+    setHoveredLoadId(null)
   }, [])
 
   // Shared by all three template modals (Beam / Frame / Truss).
@@ -403,10 +417,16 @@ export default function App() {
     } else if (activeTab === "Load" && activeTool === "POINT_LOAD") {
       const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
       setHoveredNodeId(nodeId)
+      setHoveredMemberId(null)
+      setHoveredLoadId(null)
     } else if (activeTab === "Load" && activeTool === "DISTRIBUTED_LOAD") {
       const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
       setHoveredMemberId(memberId)
+      setHoveredNodeId(null)
+      setHoveredLoadId(null)
     } else if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")) {
+      setHoveredNodeId(null)
+      setHoveredMemberId(null)
       const loads = Object.values(model.loads)
       const ARROW_W = LOAD_PT_ARROW_LEN_PX / SCALE
 
@@ -462,7 +482,6 @@ export default function App() {
       setHoveredLoadId(null)
     }
   }, [activeTab, activeTool, model, isMobile])
-
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -747,6 +766,8 @@ export default function App() {
 
   const handleClearSelection = useCallback(() => {
     setSelection(emptySelection())
+    setSelectedLoadId(null)
+    setSelectedLoadIds([])
   }, [])
 
   const handleDeleteSelection = useCallback(() => {

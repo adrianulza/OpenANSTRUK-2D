@@ -159,8 +159,8 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
           <div
             className={`grid items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 pt-1 ${
               combinationMode === "code"
-                ? "grid-cols-[20px_160px_1fr]"
-                : "grid-cols-[20px_160px_1fr_60px]"
+                ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
+                : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
             }`}
           >
             <span />
@@ -226,8 +226,8 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             <div
               className={`grid items-center gap-2 px-1 ${
                 combinationMode === "code"
-                  ? "grid-cols-[20px_160px_1fr]"
-                  : "grid-cols-[20px_160px_1fr_60px]"
+                  ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
+                  : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
               }`}
             >
               <span className="text-[11px] text-gray-500">◆</span>
@@ -378,8 +378,8 @@ function ComboRow({
       <div
         className={`grid items-center gap-2 py-1 px-1 ${
           readonly
-            ? "grid-cols-[20px_160px_1fr]"
-            : "grid-cols-[20px_160px_1fr_60px]"
+            ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
+            : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
         }`}
         style={{ opacity: dim ? 0.5 : 1 }}
       >

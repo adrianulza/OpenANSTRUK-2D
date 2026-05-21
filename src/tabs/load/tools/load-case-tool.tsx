@@ -37,7 +37,7 @@ export function LoadCaseToolContent({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+      <div className="grid grid-cols-[1fr_90px_36px_32px_24px] md:grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
         <span>Name</span>
         <span>Type</span>
         <span className="text-center">Loads</span>
@@ -102,7 +102,7 @@ function CaseRow({
   const loadsCount = "—"
 
   return (
-    <div className="grid grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2">
+    <div className="grid grid-cols-[1fr_90px_36px_32px_24px] md:grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2">
       <Input
         value={loadCase.name}
         disabled={loadCase.locked}
