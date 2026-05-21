@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState, startTransition } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
@@ -19,8 +19,13 @@ import type {
   Load,
   LoadId,
 } from "@/lib/model"
-import { analyze } from "@/lib/solver"
-import type { AnalysisResult } from "@/lib/solver"
+import {
+  solveAllCases,
+  combineResults,
+  envelopeResults,
+  pickDisplayedResult,
+} from "@/lib/analysis-pipeline"
+import type { AnalysisResult } from "@/lib/analysis-pipeline"
 import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
 import { FrameTemplateModal } from "@/templates/frame-template-modal"
@@ -88,7 +93,7 @@ export default function App() {
   const [selection, setSelection] = useState<MultiSelection>(emptySelection)
   const [pendingFrameStart, setPendingFrameStart] = useState<NodeId | null>(null)
 
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
+  const [envelopeComboIds, setEnvelopeComboIds] = useState<LoadComboId[]>([])
   const [diagramScale, setDiagramScale] = useState(10)
   const [invertSFD, setInvertSFD] = useState(false)
   const [invertBMD, setInvertBMD] = useState(false)
@@ -146,21 +151,32 @@ export default function App() {
         name: kind,
         kind,
         color: nextPaletteColor(paletteIdx++),
+        enabled: true,
       }
     }
     setLoadCases(finalCases)
 
     // Replace all preset combos; keep custom combos.
+    const generated = generateCodeCombinations(selectedCodePreset, finalCases)
     setCombinations((prev) => {
       const kept: Record<LoadComboId, LoadCombination> = {}
       for (const [id, c] of Object.entries(prev)) {
         if (c.source === "custom") kept[id] = c
       }
-      const generated = generateCodeCombinations(selectedCodePreset, finalCases)
       for (const c of generated) kept[c.id] = c
       return kept
     })
-  }, [selectedCodePreset, loadCases])
+    // Drop old preset IDs from the envelope set, add the newly generated ones.
+    setEnvelopeComboIds((prev) => {
+      const presetIds = new Set(
+        Object.values(combinations)
+          .filter((c) => c.source === "preset")
+          .map((c) => c.id),
+      )
+      const kept = prev.filter((id) => !presetIds.has(id))
+      return [...kept, ...generated.map((c) => c.id)]
+    })
+  }, [selectedCodePreset, loadCases, combinations])
 
   const handleAddLoadCase = useCallback(() => {
     setLoadCases((prev) => {
@@ -171,6 +187,7 @@ export default function App() {
         name: `Case ${count + 1}`,
         kind: "Live",
         color: nextPaletteColor(count),
+        enabled: true,
       }
       return { ...prev, [id]: newCase }
     })
@@ -210,10 +227,12 @@ export default function App() {
       setLoadCases((prev) => {
         const existing = prev[id]
         if (!existing) return prev
-        // Locked cases can only patch includeSelfWeight + color.
+        // Locked cases can only patch enabled + color. (For Selfweight, `enabled`
+        // controls whether body force is added; real self-weight computation is
+        // deferred but the toggle is wired through.)
         if (existing.locked) {
           const safePatch: Partial<LoadCase> = {}
-          if ("includeSelfWeight" in patch) safePatch.includeSelfWeight = patch.includeSelfWeight
+          if ("enabled" in patch) safePatch.enabled = patch.enabled
           if ("color" in patch) safePatch.color = patch.color
           return { ...prev, [id]: { ...existing, ...safePatch } }
         }
@@ -234,6 +253,7 @@ export default function App() {
       enabled: true,
     }
     setCombinations((prev) => ({ ...prev, [id]: newCombo }))
+    setEnvelopeComboIds((prev) => [...prev, id])
     setEditingCombinationId(id)
   }, [loadCases, combinations])
 
@@ -243,9 +263,30 @@ export default function App() {
       delete next[id]
       return next
     })
+    setEnvelopeComboIds((prev) => prev.filter((x) => x !== id))
     setEditingCombinationId((cur) => (cur === id ? null : cur))
     setSelectedCombinationId((cur) => (cur === id ? null : cur))
   }, [])
+
+  // Reassign every selected load (single or multi-selection) to a new case.
+  const handleReassignLoadCase = useCallback(
+    (newCaseId: LoadCaseId) => {
+      const ids = selectedLoadIds.length > 0
+        ? selectedLoadIds
+        : (selectedLoadId ? [selectedLoadId] : [])
+      if (ids.length === 0) return
+      setModel((m) => {
+        const nextLoads = { ...m.loads }
+        for (const id of ids) {
+          const l = nextLoads[id]
+          if (!l) continue
+          nextLoads[id] = { ...l, loadCaseId: newCaseId }
+        }
+        return { ...m, loads: nextLoads }
+      })
+    },
+    [selectedLoadId, selectedLoadIds],
+  )
 
   const handlePatchCombination = useCallback(
     (id: LoadComboId, patch: Partial<LoadCombination>) => {
@@ -274,11 +315,37 @@ export default function App() {
   )
 
 
-  useEffect(() => {
-    if (activeTab !== "Analyze") return
-    const r = analyze(model)
-    startTransition(() => setAnalysisResult(r.ok ? r : null))
-  }, [model, activeTab])
+  // Case-aware analysis pipeline. Each enabled case solves once; combinations and
+  // envelope are derived by linear superposition. See src/lib/analysis-pipeline.ts.
+  const caseResults = useMemo(
+    () => solveAllCases(model, loadCases),
+    [model, loadCases],
+  )
+
+  const comboResults = useMemo(() => {
+    const out: Record<LoadComboId, AnalysisResult | null> = {}
+    for (const [id, c] of Object.entries(combinations)) {
+      out[id] = combineResults(caseResults, c)
+    }
+    return out
+  }, [caseResults, combinations])
+
+  const envelopeResult = useMemo(
+    () => envelopeResults(comboResults, envelopeComboIds),
+    [comboResults, envelopeComboIds],
+  )
+
+  const displayedResult = useMemo(
+    () => pickDisplayedResult(
+      analyzeViewMode,
+      caseResults,
+      comboResults,
+      envelopeResult,
+      selectedCaseId,
+      selectedCombinationId,
+    ),
+    [analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
+  )
 
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
@@ -306,7 +373,6 @@ export default function App() {
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
-    setAnalysisResult(null)
     setSelectedLoadId(null)
   }, [])
 
@@ -325,7 +391,6 @@ export default function App() {
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
-    setAnalysisResult(null)
     setSelectedLoadId(null)
   }, [])
 
@@ -340,7 +405,6 @@ export default function App() {
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
-    setAnalysisResult(null)
     setSelectedLoadId(null)
     setShowExamplesModal(false)
   }, [])
@@ -379,7 +443,6 @@ export default function App() {
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
-    setAnalysisResult(null)
     setSelectedLoadId(null)
     setTemplateModal(null)
   }, [])
@@ -614,7 +677,7 @@ export default function App() {
             ...m,
             loads: {
               ...m.loads,
-              [id]: { id, type: "point" as const, nodeId, fx, fy },
+              [id]: { id, type: "point" as const, nodeId, loadCaseId: activeLoadCaseId, fx, fy },
             },
           }))
           return
@@ -634,7 +697,7 @@ export default function App() {
               ...m,
               loads: {
                 ...m.loads,
-                [id]: { id, type: "distributed" as const, memberId, mode: "local-axis", wStart: activeDistWStart, wEnd },
+                [id]: { id, type: "distributed" as const, memberId, loadCaseId: activeLoadCaseId, mode: "local-axis", wStart: activeDistWStart, wEnd },
               },
             }))
           } else {
@@ -645,7 +708,7 @@ export default function App() {
                 ...m,
                 loads: {
                   ...m.loads,
-                  [id]: { id, type: "distributed" as const, memberId, mode: "global-axis", wxStart: activeDistWxStart, wxEnd, wyStart: 0, wyEnd: 0 },
+                  [id]: { id, type: "distributed" as const, memberId, loadCaseId: activeLoadCaseId, mode: "global-axis", wxStart: activeDistWxStart, wxEnd, wyStart: 0, wyEnd: 0 },
                 },
               }))
             } else {
@@ -654,7 +717,7 @@ export default function App() {
                 ...m,
                 loads: {
                   ...m.loads,
-                  [id]: { id, type: "distributed" as const, memberId, mode: "global-axis", wxStart: 0, wxEnd: 0, wyStart: activeDistWyStart, wyEnd },
+                  [id]: { id, type: "distributed" as const, memberId, loadCaseId: activeLoadCaseId, mode: "global-axis", wxStart: 0, wxEnd: 0, wyStart: activeDistWyStart, wyEnd },
                 },
               }))
             }
@@ -730,6 +793,7 @@ export default function App() {
       activeTab, activeTool, activeSection, activeMemberType, activeSupportType,
       activePtInputMode, activePointLoadAxis, activePtMagnitude, activePtAngle, activeDistType, activeDistWStart, activeDistWEnd,
       activeDistMode, activeDistAxis, activeDistWxStart, activeDistWxEnd, activeDistWyStart, activeDistWyEnd,
+      activeLoadCaseId,
       model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode,
     ]
   )
@@ -943,6 +1007,8 @@ export default function App() {
               onSelectedCaseIdChange={setSelectedCaseId}
               selectedCombinationId={selectedCombinationId}
               onSelectedCombinationIdChange={setSelectedCombinationId}
+              envelopeComboIds={envelopeComboIds}
+              onEnvelopeComboIdsChange={setEnvelopeComboIds}
             />
           )}
           <FlyoutPanel
@@ -1011,7 +1077,7 @@ export default function App() {
             onShowReactionNodeLabelsChange={setShowReactionNodeLabels}
             showDiagramMemberLabels={showDiagramMemberLabels}
             onShowDiagramMemberLabelsChange={setShowDiagramMemberLabels}
-            analysisResult={analysisResult}
+            analysisResult={displayedResult}
             moveNodeMode={moveNodeMode}
             onMoveNodeModeChange={handleMoveNodeModeChange}
             moveNodeCoordMode={moveNodeCoordMode}
@@ -1022,6 +1088,7 @@ export default function App() {
             loadCases={loadCases}
             activeLoadCaseId={activeLoadCaseId}
             onActiveLoadCaseChange={setActiveLoadCaseId}
+            onReassignLoadCase={handleReassignLoadCase}
             onAddLoadCase={handleAddLoadCase}
             onDeleteLoadCase={handleDeleteLoadCase}
             onPatchLoadCase={handlePatchLoadCase}
@@ -1060,7 +1127,7 @@ export default function App() {
             onSelectLoadIds={handleSelectLoadIds}
             selectedLoadId={selectedLoadId}
             selectedLoadIds={selectedLoadIds}
-            analysisResult={analysisResult}
+            analysisResult={displayedResult}
             diagramScale={diagramScale}
             invertSFD={invertSFD}
             invertBMD={invertBMD}
@@ -1071,6 +1138,7 @@ export default function App() {
             hoveredNodeId={hoveredNodeId}
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
+            loadCases={loadCases}
             moveNodeMode={moveNodeMode}
             moveNodeSelectedId={moveNodeSelectedId}
             draggingNodeId={draggingNodeId}

@@ -21,7 +21,7 @@ export function DeleteLoadToolContent({
   const caseSelector =
     loadCases && activeLoadCaseId && onActiveLoadCaseChange ? (
       <CaseSelectorRow
-        label="Filter by case"
+        label="Filter by Load Case"
         loadCases={loadCases}
         value={activeLoadCaseId}
         onChange={onActiveLoadCaseChange}

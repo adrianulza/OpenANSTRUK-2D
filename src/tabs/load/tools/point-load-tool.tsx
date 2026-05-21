@@ -34,9 +34,11 @@ export function PointLoadToolContent({
     <div className="space-y-3">
       {loadCases && activeLoadCaseId && onActiveLoadCaseChange && (
         <CaseSelectorRow
+          label="Load Case"
           loadCases={loadCases}
           value={activeLoadCaseId}
           onChange={onActiveLoadCaseChange}
+          excludeLocked
         />
       )}
       <div className="space-y-1.5">

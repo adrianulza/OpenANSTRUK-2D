@@ -1,7 +1,7 @@
 export type LoadCaseId = string
 export type LoadComboId = string
 
-export type LoadCaseKind = "Dead" | "Live" | "Roof Live" | "Wind" | "Seismic" | "Rain"
+export type LoadCaseKind = "Dead" | "Live" | "Roof Live" | "Wind" | "Seismic" | "Rain" | "Snow"
 
 export const LOAD_CASE_KINDS: LoadCaseKind[] = [
   "Dead",
@@ -10,13 +10,25 @@ export const LOAD_CASE_KINDS: LoadCaseKind[] = [
   "Wind",
   "Seismic",
   "Rain",
+  "Snow",
 ]
 
-export type CodePreset = "ASCE7-16" | "SNI1726-2019" | "ASCE7-22"
+export type CodePreset =
+  | "ASCE7-16"
+  | "SNI1726-2019"
+  | "ASCE7-22"
+  | "EN1990-2002"
+  | "GB50068-2018"
+  | "AS-NZS1170-2002"
+  | "BSL-AIJ-ASD"
 
 export const CODE_PRESETS: { id: CodePreset; label: string }[] = [
-  { id: "SNI1726-2019", label: "SNI 1726-2019" },
-  { id: "ASCE7-22", label: "ASCE 7-22 LRFD" },
+  { id: "SNI1726-2019", label: "SNI 1726-2019 (Indonesia)" },
+  { id: "ASCE7-22", label: "ASCE 7-22 LRFD (USA)" },
+  { id: "EN1990-2002", label: "EN 1990:2002+A1 (Europe)" },
+  { id: "GB50068-2018", label: "GB 50068-2018 (China)" },
+  { id: "AS-NZS1170-2002", label: "AS/NZS 1170.0:2002 (Australia/NZ)" },
+  { id: "BSL-AIJ-ASD", label: "BSL/AIJ ASD (Japan)" },
 ]
 
 export interface LoadCase {
@@ -24,8 +36,15 @@ export interface LoadCase {
   name: string
   kind: LoadCaseKind
   color: string
+  /**
+   * Whether this case contributes to analysis.
+   *  - For regular cases: false = case is muted (its loads are skipped by the solver
+   *    and the case is dimmed in the analyze-view dropdown).
+   *  - For the locked Selfweight case: false = no body force is added to any case
+   *    (default). When real self-weight computation lands, true enables it.
+   */
+  enabled: boolean
   locked?: boolean
-  includeSelfWeight?: boolean
 }
 
 export interface LoadComboTerm {
@@ -62,19 +81,15 @@ export function DEFAULT_LOAD_CASES(): Record<LoadCaseId, LoadCase> {
       kind: "Dead",
       color: CASE_COLOR_PALETTE[0],
       locked: true,
-      includeSelfWeight: false,
+      enabled: false,
     },
+    // Default placement target — acts as SIDL when Selfweight is off.
     dead: {
       id: "dead",
       name: "Dead",
       kind: "Dead",
       color: CASE_COLOR_PALETTE[1],
-    },
-    live: {
-      id: "live",
-      name: "Live",
-      kind: "Live",
-      color: CASE_COLOR_PALETTE[2],
+      enabled: true,
     },
   }
 }
@@ -103,6 +118,7 @@ const KIND_SHORT: Record<LoadCaseKind, string> = {
   Wind: "W",
   Seismic: "E",
   Rain: "R",
+  Snow: "S",
 }
 
 export function caseShortLabel(kind: LoadCaseKind): string {
@@ -114,7 +130,15 @@ function formatFactor(n: number): string {
   return Number(n.toFixed(3)).toString()
 }
 
-// Render terms as "1.2·Dead + 1.6·Live − 1.0·Wind".
+// Short label used inside combo expressions: "SW" for Selfweight, otherwise the
+// kind abbreviation (D, L, Lr, W, E, R). Keeps expressions compact and aligned
+// with the abbreviation pill shown in the Load Case tool.
+function caseExpressionLabel(c: LoadCase): string {
+  if (c.id === "selfweight") return "SW"
+  return caseShortLabel(c.kind)
+}
+
+// Render terms as "1.2·D + 1.6·L − 1.0·W".
 export function formatComboExpression(
   combo: LoadCombination,
   cases: Record<LoadCaseId, LoadCase>
@@ -123,7 +147,7 @@ export function formatComboExpression(
   const parts: string[] = []
   combo.terms.forEach((term, i) => {
     const c = cases[term.caseId]
-    const label = c ? c.name : term.caseId
+    const label = c ? caseExpressionLabel(c) : term.caseId
     const abs = Math.abs(term.factor)
     if (i === 0) {
       const sign = term.factor < 0 ? "−" : ""

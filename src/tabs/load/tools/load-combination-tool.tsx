@@ -83,13 +83,20 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
 
       {!combinationsEnabled && (
         <p className="text-[11px] text-gray-500 leading-relaxed">
-          Combinations let you apply ASCE 7-16 / SNI 1726-2019 or custom
-          factor sets across your load cases. Envelopes show the max/min
-          effect across all checked combinations.
+          Combinations let you apply code-based or custom factor sets across
+          your load cases. Envelopes show the max/min effect across all
+          checked combinations. Existing combinations are preserved below —
+          re-enable to use them.
         </p>
       )}
 
-      {combinationsEnabled && (
+      {/* The block stays visible but greys out when combinations are disabled,
+          so users can see their work is preserved (combos aren't destroyed by
+          toggling). Inputs become non-interactive in that state. */}
+      <div
+        className={combinationsEnabled ? "" : "opacity-50 pointer-events-none"}
+        aria-disabled={!combinationsEnabled}
+      >
         <>
           {/* Mode radio */}
           <div className="space-y-1.5">
@@ -155,20 +162,13 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             </div>
           )}
 
-          {/* Header row */}
-          <div
-            className={`grid items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 pt-1 ${
-              combinationMode === "code"
-                ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
-                : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
-            }`}
-          >
+          {/* Header row — code rows get a delete-only action column, manual rows
+              get edit + delete. Grid template stays uniform so columns align. */}
+          <div className="grid items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 pt-1 grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]">
             <span />
             <span>Name</span>
             <span>Expression</span>
-            {combinationMode === "manual" && (
-              <span className="text-right">Actions</span>
-            )}
+            <span className="text-right">Actions</span>
           </div>
 
           {/* List */}
@@ -214,7 +214,7 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
             >
               <Plus size={12} />
-              Add Combination
+              Add New Combination
             </button>
           )}
 
@@ -239,7 +239,7 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             </div>
           </div>
         </>
-      )}
+      </div>
 
       {confirmGenerate && (
         <GenerateConfirmDialog
@@ -285,6 +285,7 @@ function GenerateConfirmDialog({
       name: k,
       kind: k,
       color: "#000",
+      enabled: true,
     }
   }
   const comboCount = expectedComboCount(preset, projectedCases)
@@ -376,11 +377,7 @@ function ComboRow({
       style={{ backgroundColor: isEditing ? "#f8fafc" : "transparent" }}
     >
       <div
-        className={`grid items-center gap-2 py-1 px-1 ${
-          readonly
-            ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
-            : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
-        }`}
+        className="grid items-center gap-2 py-1 px-1 grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
         style={{ opacity: dim ? 0.5 : 1 }}
       >
         <input
@@ -402,8 +399,8 @@ function ComboRow({
         >
           {expression}
         </span>
-        {!readonly && (
-          <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-1">
+          {!readonly && (
             <button
               onClick={onEdit}
               className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded hover:bg-gray-100"
@@ -411,15 +408,15 @@ function ComboRow({
             >
               <Pencil size={12} />
             </button>
-            <button
-              onClick={onDelete}
-              className="text-gray-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-gray-100"
-              title="Delete combination"
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={onDelete}
+            className="text-gray-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-gray-100"
+            title={readonly ? "Remove this combination (regenerate to restore)" : "Delete combination"}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
 
       {!readonly && isEditing && (
@@ -471,56 +468,60 @@ function ComboEditor({
         />
       </div>
 
-      <div className="space-y-1">
-        <div className="grid grid-cols-[70px_1fr_24px] items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-          <span>Factor</span>
-          <span>Case</span>
-          <span />
-        </div>
-        {combo.terms.map((t, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-[70px_1fr_24px] items-center gap-2"
+      {/* Expression-style row: [1.2] × [Dead ▾]  +  [1.6] × [Live ▾]  [+ term].
+          Wraps on narrow viewports — each term is a single inline group. */}
+      <div>
+        <Label className="text-[10px] text-gray-500 uppercase tracking-wide block mb-1">
+          Expression
+        </Label>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {combo.terms.map((t, i) => (
+            <div key={i} className="contents">
+              {i > 0 && (
+                <span className="text-xs text-gray-400 font-mono select-none">+</span>
+              )}
+              <div className="flex items-center gap-1 bg-gray-50 rounded-md px-1 py-0.5 border border-gray-100">
+                <NumericInput
+                  value={t.factor}
+                  onChange={(v) => updateTerm(i, { factor: v })}
+                  className="h-6 w-14 text-xs font-mono bg-white"
+                />
+                <span className="text-[10px] text-gray-400 font-mono">×</span>
+                <Select
+                  value={t.caseId}
+                  onValueChange={(v) => updateTerm(i, { caseId: v })}
+                >
+                  <SelectTrigger className="h-6 text-xs min-w-[80px] bg-white" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {caseList.map((c) => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <button
+                  onClick={() => removeTerm(i)}
+                  className="text-gray-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-gray-100"
+                  title="Remove term"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={addTerm}
+            className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors bg-gray-100 hover:bg-gray-200 text-gray-600"
+            title="Add term"
           >
-            <NumericInput
-              value={t.factor}
-              onChange={(v) => updateTerm(i, { factor: v })}
-              className="h-7 text-xs font-mono"
-            />
-            <Select
-              value={t.caseId}
-              onValueChange={(v) => updateTerm(i, { caseId: v })}
-            >
-              <SelectTrigger className="h-7 text-xs w-full" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {caseList.map((c) => (
-                  <SelectItem key={c.id} value={c.id} className="text-xs">
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <button
-              onClick={() => removeTerm(i)}
-              className="text-gray-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-gray-100 justify-self-end"
-              title="Remove term"
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
+            <Plus size={11} />
+            term
+          </button>
+        </div>
       </div>
-
-      <button
-        onClick={addTerm}
-        className="w-full h-7 text-[11px] rounded-md transition-colors flex items-center justify-center gap-1.5"
-        style={{ backgroundColor: "#f3f4f6", color: "#4b5563" }}
-      >
-        <Plus size={11} />
-        Add term
-      </button>
     </div>
   )
 }

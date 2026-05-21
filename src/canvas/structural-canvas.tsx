@@ -155,6 +155,8 @@ interface StructuralCanvasProps {
   hoveredNodeId?: NodeId | null
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
+  loadCases?: Record<string, { id: string; name: string; color: string }>
+
   moveNodeMode?: "coordinates" | "screen"
   moveNodeSelectedId?: NodeId | null
   draggingNodeId?: NodeId | null
@@ -196,6 +198,7 @@ export function StructuralCanvas({
   hoveredNodeId,
   hoveredMemberId,
   hoveredLoadId,
+  loadCases,
   moveNodeMode = "coordinates",
   moveNodeSelectedId,
   draggingNodeId,
@@ -206,6 +209,9 @@ export function StructuralCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [snapped, setSnapped] = useState<WorldPoint | null>(null)
+  // Cursor position in container-local pixels. Used to position the hover
+  // tooltip next to the mouse for loads.
+  const [cursorPx, setCursorPx] = useState<{ x: number; y: number } | null>(null)
   const [deformHoverNodeId, setDeformHoverNodeId] = useState<string | null>(null)
   const boxStartRef = useRef<ScreenPoint | null>(null)
   const hasDraggedRef = useRef(false)
@@ -2061,6 +2067,11 @@ export function StructuralCanvas({
   }, [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Container-local cursor coords for the hover tooltip overlay.
+    const containerRect = containerRef.current?.getBoundingClientRect()
+    if (containerRect) {
+      setCursorPx({ x: e.clientX - containerRect.left, y: e.clientY - containerRect.top })
+    }
     // MOVE_NODE screen drag — move node live with snap
     if (dragNodeRef.current) {
       const w = toWorldCoords(e)
@@ -2136,6 +2147,7 @@ export function StructuralCanvas({
   const handleMouseLeave = () => {
     if (snapped) setSnapped(null)
     if (deformHoverNodeId) setDeformHoverNodeId(null)
+    setCursorPx(null)
     if (panStartRef.current) {
       panStartRef.current = null
       isPanningRef.current = false
@@ -2352,6 +2364,18 @@ export function StructuralCanvas({
     ? "cursor-pointer"
     : "cursor-default"
 
+  // Hover tooltip data for the currently-hovered load. Shows the case name and
+  // a color swatch so users can identify which case a load belongs to without
+  // having to click into Modify Load.
+  const hoveredLoadTooltip = (() => {
+    if (!hoveredLoadId || !cursorPx || !loadCases) return null
+    const load = model.loads[hoveredLoadId]
+    if (!load) return null
+    const c = loadCases[load.loadCaseId]
+    if (!c) return null
+    return { name: c.name, color: c.color, x: cursorPx.x, y: cursorPx.y }
+  })()
+
   return (
     <div ref={containerRef} className="relative w-full h-full">
       <canvas
@@ -2365,6 +2389,23 @@ export function StructuralCanvas({
         // Prevent context menu on middle-click
         onContextMenu={(e) => e.button === 1 && e.preventDefault()}
       />
+      {hoveredLoadTooltip && (
+        <div
+          className="absolute z-30 pointer-events-none bg-white shadow-md rounded-md border border-gray-200 px-2 py-1 flex items-center gap-1.5"
+          style={{
+            left: hoveredLoadTooltip.x + 12,
+            top: hoveredLoadTooltip.y + 12,
+          }}
+        >
+          <span
+            className="inline-block w-2 h-2 rounded-full"
+            style={{ backgroundColor: hoveredLoadTooltip.color }}
+          />
+          <span className="text-[11px] text-gray-700 whitespace-nowrap">
+            {hoveredLoadTooltip.name}
+          </span>
+        </div>
+      )}
       {/* Zoom slider + Adaptive View overlay — top-right of canvas */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto transition-opacity duration-200 opacity-20 hover:opacity-100 bg-background/90 border-border">
         <div className="flex items-center gap-2">

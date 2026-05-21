@@ -1,3 +1,5 @@
+import type { LoadCaseId } from "./load-cases"
+
 export type NodeId = string
 export type MemberId = string
 export type SupportType = "pin" | "roller" | "fixed"
@@ -88,6 +90,7 @@ export interface PointLoad {
   id: LoadId
   type: "point"
   nodeId: NodeId
+  loadCaseId: LoadCaseId
   fx: number  // kN; global X-axis component (positive = rightward)
   fy: number  // kN; global Y-axis component (positive = upward)
 }
@@ -96,6 +99,7 @@ export interface DistributedLoad {
   id: LoadId
   type: "distributed"
   memberId: MemberId
+  loadCaseId: LoadCaseId
   mode?: "local-axis" | "global-axis"  // default "local-axis"
   // Local-axis mode: perpendicular to member
   wStart?: number  // kN/m at node-A end
@@ -246,7 +250,7 @@ export function createInitialModel(): StructureModel {
   supports[right] = { nodeId: right, type: "roller" }
 
   const loadId = newLoadId()
-  loads[loadId] = { id: loadId, type: "point", nodeId: mid, fx: 0, fy: 10 }
+  loads[loadId] = { id: loadId, type: "point", nodeId: mid, loadCaseId: "dead", fx: 0, fy: 10 }
 
   return { nodes, members, supports, sections: { ...defaultSections }, loads }
 }

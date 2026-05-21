@@ -33,7 +33,7 @@ export function template1SimpleBeam(): StructureModel {
   supports[nB] = { nodeId: nB, type: "roller" }
 
   const lPt = newLoadId()
-  loads[lPt] = { id: lPt, type: "point", nodeId: nP, fx: 0, fy: -10 }
+  loads[lPt] = { id: lPt, type: "point", nodeId: nP, loadCaseId: "dead", fx: 0, fy: -10 }
 
   return { nodes, members, supports, sections: { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }, loads }
 }
@@ -57,7 +57,7 @@ export function template2Cantilever(): StructureModel {
   supports[nA] = { nodeId: nA, type: "fixed" }
 
   const lId = newLoadId()
-  loads[lId] = { id: lId, type: "distributed", memberId: mId, mode: "local-axis", wStart: -10, wEnd: -10 }
+  loads[lId] = { id: lId, type: "distributed", memberId: mId, loadCaseId: "dead", mode: "local-axis", wStart: -10, wEnd: -10 }
 
   return { nodes, members, supports, sections: { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }, loads }
 }
@@ -103,10 +103,10 @@ export function template3Portal(): StructureModel {
   const lPt = newLoadId()
 
   // Uniform downward load on both beam segments
-  loads[lD1] = { id: lD1, type: "distributed", memberId: mBL, mode: "local-axis", wStart: -10, wEnd: -10 }
-  loads[lD2] = { id: lD2, type: "distributed", memberId: mBR, mode: "local-axis", wStart: -10, wEnd: -10 }
+  loads[lD1] = { id: lD1, type: "distributed", memberId: mBL, loadCaseId: "dead", mode: "local-axis", wStart: -10, wEnd: -10 }
+  loads[lD2] = { id: lD2, type: "distributed", memberId: mBR, loadCaseId: "dead", mode: "local-axis", wStart: -10, wEnd: -10 }
   // Downward point load at 2 m from beam left
-  loads[lPt] = { id: lPt, type: "point", nodeId: nLP, fx: 0, fy: -10 }
+  loads[lPt] = { id: lPt, type: "point", nodeId: nLP, loadCaseId: "dead", fx: 0, fy: -10 }
 
   const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
   return { nodes, members, supports, sections, loads }
@@ -159,9 +159,9 @@ export function template5AsymmetricRafter(): StructureModel {
   const l80  = newLoadId()
   const lDist = newLoadId()
 
-  loads[l40]   = { id: l40,   type: "point",       nodeId:   nTL,   fx: 40, fy: 0 }
-  loads[l80]   = { id: l80,   type: "point",       nodeId:   nML,   fx: 80, fy: 0 }
-  loads[lDist] = { id: lDist, type: "distributed", memberId: mRaft, mode: "local-axis", wStart: 12, wEnd: 12 }
+  loads[l40]   = { id: l40,   type: "point",       nodeId:   nTL,   loadCaseId: "dead", fx: 40, fy: 0 }
+  loads[l80]   = { id: l80,   type: "point",       nodeId:   nML,   loadCaseId: "dead", fx: 80, fy: 0 }
+  loads[lDist] = { id: lDist, type: "distributed", memberId: mRaft, loadCaseId: "dead", mode: "local-axis", wStart: 12, wEnd: 12 }
 
   const sections = { ...defaultSections, [SECTION_C30.id]: SECTION_C30 }
   return { nodes, members, supports, sections, loads }
@@ -198,9 +198,9 @@ export function template4PortalLateral(): StructureModel {
   const lDist = newLoadId()
   const lPt   = newLoadId()
 
-  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, mode: "local-axis", wStart: -10, wEnd: -10 }
+  loads[lDist] = { id: lDist, type: "distributed", memberId: mLC, loadCaseId: "dead", mode: "local-axis", wStart: -10, wEnd: -10 }
   // Rightward lateral point load at joint A
-  loads[lPt]   = { id: lPt,   type: "point", nodeId: nTL, fx: 10, fy: 0 }
+  loads[lPt]   = { id: lPt,   type: "point", nodeId: nTL, loadCaseId: "dead", fx: 10, fy: 0 }
 
   const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
   return { nodes, members, supports, sections, loads }

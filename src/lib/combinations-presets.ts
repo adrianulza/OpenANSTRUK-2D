@@ -88,10 +88,194 @@ const SNI_1726_2019: PresetCombo[] = ASCE_7_16
 // ASCE 7-22 — same § 2.3.2 LRFD strength combos for this scope.
 const ASCE_7_22: PresetCombo[] = ASCE_7_16
 
+// EN 1990:2002+A1, Eq. 6.10 (simple set). Each variable action becomes its own
+// "leading" combo. ψ₀ secondary terms are intentionally omitted per project
+// scope — engineers wanting the full 6.10a/b refined set or ψ₀ combinations
+// can build them manually. Seismic uses EN 1998-1 § 3.2.4 with γ_G = γ_E = 1.0
+// (representative-value ψ₂ on Q also omitted).
+const EN_1990_2002: PresetCombo[] = [
+  { name: "1.35G", terms: [{ factor: 1.35, kind: "Dead" }] },
+  {
+    name: "1.35G + 1.5L",
+    terms: [
+      { factor: 1.35, kind: "Dead" },
+      { factor: 1.5, kind: "Live" },
+    ],
+  },
+  {
+    name: "1.35G + 1.5W",
+    terms: [
+      { factor: 1.35, kind: "Dead" },
+      { factor: 1.5, kind: "Wind" },
+    ],
+    permuteWindSign: true,
+  },
+  {
+    name: "1.35G + 1.5S",
+    terms: [
+      { factor: 1.35, kind: "Dead" },
+      { factor: 1.5, kind: "Snow" },
+    ],
+  },
+  {
+    name: "1.0G + 1.0E",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.0, kind: "Seismic" },
+    ],
+    permuteSeismicSign: true,
+  },
+]
+
+// GB 50068-2018 (post-2018 reform: γ_G = 1.3 unfavourable, γ_Q = 1.5). Seismic
+// per GB 50011 carries γ_E = 1.4 plus the distinctive 0.5·L representative-value
+// term (the variable load is reduced because it's unlikely to be at full value
+// during an earthquake). 1.0G ± 1.4E is the seismic-uplift case (γ_G favourable).
+const GB_50068_2018: PresetCombo[] = [
+  {
+    name: "1.3G + 1.5L",
+    terms: [
+      { factor: 1.3, kind: "Dead" },
+      { factor: 1.5, kind: "Live" },
+    ],
+  },
+  {
+    name: "1.3G + 1.5W",
+    terms: [
+      { factor: 1.3, kind: "Dead" },
+      { factor: 1.5, kind: "Wind" },
+    ],
+    permuteWindSign: true,
+  },
+  {
+    name: "1.3G + 1.5S",
+    terms: [
+      { factor: 1.3, kind: "Dead" },
+      { factor: 1.5, kind: "Snow" },
+    ],
+  },
+  {
+    name: "1.3G + 1.4E + 0.5L",
+    terms: [
+      { factor: 1.3, kind: "Dead" },
+      { factor: 1.4, kind: "Seismic" },
+      { factor: 0.5, kind: "Live" },
+    ],
+    permuteSeismicSign: true,
+  },
+  {
+    name: "1.0G + 1.4E",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.4, kind: "Seismic" },
+    ],
+    permuteSeismicSign: true,
+  },
+]
+
+// AS/NZS 1170.0:2002 § 4.2.2. Permanent factor 1.2 (unfavourable) / 0.9 (uplift
+// favourable). Wind action W_u is already ULS, so the combo factor is 1.0.
+// Snow likewise. Seismic is checked against earthquake action E_u with γ = 1.0.
+const AS_NZS_1170_0: PresetCombo[] = [
+  { name: "1.35G", terms: [{ factor: 1.35, kind: "Dead" }] },
+  {
+    name: "1.2G + 1.5L",
+    terms: [
+      { factor: 1.2, kind: "Dead" },
+      { factor: 1.5, kind: "Live" },
+    ],
+  },
+  {
+    name: "1.2G + 1.0W",
+    terms: [
+      { factor: 1.2, kind: "Dead" },
+      { factor: 1.0, kind: "Wind" },
+    ],
+    permuteWindSign: true,
+  },
+  {
+    name: "1.2G + 1.0S",
+    terms: [
+      { factor: 1.2, kind: "Dead" },
+      { factor: 1.0, kind: "Snow" },
+    ],
+  },
+  {
+    name: "1.2G + 1.0E",
+    terms: [
+      { factor: 1.2, kind: "Dead" },
+      { factor: 1.0, kind: "Seismic" },
+    ],
+    permuteSeismicSign: true,
+  },
+  {
+    name: "0.9G + 1.0W",
+    terms: [
+      { factor: 0.9, kind: "Dead" },
+      { factor: 1.0, kind: "Wind" },
+    ],
+    permuteWindSign: true,
+  },
+  {
+    name: "0.9G + 1.0E",
+    terms: [
+      { factor: 0.9, kind: "Dead" },
+      { factor: 1.0, kind: "Seismic" },
+    ],
+    permuteSeismicSign: true,
+  },
+]
+
+// Japan — Building Standard Law + AIJ Recommendations. This is allowable
+// stress design, NOT LRFD: all factors are 1.0 and material-side reductions
+// (σ_allow) handle safety. Long-term (常時) covers sustained loads; short-term
+// (短期) covers transient actions (wind, snow, seismic). Listed here as a
+// learning aid so students can envelope the simultaneous-action set; the
+// preset label "BSL/AIJ (ASD)" flags the design philosophy in the UI.
+const BSL_AIJ_ASD: PresetCombo[] = [
+  {
+    name: "1.0G + 1.0L  (long-term)",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.0, kind: "Live" },
+    ],
+  },
+  {
+    name: "1.0G + 1.0L + 1.0S  (short-term, snow)",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.0, kind: "Live" },
+      { factor: 1.0, kind: "Snow" },
+    ],
+  },
+  {
+    name: "1.0G + 1.0L + 1.0W  (short-term, wind)",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.0, kind: "Live" },
+      { factor: 1.0, kind: "Wind" },
+    ],
+    permuteWindSign: true,
+  },
+  {
+    name: "1.0G + 1.0L + 1.0E  (short-term, seismic)",
+    terms: [
+      { factor: 1.0, kind: "Dead" },
+      { factor: 1.0, kind: "Live" },
+      { factor: 1.0, kind: "Seismic" },
+    ],
+    permuteSeismicSign: true,
+  },
+]
+
 const PRESET_DEFS: Record<CodePreset, PresetCombo[]> = {
   "ASCE7-16": ASCE_7_16,
   "SNI1726-2019": SNI_1726_2019,
   "ASCE7-22": ASCE_7_22,
+  "EN1990-2002": EN_1990_2002,
+  "GB50068-2018": GB_50068_2018,
+  "AS-NZS1170-2002": AS_NZS_1170_0,
+  "BSL-AIJ-ASD": BSL_AIJ_ASD,
 }
 
 // Distinct case kinds referenced by this preset's combinations.

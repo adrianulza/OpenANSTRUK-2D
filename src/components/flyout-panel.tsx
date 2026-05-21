@@ -105,6 +105,7 @@ interface FlyoutPanelProps {
   loadCases?: Record<LoadCaseId, LoadCase>
   activeLoadCaseId?: LoadCaseId
   onActiveLoadCaseChange?: (id: LoadCaseId) => void
+  onReassignLoadCase?: (newCaseId: LoadCaseId) => void
   onAddLoadCase?: () => void
   onDeleteLoadCase?: (id: LoadCaseId) => void
   onPatchLoadCase?: (id: LoadCaseId, patch: Partial<LoadCase>) => void
@@ -208,6 +209,7 @@ export function FlyoutPanel({
   loadCases,
   activeLoadCaseId,
   onActiveLoadCaseChange,
+  onReassignLoadCase,
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
@@ -326,6 +328,7 @@ export function FlyoutPanel({
           loadCases={loadCases}
           activeLoadCaseId={activeLoadCaseId}
           onActiveLoadCaseChange={onActiveLoadCaseChange}
+          onReassignLoadCase={onReassignLoadCase}
           onAddLoadCase={onAddLoadCase}
           onDeleteLoadCase={onDeleteLoadCase}
           onPatchLoadCase={onPatchLoadCase}
@@ -433,6 +436,7 @@ function FlyoutContent({
   loadCases,
   activeLoadCaseId,
   onActiveLoadCaseChange,
+  onReassignLoadCase,
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
@@ -525,8 +529,6 @@ function FlyoutContent({
         return (
           <LoadCaseToolContent
             loadCases={loadCases ?? {}}
-            activeLoadCaseId={activeLoadCaseId ?? "dead"}
-            onActiveLoadCaseChange={onActiveLoadCaseChange ?? (() => {})}
             onAddLoadCase={onAddLoadCase ?? (() => {})}
             onDeleteLoadCase={onDeleteLoadCase ?? (() => {})}
             onPatchLoadCase={onPatchLoadCase ?? (() => {})}
@@ -603,8 +605,7 @@ function FlyoutContent({
             onModify={onModifyLoad}
             onModifyByType={onModifyLoadsByType}
             loadCases={loadCases}
-            activeLoadCaseId={activeLoadCaseId}
-            onActiveLoadCaseChange={onActiveLoadCaseChange}
+            onReassignLoadCase={onReassignLoadCase}
           />
         )
       }

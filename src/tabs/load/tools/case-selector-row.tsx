@@ -20,14 +20,19 @@ export function CaseSelectorRow({
   value,
   onChange,
   disabled,
+  excludeLocked = false,
 }: {
   label?: string
   loadCases: Record<LoadCaseId, LoadCase>
   value: LoadCaseId
   onChange: (id: LoadCaseId) => void
   disabled?: boolean
+  /** Hide locked cases (e.g., Selfweight) from the dropdown — used by placement
+   *  and modify tools, where it's nonsensical to assign a user-placed load to a
+   *  body-force case. */
+  excludeLocked?: boolean
 }) {
-  const cases = Object.values(loadCases)
+  const cases = Object.values(loadCases).filter((c) => !excludeLocked || !c.locked)
   return (
     <div
       className="space-y-1.5 pb-3 border-b"

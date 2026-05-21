@@ -46,7 +46,7 @@ function buildTrussModel(
     if (magnitude === 0) return
     const id = newLoadId()
     const fy = magnitude  // positive = upward
-    loads[id] = { id, type: "point", nodeId, fx: 0, fy }
+    loads[id] = { id, type: "point", nodeId, loadCaseId: "dead", fx: 0, fy }
   }
 
   if (trussType === "warren") {
@@ -154,7 +154,7 @@ function buildRoofHoweTrussModel(
     if (magnitude === 0) return
     const id = newLoadId()
     const fy = magnitude
-    loads[id] = { id, type: "point", nodeId, fx: 0, fy }
+    loads[id] = { id, type: "point", nodeId, loadCaseId: "dead", fx: 0, fy }
   }
 
   // Corner nodes (shared between top and bottom chord)
@@ -233,7 +233,7 @@ function buildRoofFinkTrussModel(
     if (magnitude === 0) return
     const id = newLoadId()
     const fy = magnitude
-    loads[id] = { id, type: "point", nodeId, fx: 0, fy }
+    loads[id] = { id, type: "point", nodeId, loadCaseId: "dead", fx: 0, fy }
   }
 
   // Bottom chord nodes (numDiv+1 total)

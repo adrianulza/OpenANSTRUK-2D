@@ -153,8 +153,7 @@ export function ModifyLoadToolContent({
   model,
   onModifyByType,
   loadCases,
-  activeLoadCaseId,
-  onActiveLoadCaseChange,
+  onReassignLoadCase,
 }: {
   selectedLoad: Load | null
   selectedLoadIds?: string[]
@@ -162,8 +161,9 @@ export function ModifyLoadToolContent({
   onModify?: (patch: Partial<Load>) => void
   onModifyByType?: (type: "point" | "distributed", patch: Partial<Load>) => void
   loadCases?: Record<LoadCaseId, LoadCase>
-  activeLoadCaseId?: LoadCaseId
-  onActiveLoadCaseChange?: (id: LoadCaseId) => void
+  /** Reassign selected load(s) to a new case. Called from the Load Case dropdown
+   *  inside Modify Load — distinct from the placement-tool `activeLoadCaseId`. */
+  onReassignLoadCase?: (newCaseId: LoadCaseId) => void
 }) {
   const [editFx, setEditFx] = React.useState<number>(0)
   const [editFy, setEditFy] = React.useState<number>(0)
@@ -193,19 +193,29 @@ export function ModifyLoadToolContent({
     setEditFy(firstPoint.fy)
   }, [firstPoint])
 
+  // Selected loads' shared case (or "" if mixed) drives the dropdown. Changing
+  // it reassigns every selected load to the chosen case.
+  const sharedCaseId = React.useMemo(() => {
+    const ids = [...allSelected.points, ...allSelected.dists].map((l) => l.loadCaseId)
+    if (ids.length === 0) return ""
+    const first = ids[0]
+    return ids.every((id) => id === first) ? first : ""
+  }, [allSelected])
+
   const caseSelector =
-    loadCases && activeLoadCaseId && onActiveLoadCaseChange ? (
+    loadCases && onReassignLoadCase && totalCount > 0 ? (
       <CaseSelectorRow
+        label="Load Case"
         loadCases={loadCases}
-        value={activeLoadCaseId}
-        onChange={onActiveLoadCaseChange}
+        value={sharedCaseId}
+        onChange={onReassignLoadCase}
+        excludeLocked
       />
     ) : null
 
   if (totalCount === 0) {
     return (
       <div className="space-y-3">
-        {caseSelector}
         <p className="text-xs text-gray-500 leading-relaxed">
           Click a load or drag a box on the canvas to select loads
         </p>

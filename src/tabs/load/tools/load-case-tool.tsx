@@ -1,6 +1,5 @@
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, Lock } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -8,18 +7,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import {
   type LoadCase,
   type LoadCaseId,
   type LoadCaseKind,
   LOAD_CASE_KINDS,
+  caseShortLabel,
 } from "@/lib/load-cases"
 
 interface LoadCaseToolContentProps {
   loadCases: Record<LoadCaseId, LoadCase>
-  activeLoadCaseId: LoadCaseId
-  onActiveLoadCaseChange: (id: LoadCaseId) => void
   onAddLoadCase: () => void
   onDeleteLoadCase: (id: LoadCaseId) => void
   onPatchLoadCase: (id: LoadCaseId, patch: Partial<LoadCase>) => void
@@ -27,8 +24,6 @@ interface LoadCaseToolContentProps {
 
 export function LoadCaseToolContent({
   loadCases,
-  activeLoadCaseId,
-  onActiveLoadCaseChange,
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
@@ -37,11 +32,11 @@ export function LoadCaseToolContent({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[1fr_90px_36px_32px_24px] md:grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+      <div className="grid grid-cols-[20px_1fr_28px_90px_24px] md:grid-cols-[20px_1fr_36px_140px_28px] items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        <span />
         <span>Name</span>
+        <span className="text-center">Abbr</span>
         <span>Type</span>
-        <span className="text-center">Loads</span>
-        <span className="text-center">SW</span>
         <span />
       </div>
 
@@ -66,25 +61,6 @@ export function LoadCaseToolContent({
         <Plus size={12} />
         Add Case
       </button>
-
-      <div
-        className="border-t pt-3 space-y-1.5"
-        style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}
-      >
-        <Label className="text-xs text-gray-600">Active for new loads</Label>
-        <Select value={activeLoadCaseId} onValueChange={onActiveLoadCaseChange}>
-          <SelectTrigger className="h-8 text-xs w-full" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {cases.map((c) => (
-              <SelectItem key={c.id} value={c.id} className="text-xs">
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
     </div>
   )
 }
@@ -98,17 +74,38 @@ function CaseRow({
   onPatch: (patch: Partial<LoadCase>) => void
   onDelete: () => void
 }) {
-  // Loads count is wired later — placeholder dash for now.
-  const loadsCount = "—"
-
   return (
-    <div className="grid grid-cols-[1fr_90px_36px_32px_24px] md:grid-cols-[1fr_140px_56px_44px_28px] items-center gap-2">
+    <div className="grid grid-cols-[20px_1fr_28px_90px_24px] md:grid-cols-[20px_1fr_36px_140px_28px] items-center gap-2">
+      {/* Col 1 — enabled checkbox. For Selfweight: gates body-force inclusion.
+                 For other cases: skips this case (and its loads) in the solver. */}
+      <div className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={loadCase.enabled}
+          onChange={(e) => onPatch({ enabled: e.target.checked })}
+          className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
+          title={
+            loadCase.locked
+              ? "Include self-weight in solve"
+              : "Include this case in solve & analyze"
+          }
+        />
+      </div>
+
       <Input
         value={loadCase.name}
         disabled={loadCase.locked}
         onChange={(e) => onPatch({ name: e.target.value })}
         className="h-7 text-xs"
       />
+
+      {/* Col 3 — kind abbreviation pill (D, L, Lr, W, E, R). Derived from kind,
+                 read-only. Reinforces the shorthand used in combo expressions. */}
+      <div className="flex items-center justify-center">
+        <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded bg-gray-100 text-[10px] font-mono font-semibold text-gray-700">
+          {caseShortLabel(loadCase.kind)}
+        </span>
+      </div>
 
       <Select
         value={loadCase.kind}
@@ -127,31 +124,9 @@ function CaseRow({
         </SelectContent>
       </Select>
 
-      <div className="text-[11px] text-gray-500 text-center font-mono">
-        {loadsCount}
-      </div>
-
       <div className="flex items-center justify-center">
         {loadCase.locked ? (
-          <input
-            type="checkbox"
-            checked={loadCase.includeSelfWeight ?? false}
-            onChange={(e) =>
-              onPatch({ includeSelfWeight: e.target.checked })
-            }
-            className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
-            title="Include self-weight in solve"
-          />
-        ) : (
-          <span className="text-[11px] text-gray-300">—</span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center">
-        {loadCase.locked ? (
-          <span className="text-[10px] text-gray-300" title="Locked">
-            🔒
-          </span>
+          <Lock size={12} className="text-gray-400" />
         ) : (
           <button
             onClick={onDelete}
