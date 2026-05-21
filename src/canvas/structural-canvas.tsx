@@ -1081,7 +1081,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, adaptiveView, zoom]
+    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, activeTab, activeTool, adaptiveView, zoom]
   )
 
   const drawAxialDiagram = useCallback(
@@ -1988,7 +1988,7 @@ export function StructuralCanvas({
         const curPanX = panXRef.current
         const curPanY = panYRef.current
         const minZoom = 0.1
-        let newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, curZoom * factor))
+        const newZoom = Math.max(minZoom, Math.min(MAX_ZOOM, curZoom * factor))
 
         // Update midpoint to current finger positions
         const mid = getTouchMid(e.touches[0], e.touches[1], rect)

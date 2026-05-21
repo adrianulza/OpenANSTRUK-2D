@@ -406,7 +406,7 @@ function FlyoutContent({
   selectedLoadIds = [],
   onModifyLoad,
   onModifyLoadsByType,
-  onDeleteLoad,
+  onDeleteLoad: _onDeleteLoad,
   onDeleteLoadIds,
   diagramScale = 10,
   onDiagramScaleChange,

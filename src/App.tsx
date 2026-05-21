@@ -730,7 +730,7 @@ export default function App() {
       activeTab, activeTool, activeSection, activeMemberType, activeSupportType,
       activePtInputMode, activePointLoadAxis, activePtMagnitude, activePtAngle, activeDistType, activeDistWStart, activeDistWEnd,
       activeDistMode, activeDistAxis, activeDistWxStart, activeDistWxEnd, activeDistWyStart, activeDistWyEnd,
-      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode, moveNodeMode,
+      model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode,
     ]
   )
 
