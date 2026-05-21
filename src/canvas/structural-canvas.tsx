@@ -28,6 +28,14 @@ import {
   SCALE,
   COLOR_BRAND,
   COLOR_SELECTION,
+  COLOR_HOVER_GENERIC,
+  COLOR_SELECT_GENERIC,
+  COLOR_HOVER_DELETE,
+  COLOR_SELECT_DELETE,
+  COLOR_FILL_HOVER_GEN,
+  COLOR_FILL_SELECT_GEN,
+  COLOR_FILL_HOVER_DEL,
+  COLOR_FILL_SELECT_DEL,
   COLOR_PREVIEW_NODE,
   COLOR_GRID,
   COLOR_AXIS_X,
@@ -37,8 +45,6 @@ import {
   COLOR_DIM_TEXT,
   COLOR_CANVAS_BG,
   COLOR_LOAD_FILL,
-  COLOR_LOAD_FILL_SEL,
-  COLOR_LOAD_FILL_HVR,
   COLOR_LOAD_STROKE,
   LOAD_PT_ARROW_LEN_PX,
   LOAD_PT_ARROWHEAD_SIZE_PX,
@@ -66,6 +72,33 @@ import {
   HIT_TOL_MEMBER,
   formatValue,
 } from "@/lib/constants"
+
+// Resolves the hover/selection palette for the active tool.
+// - "generic" (yellow) for MODIFY/MOVE/MODIFY_LOAD style tools
+// - "delete"  (red)    for the DELETE tool in either tab
+// - "none"             for placement/preview tools (no hover or select tint)
+type InteractionKind = "generic" | "delete" | "none"
+
+function interactionKind(activeTab: TabType, activeTool: ToolType): InteractionKind {
+  if (activeTool === "DELETE") return "delete"
+  if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "MOVE_NODE")) return "generic"
+  if (activeTab === "Load"  &&  activeTool === "MODIFY_LOAD") return "generic"
+  return "none"
+}
+
+type DrawState = "hover" | "selected" | "normal"
+
+function strokeFor(kind: InteractionKind, state: DrawState, base: string): string {
+  if (state === "normal" || kind === "none") return base
+  if (kind === "delete")  return state === "hover" ? COLOR_HOVER_DELETE  : COLOR_SELECT_DELETE
+  return state === "hover" ? COLOR_HOVER_GENERIC : COLOR_SELECT_GENERIC
+}
+
+function fillFor(kind: InteractionKind, state: DrawState, base: string): string {
+  if (state === "normal" || kind === "none") return base
+  if (kind === "delete")  return state === "hover" ? COLOR_FILL_HOVER_DEL : COLOR_FILL_SELECT_DEL
+  return state === "hover" ? COLOR_FILL_HOVER_GEN : COLOR_FILL_SELECT_GEN
+}
 
 // Clamp pan so the viewport never shows outside the ±100 m world bounds.
 // When the world is smaller than the viewport in one axis, centre it.
@@ -296,10 +329,18 @@ export function StructuralCanvas({
         if (!a || !b) continue
         const pa = worldToScreen(a, rect)
         const pb = worldToScreen(b, rect)
-        const selected = selection.memberIds.includes(m.id)
-        const isHovered = (activeTool === "DISTRIBUTED_LOAD" || (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE"))) && m.id === hoveredMemberId
+        const kind = interactionKind(activeTab, activeTool)
+        // Members are eligible for hover/selection only under Model SELECT/DELETE.
+        const memberEligible = activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")
+        const selected = memberEligible && selection.memberIds.includes(m.id)
+        const isHovered = memberEligible && m.id === hoveredMemberId && !selected
+        // DISTRIBUTED_LOAD keeps its legacy placement-target highlight (yellow stroke).
+        const isPlacementTarget = activeTool === "DISTRIBUTED_LOAD" && m.id === hoveredMemberId
         const isTruss = m.memberType === "truss"
-        ctx.strokeStyle = selected ? COLOR_SELECTION : (isHovered ? "#fcd34d" : COLOR_BRAND)
+        const state: DrawState = selected ? "selected" : isHovered ? "hover" : "normal"
+        ctx.strokeStyle = isPlacementTarget
+          ? COLOR_HOVER_GENERIC
+          : strokeFor(kind, state, COLOR_BRAND)
         ctx.lineWidth = (selected ? 5 : 4) * s
         ctx.beginPath()
         ctx.moveTo(pa.sx, pa.sy)
@@ -328,7 +369,7 @@ export function StructuralCanvas({
               ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2)
               ctx.fillStyle = "#ffffff"
               ctx.fill()
-              ctx.strokeStyle = selected ? COLOR_SELECTION : COLOR_BRAND
+              ctx.strokeStyle = selected ? strokeFor(kind, "selected", COLOR_BRAND) : COLOR_BRAND
               ctx.lineWidth = (selected ? 2 : 1.5) * s
               ctx.stroke()
             }
@@ -361,19 +402,27 @@ export function StructuralCanvas({
   const drawNodes = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       const s = adaptiveView ? 1 / zoom : 1
+      const kind = interactionKind(activeTab, activeTool)
       for (const n of Object.values(model.nodes)) {
         const p = worldToScreen(n, rect)
-        const selected = selection.nodeIds.includes(n.id)
-        const isHovered = (activeTab === "Model" && activeTool === "DELETE") && n.id === hoveredNodeId
-        const isMoveTarget = activeTab === "Model" && activeTool === "MOVE_NODE" && (
+        // Nodes are eligible only for Model DELETE (hover+select) and Model MOVE_NODE (select).
+        const isDelete = activeTab === "Model" && activeTool === "DELETE"
+        const isMove   = activeTab === "Model" && activeTool === "MOVE_NODE"
+        const selected = isDelete && selection.nodeIds.includes(n.id)
+        const isMoveTarget = isMove && (
           moveNodeMode === "screen" ? n.id === draggingNodeId : n.id === moveNodeSelectedId
         )
+        const isMoveHover  = isMove && !isMoveTarget && n.id === hoveredNodeId
+        const isDelHover   = isDelete && !selected && n.id === hoveredNodeId
+        let state: DrawState = "normal"
+        if (selected || isMoveTarget) state = "selected"
+        else if (isMoveHover || isDelHover) state = "hover"
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
-        ctx.fillStyle = isMoveTarget ? "#fef9c3" : "#ffffff"
+        ctx.fillStyle = fillFor(kind, state, "#ffffff")
         ctx.fill()
-        ctx.strokeStyle = selected ? COLOR_SELECTION : (isMoveTarget || isHovered ? "#fcd34d" : COLOR_BRAND)
-        ctx.lineWidth = (selected || isMoveTarget ? 3 : 2) * s
+        ctx.strokeStyle = strokeFor(kind, state, COLOR_BRAND)
+        ctx.lineWidth = (state === "selected" ? 3 : 2) * s
         ctx.stroke()
       }
     },
@@ -383,20 +432,33 @@ export function StructuralCanvas({
   const drawSupports = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       const sc = adaptiveView ? 1 / zoom : 1
+      const kind = interactionKind(activeTab, activeTool)
       for (const s of Object.values(model.supports)) {
         const n = model.nodes[s.nodeId]
         if (!n) continue
         const { sx, sy } = worldToScreen(n, rect)
-        const isSelected = selection.supportNodeIds.includes(s.nodeId)
-        const isHovered = (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")) && s.nodeId === hoveredNodeId
-        const isMoveTarget = activeTab === "Model" && activeTool === "MOVE_NODE" && (
-          moveNodeMode === "screen" ? s.nodeId === hoveredNodeId : s.nodeId === moveNodeSelectedId
+        // Supports are eligible for: Model SELECT (hover+select), Model DELETE (hover+select),
+        // and Model MOVE_NODE (mirror the node's hover/selection state).
+        const isSelectTool = activeTab === "Model" && activeTool === "SELECT"
+        const isDeleteTool = activeTab === "Model" && activeTool === "DELETE"
+        const isMoveTool   = activeTab === "Model" && activeTool === "MOVE_NODE"
+        const moveSelected = isMoveTool && (
+          moveNodeMode === "screen" ? s.nodeId === draggingNodeId : s.nodeId === moveNodeSelectedId
         )
-        const overrideColor = (isHovered || isMoveTarget) ? "#fcd34d" : undefined
-        drawSupportGlyph(ctx, sx, sy, s.type, isSelected, overrideColor, sc)
+        const selectionTouched = (isSelectTool || isDeleteTool) && selection.supportNodeIds.includes(s.nodeId)
+        const isSelected = selectionTouched || moveSelected
+        const moveHover   = isMoveTool && !moveSelected && s.nodeId === hoveredNodeId
+        const otherHover  = (isSelectTool || isDeleteTool) && !isSelected && s.nodeId === hoveredNodeId
+        let state: DrawState = "normal"
+        if (isSelected) state = "selected"
+        else if (moveHover || otherHover) state = "hover"
+        const overrideColor = state === "normal" ? undefined : strokeFor(kind, state, COLOR_BRAND)
+        // Pass `selected = false` so the glyph helper does not paint its built-in red;
+        // we drive the body color via `overrideColor` for both hover and selected states.
+        drawSupportGlyph(ctx, sx, sy, s.type, false, overrideColor, sc)
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, draggingNodeId, adaptiveView, zoom]
   )
 
   const drawPreview = useCallback(
@@ -702,12 +764,16 @@ export function StructuralCanvas({
       }
 
       // Compute the "positive" perpendicular unit vector for a member in world space.
+      const loadKind = interactionKind(activeTab, activeTool)
+      // Loads are eligible for hover/selection only under Load MODIFY_LOAD and Load DELETE.
+      const loadEligible = activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")
       for (const load of Object.values(model.loads)) {
-        const isSelected = load.id === selectedLoadId || selectedLoadIds.includes(load.id)
-        const isHovered = load.id === hoveredLoadId
-        const strokeColor = isSelected ? "#ef4444" : (isHovered ? "#fcd34d" : COLOR_LOAD_STROKE)
-        const fillColor   = isSelected ? COLOR_LOAD_FILL_SEL : (isHovered ? COLOR_LOAD_FILL_HVR : COLOR_LOAD_FILL)
-        const labelColor = isSelected ? "#ef4444" : (isHovered ? "#fcd34d" : COLOR_LOAD_LABEL)
+        const isSelected = loadEligible && (load.id === selectedLoadId || selectedLoadIds.includes(load.id))
+        const isHovered  = loadEligible && !isSelected && load.id === hoveredLoadId
+        const state: DrawState = isSelected ? "selected" : isHovered ? "hover" : "normal"
+        const strokeColor = strokeFor(loadKind, state, COLOR_LOAD_STROKE)
+        const fillColor   = fillFor  (loadKind, state, COLOR_LOAD_FILL)
+        const labelColor  = strokeFor(loadKind, state, COLOR_LOAD_LABEL)
 
         ctx.save()
         ctx.strokeStyle = strokeColor
@@ -1695,7 +1761,7 @@ export function StructuralCanvas({
       const rw = Math.abs(x2 - x1)
       const rh = Math.abs(y2 - y1)
       ctx.save()
-      ctx.strokeStyle = COLOR_SELECTION
+      ctx.strokeStyle = strokeFor(interactionKind(activeTab, activeTool), "selected", COLOR_SELECTION)
       ctx.lineWidth = 1
       ctx.setLineDash([4, 3])
       ctx.strokeRect(rx, ry, rw, rh)
@@ -2192,10 +2258,22 @@ export function StructuralCanvas({
 
       const nodeId = hitTestNode(model, w, HIT_TOL_NODE)
       if (nodeId) {
-        const item: MultiSelection = { nodeIds: [nodeId], memberIds: [], supportNodeIds: [] }
-        if (selection.nodeIds.includes(nodeId)) onDeselectItems?.(item)
-        else onSelectItems?.(item)
-        return
+        // MODIFY (SELECT) does not operate on nodes — if the hit node carries a support,
+        // promote the hit to that support so the user gets a generous target.
+        if (activeTool === "SELECT" && model.supports[nodeId]) {
+          const item: MultiSelection = { nodeIds: [], memberIds: [], supportNodeIds: [nodeId] }
+          if (selection.supportNodeIds.includes(nodeId)) onDeselectItems?.(item)
+          else onSelectItems?.(item)
+          return
+        }
+        if (activeTool === "SELECT") {
+          // Bare node under MODIFY — nothing to select; fall through to member/support glyph.
+        } else {
+          const item: MultiSelection = { nodeIds: [nodeId], memberIds: [], supportNodeIds: [] }
+          if (selection.nodeIds.includes(nodeId)) onDeselectItems?.(item)
+          else onSelectItems?.(item)
+          return
+        }
       }
 
       const memberId = hitTestMember(model, w, HIT_TOL_MEMBER)

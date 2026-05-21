@@ -4,6 +4,7 @@ import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
 import { StructuralCanvas } from "@/canvas/structural-canvas"
 import { StatusBar } from "@/components/status-bar"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { UnitSettings } from "@/lib/units"
 import { DEFAULT_UNIT_SETTINGS } from "@/lib/units"
@@ -70,6 +71,7 @@ import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinat
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 
 export default function App() {
+  const isMobile = useIsMobile()
   const [activeTab, setActiveTab] = useState<TabType>("Model")
   const [activeTool, setActiveTool] = useState<ToolType>(null)
   const [unitSettings, setUnitSettings] = useState<UnitSettings>(DEFAULT_UNIT_SETTINGS)
@@ -372,16 +374,32 @@ export default function App() {
     setCursorX(x)
     setCursorY(y)
 
+    // Mobile: no hover state from pointer movement; click-driven selection is unaffected.
+    if (isMobile) {
+      setHoveredNodeId(null)
+      setHoveredMemberId(null)
+      setHoveredLoadId(null)
+      return
+    }
+
     const raw = { x, y }
 
     // Detect hover targets based on active tool
-    if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE" || activeTool === "SUPPORT" || activeTool === "MOVE_NODE")) {
+    if (activeTab === "Model" && (activeTool === "DELETE" || activeTool === "SUPPORT" || activeTool === "MOVE_NODE")) {
+      // DELETE / SUPPORT / MOVE_NODE all hover nodes; SELECT does NOT (it operates on members + supports only).
       const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
       setHoveredNodeId(nodeId)
-      if (!nodeId && (activeTool === "SELECT" || activeTool === "DELETE")) {
+      if (!nodeId && activeTool === "DELETE") {
         const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
         setHoveredMemberId(memberId)
       }
+    } else if (activeTab === "Model" && activeTool === "SELECT") {
+      // MODIFY (SELECT) — members + supports only. Try support first via node hit, then member.
+      const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
+      // Only treat node hit as hover when the node carries a support (renderer gates by support too).
+      setHoveredNodeId(nodeId && model.supports[nodeId] ? nodeId : null)
+      const memberId = (!nodeId) ? hitTestMember(model, raw, HIT_TOL_MEMBER) : null
+      setHoveredMemberId(memberId)
     } else if (activeTab === "Load" && activeTool === "POINT_LOAD") {
       const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
       setHoveredNodeId(nodeId)
@@ -443,7 +461,7 @@ export default function App() {
       setHoveredMemberId(null)
       setHoveredLoadId(null)
     }
-  }, [activeTab, activeTool, model])
+  }, [activeTab, activeTool, model, isMobile])
 
 
   useEffect(() => {

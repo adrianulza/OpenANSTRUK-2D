@@ -42,7 +42,18 @@ export const DIM_OFFSET_CELLS = 2
 // These are 2D-context hex values. Tailwind-side colours stay in class strings.
 export const COLOR_BRAND         = "#1a2f5e"  // structural element default (dark navy)
 export const COLOR_ACCENT        = "#ef4444"  // tool preview rubber-bands (NODE/FRAME ghosts)
-export const COLOR_SELECTION     = "#ef4444"  // selection highlight (nodes, members, supports, loads)
+export const COLOR_SELECTION     = "#ef4444"  // (deprecated alias of COLOR_SELECT_DELETE; kept for back-compat)
+
+// ── Interaction state palette (per-tool hover/selection) ─────────────────────
+// Generic = MODIFY / MOVE / MODIFY_LOAD (yellow). Delete = DELETE tool (red).
+export const COLOR_HOVER_GENERIC   = "#fcd34d"  // yellow-300 — generic hover stroke
+export const COLOR_SELECT_GENERIC  = "#eab308"  // yellow-500 — generic selected stroke
+export const COLOR_HOVER_DELETE    = "#fca5a5"  // red-300 — DELETE hover stroke
+export const COLOR_SELECT_DELETE   = "#ef4444"  // red-500 — DELETE selected stroke
+export const COLOR_FILL_HOVER_GEN  = "#fef9c3"  // yellow-100 — fill on generic hover
+export const COLOR_FILL_SELECT_GEN = "#fef08a"  // yellow-200 — fill on generic selection
+export const COLOR_FILL_HOVER_DEL  = "#fee2e2"  // red-100   — fill on DELETE hover
+export const COLOR_FILL_SELECT_DEL = "#FFD6D6"  // red-200ish — fill on DELETE selection
 export const COLOR_PREVIEW_NODE  = "#ef4444"  // ghost circle when placing a node
 export const COLOR_PREVIEW_FRAME = "#ef4444"  // ghost line + circle when drawing a frame member
 export const COLOR_GRID          = "#d1d5db"  // grid lines
