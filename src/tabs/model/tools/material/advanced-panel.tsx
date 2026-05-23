@@ -79,13 +79,25 @@ export function AdvancedDeck({
   const [buf, setBuf] = React.useState<Buf>(initBuf)
   React.useEffect(() => { setBuf(initBuf()) }, [initBuf])
 
+  const [commitError, setCommitError] = React.useState<string | null>(null)
   const commit = () => {
+    const I33val = parseI(parseFloat(buf.I33), u)
+    const Eval   = parseE(parseFloat(buf.E), u)
+    const Aval   = parseA(parseFloat(buf.A), u)
+    const nuVal  = parseFloat(buf.nu)
+    const gVal   = parseFloat(buf.gamma)
+    if (!(Eval > 0))   { setCommitError("E must be > 0");    return }
+    if (!(I33val > 0)) { setCommitError("I33 must be > 0");  return }
+    if (!(Aval > 0))   { setCommitError("A must be > 0");    return }
+    if (!(nuVal > 0 && nuVal < 0.5)) { setCommitError("ν must be 0 < ν < 0.5"); return }
+    if (!(Number.isFinite(gVal) && gVal >= 0)) { setCommitError("γ must be ≥ 0"); return }
+    setCommitError(null)
     const patch: Partial<Section> = {
-      E:     parseE(parseFloat(buf.E), u),
-      I33:   parseI(parseFloat(buf.I33), u),
-      A:     parseA(parseFloat(buf.A), u),
-      nu:    parseFloat(buf.nu),
-      gamma: parseFloat(buf.gamma),
+      E:     Eval,
+      I33:   I33val,
+      A:     Aval,
+      nu:    nuVal,
+      gamma: gVal,
       overridden: true,
     }
     if (buf["Aκ2"].trim() !== "") patch["Aκ2"] = parseA(parseFloat(buf["Aκ2"]), u)
@@ -152,9 +164,14 @@ export function AdvancedDeck({
         <Row name="Centroid (from base)"        symbol="ȳ"   value={section.derived?.yBar != null ? fmt(section.derived.yBar) : "—"} unit="mm" />
 
         {editable && (
-          <Button size="sm" className="w-full h-7 text-xs mt-2" onClick={commit}>
-            Apply Override
-          </Button>
+          <>
+            {commitError && (
+              <p className="text-[10px] text-red-500 mt-1">{commitError}</p>
+            )}
+            <Button size="sm" className="w-full h-7 text-xs mt-2" onClick={commit}>
+              Apply Override
+            </Button>
+          </>
         )}
       </div>
     </div>

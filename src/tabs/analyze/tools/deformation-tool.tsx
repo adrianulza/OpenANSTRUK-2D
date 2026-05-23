@@ -2,6 +2,12 @@ import * as React from "react"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { AnalysisResult, NodeDisplacement } from "@/lib/solver"
 import { Label } from "@/components/ui/label"
+import {
+  type UnitSettings,
+  DEFAULT_UNIT_SETTINGS,
+  displayDisplacement, labelDisplacement,
+  displayRotation, labelRotation,
+} from "@/lib/units"
 
 export function DeformationToolContent({
   scale,
@@ -9,13 +15,17 @@ export function DeformationToolContent({
   showNodeLabels = true,
   onShowNodeLabelsChange,
   analysisResult,
+  unitSettings = DEFAULT_UNIT_SETTINGS,
 }: {
   scale?: number
   onScaleChange?: (v: number) => void
   showNodeLabels?: boolean
   onShowNodeLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
+  unitSettings?: UnitSettings
 }) {
+  const dispUnit = labelDisplacement(unitSettings)
+  const rotUnit  = labelRotation(unitSettings)
   const [showReport, setShowReport] = React.useState(true)
   const nodeEntries = analysisResult
     ? Object.entries(analysisResult.nodeDisplacements) as [string, NodeDisplacement][]
@@ -85,11 +95,11 @@ export function DeformationToolContent({
                   <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
                   <div className="grid grid-cols-2 gap-x-2">
                     <span className="text-[10px] text-gray-500">x</span>
-                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.u * 1000).toFixed(3)} mm</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{displayDisplacement(d.u, unitSettings).toFixed(3)} {dispUnit}</span>
                     <span className="text-[10px] text-gray-500">y</span>
-                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.v * 1000).toFixed(3)} mm</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{displayDisplacement(d.v, unitSettings).toFixed(3)} {dispUnit}</span>
                     <span className="text-[10px] text-gray-500">θ</span>
-                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{(d.theta * 1000).toFixed(3)} mrad</span>
+                    <span className="text-[10px] font-mono text-right text-[#1e293b]">{displayRotation(d.theta, unitSettings).toFixed(3)} {rotUnit}</span>
                   </div>
                 </div>
               ))}

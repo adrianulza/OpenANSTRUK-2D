@@ -81,6 +81,43 @@ export function labelW(u: UnitSettings): string {
   return `${u.force}/${u.length}\u00b3`
 }
 
+// ── Analyze-tab display helpers ──────────────────────────────────────────────
+// The solver works in base units (kN, m, rad). These helpers convert solver
+// outputs into the user-selected display units, plus matching unit labels.
+
+// Force (stored kN). N = kN × 1000.
+export function displayForce(v: number, u: UnitSettings): number {
+  return u.force === "N" ? v * 1000 : v
+}
+export function labelForce(u: UnitSettings): string {
+  return u.force
+}
+
+// Moment (stored kN·m). N·m = kN·m × 1000.
+export function displayMoment(v: number, u: UnitSettings): number {
+  return u.force === "N" ? v * 1000 : v
+}
+export function labelMoment(u: UnitSettings): string {
+  return `${u.force}·m`
+}
+
+// Displacement (stored m). mm = m × 1000.
+export function displayDisplacement(v: number, u: UnitSettings): number {
+  return u.length === "mm" ? v * 1000 : v
+}
+export function labelDisplacement(u: UnitSettings): string {
+  return u.length
+}
+
+// Rotation (stored radians). With length=mm, display in milliradians for
+// consistency with the mm prefix; with length=m, display in radians.
+export function displayRotation(v: number, u: UnitSettings): number {
+  return u.length === "mm" ? v * 1000 : v
+}
+export function labelRotation(u: UnitSettings): string {
+  return u.length === "mm" ? "mrad" : "rad"
+}
+
 // ── Grid spacing (stored metres) ─────────────────────────────────────────────
 
 export function displayGridSpacing(v: number, u: UnitSettings): number {

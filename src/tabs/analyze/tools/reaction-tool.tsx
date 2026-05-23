@@ -3,21 +3,32 @@ import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { AnalysisResult } from "@/lib/solver"
 import { Label } from "@/components/ui/label"
 import { formatValue } from "@/lib/constants"
+import {
+  type UnitSettings,
+  DEFAULT_UNIT_SETTINGS,
+  displayForce, labelForce,
+  displayMoment, labelMoment,
+} from "@/lib/units"
 
 export function ReactionToolContent({
   analysisResult,
   showNodeLabels = true,
   onShowNodeLabelsChange,
+  unitSettings = DEFAULT_UNIT_SETTINGS,
 }: {
   analysisResult: AnalysisResult | null
   showNodeLabels?: boolean
   onShowNodeLabelsChange?: (v: boolean) => void
+  unitSettings?: UnitSettings
 }) {
   const [showReport, setShowReport] = React.useState(true)
+  const forceUnit  = labelForce(unitSettings)
+  const momentUnit = labelMoment(unitSettings)
 
   const entries = analysisResult ? (Object.entries(analysisResult.reactions) as [string, { Rx: number; Ry: number; Mz: number }][]) : []
   const valColor = (v: number) => v >= 0 ? "#2563eb" : "#ef4444"
-  const fmt = (v: number, unit: string) => `${v >= 0 ? "+" : ""}${formatValue(v)} ${unit}`
+  const fmtForce  = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(displayForce(v, unitSettings))} ${forceUnit}`
+  const fmtMoment = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(displayMoment(v, unitSettings))} ${momentUnit}`
 
   return (
     <div className="space-y-3">
@@ -67,11 +78,11 @@ export function ReactionToolContent({
                 <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
                 <div className="grid grid-cols-2 gap-x-2">
                   <span className="text-[10px] text-gray-500">Rx</span>
-                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Rx) }}>{fmt(r.Rx, "kN")}</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Rx) }}>{fmtForce(r.Rx)}</span>
                   <span className="text-[10px] text-gray-500">Ry</span>
-                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Ry) }}>{fmt(r.Ry, "kN")}</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Ry) }}>{fmtForce(r.Ry)}</span>
                   <span className="text-[10px] text-gray-500">Mz</span>
-                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Mz) }}>{fmt(r.Mz, "kN·m")}</span>
+                  <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Mz) }}>{fmtMoment(r.Mz)}</span>
                 </div>
               </div>
             ))}

@@ -133,6 +133,7 @@ interface StructuralCanvasProps {
   snapToGrid?: boolean
   snapToNode?: boolean
   lengthUnit?: "m" | "mm"
+  forceUnit?: "kN" | "N"
   adaptiveView?: boolean
   onMouseMove: (x: number, y: number) => void
   onCanvasClick?: (worldX: number, worldY: number) => void
@@ -178,6 +179,7 @@ export function StructuralCanvas({
   snapToGrid = true,
   snapToNode = true,
   lengthUnit = "m",
+  forceUnit = "kN",
   adaptiveView = true,
   onMouseMove,
   onCanvasClick,
@@ -209,6 +211,12 @@ export function StructuralCanvas({
   onDragNodeStart,
   onDragNodeEnd,
 }: StructuralCanvasProps) {
+  // Display scale for force / moment labels drawn on canvas. Solver stores kN,
+  // moment in kN·m; multiply by 1000 when displaying in N or N·m.
+  const forceScale = forceUnit === "N" ? 1000 : 1
+  const forceLabel = forceUnit
+  const momentLabel = `${forceUnit}·m`
+  const distLoadLabel = `${forceUnit}/m`
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [snapped, setSnapped] = useState<WorldPoint | null>(null)
@@ -818,7 +826,7 @@ export function StructuralCanvas({
           ctx.textBaseline = "bottom"
           const labelX = bx
           const labelY = by - 3
-          ctx.fillText(`${formatValue(Math.abs(mag))} kN`, labelX, labelY)
+          ctx.fillText(`${formatValue(Math.abs(mag) * forceScale)} ${forceLabel}`, labelX, labelY)
 
         } else if (load.type === "distributed") {
           const member = model.members[load.memberId]
@@ -923,8 +931,8 @@ export function StructuralCanvas({
 
             if (mode === "local-axis") {
               labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
-                ? `${formatValue(Math.abs(load.wStart ?? 0))} kN/m`
-                : `${formatValue(Math.abs(load.wStart ?? 0))}–${formatValue(Math.abs(load.wEnd ?? 0))} kN/m`
+                ? `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)} ${distLoadLabel}`
+                : `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)}–${formatValue(Math.abs(load.wEnd ?? 0) * forceScale)} ${distLoadLabel}`
             } else {
               const wxStart = load.wxStart ?? 0, wxEnd = load.wxEnd ?? 0
               const wyStart = load.wyStart ?? 0, wyEnd = load.wyEnd ?? 0
@@ -933,8 +941,8 @@ export function StructuralCanvas({
               const magMid = Math.hypot(wxMid, wyMid)
               if (magMid > 0.001) {
                 labelText = wxStart === wxEnd && wyStart === wyEnd
-                  ? `${formatValue(magMid)} kN/m`
-                  : `${formatValue(Math.abs(wxStart))}/${formatValue(Math.abs(wyStart))}–${formatValue(Math.abs(wxEnd))}/${formatValue(Math.abs(wyEnd))} kN/m`
+                  ? `${formatValue(magMid * forceScale)} ${distLoadLabel}`
+                  : `${formatValue(Math.abs(wxStart) * forceScale)}/${formatValue(Math.abs(wyStart) * forceScale)}–${formatValue(Math.abs(wxEnd) * forceScale)}/${formatValue(Math.abs(wyEnd) * forceScale)} ${distLoadLabel}`
               }
             }
 
@@ -1057,8 +1065,8 @@ export function StructuralCanvas({
               const labelX = midBase.x - signMid * snx * LABEL_GAP
               const labelY = midBase.y - signMid * sny * LABEL_GAP
               const labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
-                ? `${formatValue(Math.abs(load.wStart ?? 0))} kN/m`
-                : `${formatValue(Math.abs(load.wStart ?? 0))}–${formatValue(Math.abs(load.wEnd ?? 0))} kN/m`
+                ? `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)} ${distLoadLabel}`
+                : `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)}–${formatValue(Math.abs(load.wEnd ?? 0) * forceScale)} ${distLoadLabel}`
               ctx.fillStyle = labelColor
               ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
               ctx.textAlign = "center"
@@ -1076,8 +1084,8 @@ export function StructuralCanvas({
                 const labelX = midBase.x - dirXMid * LABEL_GAP
                 const labelY = midBase.y + dirYMid * LABEL_GAP  // flip back for screen
                 const labelText = wxStart === wxEnd && wyStart === wyEnd
-                  ? `${formatValue(magMid)} kN/m`
-                  : `${formatValue(Math.abs(wxStart))}/${formatValue(Math.abs(wyStart))}–${formatValue(Math.abs(wxEnd))}/${formatValue(Math.abs(wyEnd))} kN/m`
+                  ? `${formatValue(magMid * forceScale)} ${distLoadLabel}`
+                  : `${formatValue(Math.abs(wxStart) * forceScale)}/${formatValue(Math.abs(wyStart) * forceScale)}–${formatValue(Math.abs(wxEnd) * forceScale)}/${formatValue(Math.abs(wyEnd) * forceScale)} ${distLoadLabel}`
                 ctx.fillStyle = labelColor
                 ctx.font = `${10 * s}px 'JetBrains Mono', monospace`
                 ctx.textAlign = "center"
@@ -1164,7 +1172,7 @@ export function StructuralCanvas({
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
         const prefix = N >= 0 ? "+" : ""
-        ctx.fillText(`${prefix}${formatValue(N)} kN`, 0, 0)
+        ctx.fillText(`${prefix}${formatValue(N * forceScale)} ${forceLabel}`, 0, 0)
         ctx.restore()
 
         ctx.restore()
@@ -1274,7 +1282,7 @@ export function StructuralCanvas({
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
           const prefix = val >= 0 ? "+" : ""
-          ctx.fillText(`${prefix}${formatValue(val)} kN`, lx, ly)
+          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
         }
 
         // Label end points (with invert sign adjustment)
@@ -1389,7 +1397,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
-          ctx.fillText(`${formatValue(val)} kN·m`, lx, ly)
+          ctx.fillText(`${formatValue(val * forceScale)} ${momentLabel}`, lx, ly)
         }
 
         const bmdSign = invertBMD ? -1 : 1
@@ -1512,9 +1520,9 @@ export function StructuralCanvas({
 
       const lines = [
         `Node ${deformHoverNodeId}`,
-        `x = ${(d.u * 1000).toFixed(3)} mm`,
-        `y = ${(d.v * 1000).toFixed(3)} mm`,
-        `θ = ${(d.theta * 1000).toFixed(3)} mrad`,
+        `x = ${(lengthUnit === "mm" ? d.u * 1000 : d.u).toFixed(3)} ${lengthUnit}`,
+        `y = ${(lengthUnit === "mm" ? d.v * 1000 : d.v).toFixed(3)} ${lengthUnit}`,
+        `θ = ${(lengthUnit === "mm" ? d.theta * 1000 : d.theta).toFixed(3)} ${lengthUnit === "mm" ? "mrad" : "rad"}`,
       ]
 
       ctx.save()
@@ -1610,14 +1618,14 @@ export function StructuralCanvas({
           const zero = false
           const base = r.Ry >= 0 ? sy + (SHAFT + OFFSET) : sy + OFFSET
           const tip  = r.Ry >= 0 ? sy + OFFSET           : sy + (SHAFT + OFFSET)
-          arrow(sx, base, sx, tip, `${formatValue(r.Ry)} kN`, zero, colorFor(r.Ry, zero), 0, SHAFT)
+          arrow(sx, base, sx, tip, `${formatValue(r.Ry * forceScale)} ${forceLabel}`, zero, colorFor(r.Ry, zero), 0, SHAFT)
         }
 
         // Rx — horizontal. Label positioned next to arrow tail.
         if (Math.abs(r.Rx) >= 0.005) {
           const zero = false
           const sign = r.Rx >= 0 ? -1 : 1   // positive → shaft goes left, tip points right
-          arrow(sx + sign * (SHAFT + OFFSET), sy, sx + sign * OFFSET, sy, `${formatValue(r.Rx)} kN`, zero, colorFor(r.Rx, zero), sign * 60, 0)
+          arrow(sx + sign * (SHAFT + OFFSET), sy, sx + sign * OFFSET, sy, `${formatValue(r.Rx * forceScale)} ${forceLabel}`, zero, colorFor(r.Rx, zero), sign * 60, 0)
         }
 
         // Mz — moment arc. Positive = CCW (structural) = CW on screen (Y-flipped).
@@ -1662,7 +1670,7 @@ export function StructuralCanvas({
 
           ctx.fillStyle = color
           ctx.textAlign = "left"; ctx.textBaseline = "middle"
-          ctx.fillText(`${formatValue(r.Mz)} kN·m`, sx + ARC_R + 6 * s, sy - ARC_R - 2 * s)
+          ctx.fillText(`${formatValue(r.Mz * forceScale)} ${momentLabel}`, sx + ARC_R + 6 * s, sy - ARC_R - 2 * s)
         }
 
         ctx.restore()

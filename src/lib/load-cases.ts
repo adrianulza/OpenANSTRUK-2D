@@ -39,9 +39,9 @@ export interface LoadCase {
   /**
    * Whether this case contributes to analysis.
    *  - For regular cases: false = case is muted (its loads are skipped by the solver
-   *    and the case is dimmed in the analyze-view dropdown).
-   *  - For the locked Selfweight case: false = no body force is added to any case
-   *    (default). When real self-weight computation lands, true enables it.
+   *    and the case is hidden from the analyze-view dropdown).
+   *  - For the locked Selfweight case (v1.0.4+): false = no body force is added
+   *    (default); true = solveCase("selfweight") synthesizes γ·A loads per member.
    */
   enabled: boolean
   locked?: boolean

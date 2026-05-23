@@ -7,8 +7,9 @@
  * and envelopes. Linear superposition is exact for the small-deformation linear-
  * elastic system this app models, so combinations and envelopes never re-solve.
  *
- * Selfweight: today the Selfweight case returns a zero result. When real body-force
- * computation lands, only `solveCase` changes.
+ * Selfweight (v1.0.4+): `solveCase("selfweight")` synthesizes a global-Y body force
+ * per member from `Section.gamma · Section.A`. Synthetic loads are scoped to the
+ * case slice and never persisted in `model.loads`.
  */
 
 import { analyze, type AnalysisResult } from "./solver"
@@ -39,33 +40,6 @@ export interface EnvelopeAnalysisResult extends AnalysisResult {
   }
 }
 
-// ── Zero result helpers ──────────────────────────────────────────────────────
-
-/**
- * Build an AnalysisResult with all-zero entries matching the model's topology.
- * Used as the Selfweight placeholder and as the additive identity for combinations.
- */
-export function zeroResult(model: StructureModel): AnalysisResult {
-  const nodeDisplacements: AnalysisResult["nodeDisplacements"] = {}
-  const memberEndForces: AnalysisResult["memberEndForces"] = {}
-  const reactions: AnalysisResult["reactions"] = {}
-
-  for (const id of Object.keys(model.nodes)) {
-    nodeDisplacements[id] = { u: 0, v: 0, theta: 0 }
-  }
-  for (const id of Object.keys(model.members)) {
-    memberEndForces[id] = {
-      N1: 0, V1: 0, M1: 0,
-      N2: 0, V2: 0, M2: 0,
-      q1: 0, q2: 0,
-    }
-  }
-  for (const id of Object.keys(model.supports)) {
-    reactions[id] = { Rx: 0, Ry: 0, Mz: 0 }
-  }
-  return { ok: true, nodeDisplacements, memberEndForces, reactions }
-}
-
 // ── Per-case solve ───────────────────────────────────────────────────────────
 
 /**
@@ -80,8 +54,33 @@ export function solveCase(
   caseId: LoadCaseId,
 ): AnalysisResult | null {
   if (caseId === "selfweight") {
-    // Placeholder: real body force computation deferred.
-    return zeroResult(model)
+    // Synthesize a global-Y distributed load on every member from its section's
+    // unit weight γ (kN/m³) and cross-sectional area A (mm²). Gravity acts in −Y.
+    // Members whose section has γ ≤ 0 (or undefined) contribute nothing — common
+    // for manual sections where the user hasn't entered a unit weight.
+    //
+    // The synthetic loads are scoped to this slice and never persisted in the
+    // user-visible model. After v1.0.4 trusses are condensed-frame elements, so
+    // the global-axis distributed-load path handles them uniformly with frames.
+    const selfweightLoads: StructureModel["loads"] = {}
+    for (const m of Object.values(model.members)) {
+      const sec = model.sections[m.section]
+      if (!sec) continue
+      const gamma = sec.gamma ?? 0
+      if (gamma <= 0) continue
+      const w = gamma * sec.A * 1e-6  // kN/m
+      const id = `sw_${m.id}`
+      selfweightLoads[id] = {
+        id, type: "distributed", memberId: m.id,
+        loadCaseId: "selfweight",
+        mode: "global-axis",
+        wxStart: 0, wxEnd: 0,
+        wyStart: -w, wyEnd: -w,
+      }
+    }
+    const slice: StructureModel = { ...model, loads: selfweightLoads }
+    const r = analyze(slice)
+    return r.ok ? r : null
   }
 
   const filteredLoads: StructureModel["loads"] = {}

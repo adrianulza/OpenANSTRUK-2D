@@ -82,16 +82,65 @@ function localStiffness(EA: number, EI: number, L: number): number[][] {
   ]
 }
 
-// Truss element: axial-only, no bending rows/cols (still 6×6 so transform is identical).
-function trussLocalStiffness(EA: number, L: number): number[][] {
-  return [
-    [ EA/L, 0, 0, -EA/L, 0, 0],
-    [ 0,    0, 0,  0,    0, 0],
-    [ 0,    0, 0,  0,    0, 0],
-    [-EA/L, 0, 0,  EA/L, 0, 0],
-    [ 0,    0, 0,  0,    0, 0],
-    [ 0,    0, 0,  0,    0, 0],
+// Truss element (v1.0.4): frame element with M3 releases at both ends (reference software style).
+// Implemented by static condensation of θᵢ, θⱼ from the full 6×6 frame stiffness.
+// The result is a 6×6 matrix whose θ rows/cols are zero (matching the released-DOF
+// boundary condition) but whose transverse (v) rows/cols carry the simply-supported
+// beam stiffness, so distributed loads produce real internal V/M between the end
+// nodes while transmitting only axial force to adjoining members.
+//
+// Retained DOFs r = [0,1,3,4] (uᵢ, vᵢ, uⱼ, vⱼ); released DOFs s = [2,5] (θᵢ, θⱼ).
+// K_cc = K_rr − K_rs · K_ss⁻¹ · K_sr (4×4), then padded back to 6×6 with zeros at 2,5.
+// FEF_cc = F_r − K_rs · K_ss⁻¹ · F_s, padded back to length 6 with zeros at 2,5.
+//
+// Requires EI > 0 (Step 1 input guard enforces this at the section layer).
+function condensedTrussElement(
+  EA: number, EI: number, L: number, q1: number, q2: number,
+): { K_loc: number[][]; FEF_loc: number[] } | null {
+  const Kf  = localStiffness(EA, EI, L)
+  const Ff  = fixedEndForces(q1, q2, L)
+  const r   = [0, 1, 3, 4]
+  const s   = [2, 5]
+
+  // Extract sub-blocks.
+  const Krr = r.map((i) => r.map((j) => Kf[i][j]))      // 4×4
+  const Krs = r.map((i) => s.map((j) => Kf[i][j]))      // 4×2
+  const Ksr = s.map((i) => r.map((j) => Kf[i][j]))      // 2×4
+  const Kss = s.map((i) => s.map((j) => Kf[i][j]))      // 2×2
+  const Fr  = r.map((i) => Ff[i])                        // length 4
+  const Fs  = s.map((i) => Ff[i])                        // length 2
+
+  // K_ss⁻¹ via closed-form 2×2 inverse.
+  const det = Kss[0][0] * Kss[1][1] - Kss[0][1] * Kss[1][0]
+  if (Math.abs(det) < 1e-15) return null
+  const KssInv = [
+    [ Kss[1][1] / det, -Kss[0][1] / det],
+    [-Kss[1][0] / det,  Kss[0][0] / det],
   ]
+
+  // 4×4: K_cc = K_rr − K_rs · K_ss⁻¹ · K_sr
+  const KrsKssInv = matMul(Krs, KssInv)                  // 4×2
+  const KrsKssInvKsr = matMul(KrsKssInv, Ksr)            // 4×4
+  const Kcc = Krr.map((row, i) => row.map((v, j) => v - KrsKssInvKsr[i][j]))
+
+  // Length-4: F_cc = F_r − K_rs · K_ss⁻¹ · F_s
+  const KssInvFs = matVec(KssInv, Fs)                    // length 2
+  const KrsKssInvFs = matVec(KrsKssInv, KssInvFs)        // length 4
+  const Fcc = Fr.map((v, i) => v - KrsKssInvFs[i])
+
+  // Pad back to 6×6 with zero θ rows/cols at indices 2, 5.
+  const K_loc: number[][] = Array.from({ length: 6 }, () => new Array(6).fill(0))
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 4; j++) {
+      K_loc[r[i]][r[j]] = Kcc[i][j]
+    }
+  }
+
+  // Pad FEF back to length 6 with zeros at indices 2, 5.
+  const FEF_loc = new Array(6).fill(0)
+  for (let i = 0; i < 4; i++) FEF_loc[r[i]] = Fcc[i]
+
+  return { K_loc, FEF_loc }
 }
 
 // Transforms local → global DOFs. c=cos(α), s=sin(α), α=atan2(dy,dx).
@@ -172,7 +221,43 @@ export function analyze(model: StructureModel): SolverResult {
 
     const c = dx / L, s = dy / L
     const isTruss = member.memberType === "truss"
-    const k = isTruss ? trussLocalStiffness(EA, L) : localStiffness(EA, EI, L)
+
+    // Read distributed load on this member (now applies to trusses too post-v1.0.4).
+    // Positive local-axis w acts in the +local-2 direction (= local-1 rotated +90° CCW).
+    // No quadrant flip — the same single rule for every member orientation.
+    let q1 = 0, q2 = 0
+    let qx1 = 0, qx2 = 0  // axial components (local-x)
+    for (const load of loads) {
+      if (load.type === "distributed" && load.memberId === member.id) {
+        const mode = load.mode ?? "local-axis"
+        if (mode === "local-axis") {
+          q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
+        } else {
+          // Global-axis mode: project global X,Y components onto local axes
+          // Local-1: (c, s); Local-2: (-s, c)
+          const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
+          const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
+          qx1 = qxStart * c + qyStart * s  // axial component at start
+          qx2 = qxEnd * c + qyEnd * s      // axial component at end
+          q1 = -qxStart * s + qyStart * c  // +local-2 component at start
+          q2 = -qxEnd * s + qyEnd * c      // +local-2 component at end
+        }
+        break
+      }
+    }
+
+    // Build local stiffness and FEF. For trusses, condense out the released θᵢ, θⱼ.
+    let k: number[][]
+    let FEF: number[]
+    if (isTruss) {
+      const cond = condensedTrussElement(EA, EI, L, q1, q2)
+      if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
+      k = cond.K_loc
+      FEF = cond.FEF_loc
+    } else {
+      k = localStiffness(EA, EI, L)
+      FEF = fixedEndForces(q1, q2, L)
+    }
     const T = transformMatrix(c, s)
     const Tt = transpose(T)
     const Kg = matMul(Tt, matMul(k, T))   // global element stiffness
@@ -182,40 +267,13 @@ export function analyze(model: StructureModel): SolverResult {
       for (let j = 0; j < 6; j++)
         K[dofs[i]][dofs[j]] += Kg[i][j]
 
-    // Distributed load on this member (truss elements carry no transverse load).
-    // Positive local-axis w acts in the +local-2 direction (= local-1 rotated +90° CCW).
-    // No quadrant flip — the same single rule for every member orientation.
-    let q1 = 0, q2 = 0
-    let qx1 = 0, qx2 = 0  // axial components (local-x)
-    if (!isTruss) {
-      for (const load of loads) {
-        if (load.type === "distributed" && load.memberId === member.id) {
-          const mode = load.mode ?? "local-axis"
-          if (mode === "local-axis") {
-            q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
-          } else {
-            // Global-axis mode: project global X,Y components onto local axes
-            // Local-1: (c, s); Local-2: (-s, c)
-            const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
-            const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
-            qx1 = qxStart * c + qyStart * s  // axial component at start
-            qx2 = qxEnd * c + qyEnd * s      // axial component at end
-            q1 = -qxStart * s + qyStart * c  // +local-2 component at start
-            q2 = -qxEnd * s + qyEnd * c      // +local-2 component at end
-          }
-          break
-        }
-      }
-    }
-
-    const FEF = fixedEndForces(q1, q2, L)
     fefStore[member.id] = FEF
 
     const FEF_global = matVec(Tt, FEF)
     for (let i = 0; i < 6; i++) F[dofs[i]] += FEF_global[i]
 
-    // Add axial distributed load as equivalent point loads at nodes
-    if (!isTruss && (Math.abs(qx1) > 1e-12 || Math.abs(qx2) > 1e-12)) {
+    // Add axial distributed load as equivalent point loads at nodes (frames and trusses both).
+    if (Math.abs(qx1) > 1e-12 || Math.abs(qx2) > 1e-12) {
       // For uniform/linear distributed axial load, apply equivalent loads at nodes
       // For simplicity: half of total axial load goes to each node
       const avgQx = (qx1 + qx2) / 2
@@ -252,10 +310,12 @@ export function analyze(model: StructureModel): SolverResult {
     if (sup.type === "fixed") constrained.add(3*i + 2)
   }
 
-  // Constrain θ DOFs at nodes whose only connected members are truss elements.
-  // Truss members contribute no rotational stiffness, leaving those θ rows/cols
-  // exactly zero → singular K.  Fixing θ = 0 at such nodes is physically correct
-  // (no moment is transmitted, rotation is indeterminate, set to zero).
+  // Constrain θ DOFs at nodes whose only connections are moment-released (truss) members.
+  // After v1.0.4 the truss element is a condensed-frame: its θ rows/cols are zero by
+  // construction (the released-end boundary condition). At pure-truss nodes, the global
+  // K would be singular in θ. Pinning θ = 0 there is physically correct (no moment is
+  // transmitted to/from the joint) and keeps K invertible. Confirmed required by the
+  // full truss-template matrix; removing this guard makes Warren/Pratt/Howe singular.
   const frameConnectedNodes = new Set<string>()
   for (const mem of members) {
     if (mem.memberType !== "truss") {
@@ -306,7 +366,35 @@ export function analyze(model: StructureModel): SolverResult {
     const c = dx / L, s = dy / L
     const isTruss = member.memberType === "truss"
 
-    const k  = isTruss ? trussLocalStiffness(EA, L) : localStiffness(EA, EI, L)
+    // Distributed load for interpolation — same q values used in assembly (no flip).
+    // Now applies to trusses too (released-end frame element carries transverse load
+    // simply-supported between its end nodes).
+    let q1 = 0, q2 = 0
+    for (const load of loads) {
+      if (load.type === "distributed" && load.memberId === member.id) {
+        const mode = load.mode ?? "local-axis"
+        if (mode === "local-axis") {
+          q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
+        } else {
+          const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
+          const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
+          q1 = -qxStart * s + qyStart * c
+          q2 = -qxEnd * s + qyEnd * c
+        }
+        break
+      }
+    }
+
+    // Use the SAME stiffness used in assembly (condensed for trusses, full for frames).
+    // Pairing K and FEF consistently is critical: f_raw = K · d_loc, then f = f_raw − FEF.
+    let k: number[][]
+    if (isTruss) {
+      const cond = condensedTrussElement(EA, EI, L, q1, q2)
+      if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
+      k = cond.K_loc
+    } else {
+      k = localStiffness(EA, EI, L)
+    }
     const T  = transformMatrix(c, s)
 
     const d_elem = [d[3*ia], d[3*ia+1], d[3*ia+2], d[3*ib], d[3*ib+1], d[3*ib+2]]
@@ -315,32 +403,13 @@ export function analyze(model: StructureModel): SolverResult {
     const FEF    = fefStore[member.id] ?? [0,0,0,0,0,0]
     const f      = f_raw.map((v, i) => v - FEF[i])   // element end forces (local)
 
-    // Distributed load for interpolation — same q values used in assembly (no flip).
-    let q1 = 0, q2 = 0
-    if (!isTruss) {
-      for (const load of loads) {
-        if (load.type === "distributed" && load.memberId === member.id) {
-          const mode = load.mode ?? "local-axis"
-          if (mode === "local-axis") {
-            q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
-          } else {
-            const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
-            const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
-            q1 = -qxStart * s + qyStart * c
-            q2 = -qxEnd * s + qyEnd * c
-          }
-          break
-        }
-      }
-    }
-
     memberEndForces[member.id] = {
-      N1: -f[0],                        // tension positive
-      V1:  isTruss ? 0 : -f[1],         // positive = force on +face in +local-2 direction
-      M1:  isTruss ? 0 : -f[2],         // sagging positive — tension on −local-2 side
+      N1: -f[0],   // tension positive
+      V1: -f[1],   // positive = force on +face in +local-2 direction
+      M1: -f[2],   // sagging positive — tension on −local-2 side; ~0 for truss by construction
       N2:  f[3],
-      V2:  isTruss ? 0 :  f[4],
-      M2:  isTruss ? 0 : f[5],
+      V2:  f[4],
+      M2:  f[5],   // ~0 for truss by construction
       q1, q2,
     }
   }

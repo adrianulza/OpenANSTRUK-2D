@@ -256,14 +256,14 @@ export function createInitialModel(): StructureModel {
 }
 
 export function stabilityOf(model: StructureModel): "STABLE" | "UNSTABLE" {
-  const members = Object.values(model.members)
-  const m = members.length
+  // After v1.0.4 every member carries 3 DOFs per end (frames directly; trusses via
+  // a condensed-frame element with M3 releases). The single formula 3m + r ≥ 3j
+  // applies uniformly. The historical pure-truss branch (m + r ≥ 2j) was tied to
+  // the old axial-only truss element and is obsolete.
+  const m = Object.values(model.members).length
   const j = Object.values(model.nodes).length
   const r = Object.values(model.supports).reduce((sum, s) =>
     sum + (s.type === "fixed" ? 3 : s.type === "pin" ? 2 : 1), 0)
-  const isPureTruss = m > 0 && members.every((mem) => mem.memberType === "truss")
-  // Pure truss: m + r >= 2j  |  frame / mixed: 3m + r >= 3j
-  if (isPureTruss) return m + r >= 2 * j ? "STABLE" : "UNSTABLE"
   return 3 * m + r >= 3 * j ? "STABLE" : "UNSTABLE"
 }
 

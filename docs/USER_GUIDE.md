@@ -28,7 +28,7 @@ Click anywhere on the canvas to place a node. Nodes snap to a 0.5 m grid. If you
 ### MEMBER
 Click once to start a member, click again to end it. Members connect two nodes. Use the flyout panel (right side) to choose between:
 - **Frame** — full beam-column with bending stiffness (default)
-- **Truss** — pin-jointed, axial force only
+- **Truss** — frame with moment releases at both ends. Transmits only axial force to adjoining members at the joints, but carries transverse load locally between its end nodes (a distributed load or self-weight produces a simply-supported moment diagram on the member). Matches reference software's truss behavior.
 
 Duplicate members (same two endpoints) are rejected.
 
@@ -69,6 +69,14 @@ Intensity in kN/m. Positive values point in +local-2 (local-axis mode) or in +X 
 
 ### MODIFY
 Click a load to select it and edit its parameters in the flyout. The delete button in the flyout removes the load.
+
+### SELF-WEIGHT
+The locked **Selfweight** load case (visible in the LOAD CASE tool) applies a body force to every member from its section's unit weight (γ, kN/m³) and cross-sectional area (A). Gravity acts in −Y.
+
+- **Enabling**: tick the checkbox on the Selfweight row. Disabled by default.
+- **Where γ comes from**: parametric sections set γ automatically (concrete 24 kN/m³, steel 78.5 kN/m³). Manual sections start with γ = 0 — set a value in the MATERIAL tool's manual form, or override it in the Advanced panel. Sections with γ = 0 contribute no self-weight.
+- **Combinations**: the Selfweight case has kind = "Dead", so any code-preset Dead-factor term (1.4D, 1.2D, …) automatically includes it once enabled. You don't need to add Selfweight manually to combos.
+- **Trusses**: self-weight is applied to truss members too. Each truss member shows a parabolic moment diagram from its own weight (simply-supported between its end nodes), and the reactions at supports correctly include the truss self-weight.
 
 ---
 

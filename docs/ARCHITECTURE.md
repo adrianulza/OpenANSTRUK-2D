@@ -176,7 +176,7 @@ StructureModel {
 **Key design decisions:**
 - IDs are string-keyed monotonic counters (`"n1"`, `"m1"`, `"l1"`, `"s1"`, …). They never reset during a session.
 - One load per node (point loads), one load per member (distributed loads) — enforced by the UI.
-- Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (pin-jointed, axial only).
+- Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (reference software-style — frame element with M3 releases at both ends; carries transverse load locally between its end nodes but transmits only axial force at the joints). See the Solver section for details.
 - `PointLoad` stores `{fx, fy}` global components in kN. The flyout supports both direct component input and angular input (magnitude + angle) — conversion happens in the UI layer.
 - `DistributedLoad` supports two modes: `"local-axis"` (default — `wStart`/`wEnd` act in the +local-2 direction, where local-2 = i→j unit vector rotated +90° CCW) and `"global-axis"` (X/Y world components).
 - `Section` supports two authoring modes: `manual` (E, I, A entered directly) and `parametric` (materialClass + shape + dimensions, computed via `lib/sections/compute.ts`).
@@ -222,6 +222,28 @@ One rule for every member: local-1 = i→j unit vector `(c, s) = (dx/L, dy/L)`; 
 ### Distributed Load (local-axis mode)
 
 `wStart`/`wEnd` are taken as the perpendicular component along **+local-2**, with no quadrant flip. The same `q1, q2` values are used by both the fixed-end-force formula (assembly) and the internal-force interpolation (recovery), so end values and the curve between them stay consistent.
+
+### Truss Element (v1.0.4+)
+
+`memberType: "truss"` is implemented as a **frame element with M3 releases at both ends**, not the older axial-only formulation. The released-rotational DOFs θᵢ, θⱼ are removed by static condensation from the full 6×6 frame stiffness (`condensedTrussElement` in `solver.ts`):
+
+- `K_cc = K_rr − K_rs · K_ss⁻¹ · K_sr` (retained DOFs r = [uᵢ, vᵢ, uⱼ, vⱼ]; released DOFs s = [θᵢ, θⱼ])
+- The same condensation transforms the FEF vector: `FEF_cc = F_r − K_rs · K_ss⁻¹ · F_s`
+- After padding back to 6×6 / length 6 with zeros at the θ positions, the element is shape-compatible with the frame path; the only difference is that its θ rows/cols are zero.
+
+The result: transverse loads (including self-weight) produce a real simply-supported moment diagram between the end nodes — exactly matching reference software — while end moments stay zero at the joints. Requires `EI > 0`; the input layer guards I33 > 0.
+
+A leftover detail: pure-truss nodes (those connected only to released-end members) have zero θ stiffness in global K. The solver pins those θ DOFs to zero to keep K invertible.
+
+### Self-weight load case
+
+`solveCase("selfweight")` in `lib/analysis-pipeline.ts` synthesizes the body force on demand:
+
+- For each member, compute `w = (sec.gamma ?? 0) · sec.A · 1e-6` kN/m. Skip if `w ≤ 0`.
+- Build a `DistributedLoad` with `mode: "global-axis"`, `wyStart = wyEnd = −w`, attached to `loadCaseId: "selfweight"`.
+- Pass the slice `{ ...model, loads: selfweightLoads }` to `analyze()`.
+
+The synthetic loads never appear in `model.loads` — they exist only inside the case slice. Since the Selfweight LoadCase has `kind: "Dead"`, the existing combo generator includes it in every Dead-factor term (1.4D, 1.2D, …) automatically once the user enables it.
 
 A consequence of this pure convention: the physical direction of a `local-axis` load depends on the member's i→j ordering. Reversing the a/b nodes rotates +local-2 by 180° and flips the load direction. This is a property of the local-axis convention, not a bug.
 

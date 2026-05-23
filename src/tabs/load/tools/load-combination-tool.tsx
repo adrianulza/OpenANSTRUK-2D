@@ -66,6 +66,14 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
   const manualCombos = combos.filter((c) => c.source === "custom")
   const codeCombos = combos.filter((c) => c.source === "preset")
 
+  // Warn when any combination references Selfweight but the case is disabled —
+  // such combos silently lose their self-weight contribution at solve time.
+  const selfweightCase = loadCases["selfweight"]
+  const selfweightInactiveWarning =
+    selfweightCase != null &&
+    !selfweightCase.enabled &&
+    combos.some((c) => c.terms.some((t) => t.caseId === "selfweight"))
+
   return (
     <div className="space-y-3">
       {/* Master toggle */}
@@ -218,26 +226,19 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             </button>
           )}
 
-          {/* Envelope row */}
-          <div
-            className="border-t pt-3"
-            style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}
-          >
+          {/* Selfweight-inactive warning. Surfaces only when a combo references
+              the Selfweight case but the case itself is disabled — those combos
+              would silently drop their self-weight contribution. */}
+          {selfweightInactiveWarning && (
             <div
-              className={`grid items-center gap-2 px-1 ${
-                combinationMode === "code"
-                  ? "grid-cols-[16px_100px_1fr] md:grid-cols-[20px_160px_1fr]"
-                  : "grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
-              }`}
+              className="border-t pt-3"
+              style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}
             >
-              <span className="text-[11px] text-gray-500">◆</span>
-              <span className="text-xs font-medium text-gray-700">Envelope</span>
-              <span className="text-[11px] text-gray-500 italic">
-                max/min of checked combinations
-              </span>
-              {combinationMode === "manual" && <span />}
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 leading-snug">
+                Warning: Selfweight is deactivated in the load case. Enable it to get the results.
+              </div>
             </div>
-          </div>
+          )}
         </>
       </div>
 
@@ -436,7 +437,11 @@ function ComboEditor({
   onPatch: (patch: Partial<LoadCombination>) => void
 }) {
   const caseList = Object.values(cases)
-  const firstCaseId = caseList[0]?.id ?? ""
+  // Default to "dead" if present; otherwise prefer any non-locked case; else first.
+  const defaultCaseId =
+    cases["dead"]?.id ??
+    caseList.find((c) => !c.locked)?.id ??
+    caseList[0]?.id ?? ""
 
   const setName = (name: string) => onPatch({ name })
   const setTerms = (terms: LoadCombination["terms"]) => onPatch({ terms })
@@ -452,7 +457,7 @@ function ComboEditor({
     setTerms(combo.terms.filter((_, i) => i !== idx))
   }
   const addTerm = () => {
-    setTerms([...combo.terms, { factor: 1.0, caseId: firstCaseId }])
+    setTerms([...combo.terms, { factor: 1.0, caseId: defaultCaseId }])
   }
 
   return (

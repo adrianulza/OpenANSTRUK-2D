@@ -5,6 +5,12 @@ import type { AnalysisResult } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import { Label } from "@/components/ui/label"
 import { formatValue } from "@/lib/constants"
+import {
+  type UnitSettings,
+  DEFAULT_UNIT_SETTINGS,
+  displayForce, labelForce,
+  displayMoment, labelMoment,
+} from "@/lib/units"
 
 export type DiagramKind = "AXIAL" | "SHEAR" | "MOMENT"
 
@@ -18,6 +24,7 @@ export function DiagramToolContent({
   onShowMemberLabelsChange,
   analysisResult,
   model,
+  unitSettings = DEFAULT_UNIT_SETTINGS,
 }: {
   label: DiagramKind
   scale?: number
@@ -28,6 +35,7 @@ export function DiagramToolContent({
   onShowMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   model?: StructureModel
+  unitSettings?: UnitSettings
 }) {
   const kind = label
 
@@ -58,8 +66,10 @@ export function DiagramToolContent({
     })
   }, [analysisResult, model, kind])
 
-  const fmt = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(v)}`
-  const unit = kind === "MOMENT" ? "kN·m" : "kN"
+  const unit = kind === "MOMENT" ? labelMoment(unitSettings) : labelForce(unitSettings)
+  const toDisplay = (v: number) =>
+    kind === "MOMENT" ? displayMoment(v, unitSettings) : displayForce(v, unitSettings)
+  const fmt = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(toDisplay(v))}`
   const peakColor = (v: number) => v >= 0 ? "#2563eb" : "#ef4444"
 
   const [showReport, setShowReport] = React.useState(true)

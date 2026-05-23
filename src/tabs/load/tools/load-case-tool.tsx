@@ -86,7 +86,7 @@ function CaseRow({
           className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
           title={
             loadCase.locked
-              ? "Include self-weight in solve"
+              ? "Include self-weight body force (γ·A per member) in solve & analyze"
               : "Include this case in solve & analyze"
           }
         />

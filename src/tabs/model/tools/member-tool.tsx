@@ -51,7 +51,7 @@ export function MemberToolContent({
         <p className="text-[10px] text-gray-400 leading-snug">
           {activeMemberType === "frame"
             ? "Full beam-column: axial + shear + moment"
-            : "Pure axial only: pin-released both ends"}
+            : "Frame with moment releases at both ends. Transmits only axial at joints; carries transverse load locally (self-weight produces simply-supported bending)."}
         </p>
       </div>
 

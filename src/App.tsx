@@ -230,9 +230,8 @@ export default function App() {
       setLoadCases((prev) => {
         const existing = prev[id]
         if (!existing) return prev
-        // Locked cases can only patch enabled + color. (For Selfweight, `enabled`
-        // controls whether body force is added; real self-weight computation is
-        // deferred but the toggle is wired through.)
+        // Locked cases can only patch enabled + color. For Selfweight, `enabled`
+        // gates the synthetic γ·A body force computed in solveCase("selfweight").
         if (existing.locked) {
           const safePatch: Partial<LoadCase> = {}
           if ("enabled" in patch) safePatch.enabled = patch.enabled
@@ -247,11 +246,15 @@ export default function App() {
 
   const handleAddCombination = useCallback(() => {
     const id = newLoadComboId()
-    const firstCaseId = Object.keys(loadCases)[0] ?? "dead"
+    // Prefer "dead" as the seed term; fall back to any non-locked case; else first.
+    const seedCaseId =
+      loadCases["dead"]?.id ??
+      Object.values(loadCases).find((c) => !c.locked)?.id ??
+      Object.keys(loadCases)[0] ?? "dead"
     const newCombo: LoadCombination = {
       id,
       name: `Combination ${Object.values(combinations).filter((c) => c.source === "custom").length + 1}`,
-      terms: [{ factor: 1.0, caseId: firstCaseId }],
+      terms: [{ factor: 1.0, caseId: seedCaseId }],
       source: "custom",
       enabled: true,
     }
@@ -1125,6 +1128,7 @@ export default function App() {
             snapToGrid={snapToGrid}
             snapToNode={snapToNode}
             lengthUnit={unitSettings.length}
+            forceUnit={unitSettings.force}
             adaptiveView={adaptiveView}
             onMouseMove={handleMouseMove}
             onCanvasClick={handleCanvasClick}
