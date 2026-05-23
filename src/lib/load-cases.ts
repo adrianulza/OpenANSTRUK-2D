@@ -14,21 +14,20 @@ export const LOAD_CASE_KINDS: LoadCaseKind[] = [
 ]
 
 export type CodePreset =
-  | "ASCE7-16"
-  | "SNI1726-2019"
   | "ASCE7-22"
-  | "EN1990-2002"
-  | "GB50068-2018"
   | "AS-NZS1170-2002"
   | "BSL-AIJ-ASD"
+  | "EN1990-2002"
+  | "GB50068-2018"
+  | "SNI 1726:2019"
 
 export const CODE_PRESETS: { id: CodePreset; label: string }[] = [
-  { id: "SNI1726-2019", label: "SNI 1726-2019 (Indonesia)" },
   { id: "ASCE7-22", label: "ASCE 7-22 LRFD (USA)" },
-  { id: "EN1990-2002", label: "EN 1990:2002+A1 (Europe)" },
-  { id: "GB50068-2018", label: "GB 50068-2018 (China)" },
   { id: "AS-NZS1170-2002", label: "AS/NZS 1170.0:2002 (Australia/NZ)" },
   { id: "BSL-AIJ-ASD", label: "BSL/AIJ ASD (Japan)" },
+  { id: "EN1990-2002", label: "EN 1990:2002+A1 (Europe)" },
+  { id: "GB50068-2018", label: "GB 50068-2018 (China)" },
+  { id: "SNI 1726:2019", label: "SNI 1726:2019 (Indonesia)" },
 ]
 
 export interface LoadCase {

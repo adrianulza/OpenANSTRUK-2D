@@ -8,6 +8,7 @@ import { newSectionId } from "@/lib/model"
 import type { UnitSettings } from "@/lib/units"
 import { DEFAULT_UNIT_SETTINGS } from "@/lib/units"
 import { SectionSelect } from "./section-select"
+import { ToggleButton } from "@/components/flyout-shared"
 import {
   ManualForm, manualFieldsFromSection, parseManualFields, validateManual,
   type ManualFields,
@@ -375,7 +376,7 @@ function ToolbarButton({
 }) {
   const styles: Record<typeof tone, string> = {
     primary: "border-[#2563eb] text-[#2563eb] hover:bg-[#2563eb]/10",
-    neutral: "border-gray-200 text-gray-600 hover:border-[#1a2f5e] hover:text-[#1a2f5e]",
+    neutral: "border-gray-200 text-gray-600 hover:border-[#2563eb] hover:text-[#2563eb]",
     muted:   "border-gray-200 text-gray-300 cursor-not-allowed",
     danger:  "border-red-400 text-red-500 bg-red-50 hover:bg-red-100",
   }
@@ -402,9 +403,8 @@ function ModeBadge({ mode }: { mode: Mode }) {
   return (
     <div
       className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded"
-      style={{ backgroundColor: "#1a2f5e", color: "white" }}
+      style={{ backgroundColor: "#2563eb", color: "white" }}
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-white/70" />
       {label}
     </div>
   )
@@ -419,15 +419,12 @@ function ModeButton({
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
+    <ToggleButton
+      active={active}
       onClick={onClick}
-      className={cn(
-        "flex-1 h-6 text-[11px] rounded transition-colors",
-        active ? "bg-[#1a2f5e] text-white" : "text-gray-600 hover:bg-gray-100",
-      )}
+      className="h-6 text-[11px]"
     >
       {children}
-    </button>
+    </ToggleButton>
   )
 }

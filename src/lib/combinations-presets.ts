@@ -16,9 +16,9 @@ interface PresetCombo {
   permuteSeismicSign?: boolean
 }
 
-// ASCE 7-16 § 2.3.2 basic LRFD strength combinations.
+// ASCE 7-22 § 2.3.2 basic LRFD strength combinations. SNI 1726-2019 uses the same set.
 // Snow (S) is intentionally omitted (tracks SNI 1726-2019 and project scope).
-const ASCE_7_16: PresetCombo[] = [
+const ASCE_7_22: PresetCombo[] = [
   { name: "1.4D", terms: [{ factor: 1.4, kind: "Dead" }] },
   {
     name: "1.2D + 1.6L + 0.5Lr",
@@ -83,10 +83,7 @@ const ASCE_7_16: PresetCombo[] = [
 ]
 
 // SNI 1726-2019 — essentially the same LRFD set, no snow.
-const SNI_1726_2019: PresetCombo[] = ASCE_7_16
-
-// ASCE 7-22 — same § 2.3.2 LRFD strength combos for this scope.
-const ASCE_7_22: PresetCombo[] = ASCE_7_16
+const SNI_1726_2019: PresetCombo[] = ASCE_7_22
 
 // EN 1990:2002+A1, Eq. 6.10 (simple set). Each variable action becomes its own
 // "leading" combo. ψ₀ secondary terms are intentionally omitted per project
@@ -269,13 +266,12 @@ const BSL_AIJ_ASD: PresetCombo[] = [
 ]
 
 const PRESET_DEFS: Record<CodePreset, PresetCombo[]> = {
-  "ASCE7-16": ASCE_7_16,
-  "SNI1726-2019": SNI_1726_2019,
+  "AS-NZS1170-2002": AS_NZS_1170_0,
   "ASCE7-22": ASCE_7_22,
+  "BSL-AIJ-ASD": BSL_AIJ_ASD,
   "EN1990-2002": EN_1990_2002,
   "GB50068-2018": GB_50068_2018,
-  "AS-NZS1170-2002": AS_NZS_1170_0,
-  "BSL-AIJ-ASD": BSL_AIJ_ASD,
+  "SNI 1726:2019": SNI_1726_2019,
 }
 
 // Distinct case kinds referenced by this preset's combinations.

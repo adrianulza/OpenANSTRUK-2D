@@ -42,7 +42,6 @@ export const DIM_OFFSET_CELLS = 2
 // These are 2D-context hex values. Tailwind-side colours stay in class strings.
 export const COLOR_BRAND         = "#1a2f5e"  // structural element default (dark navy)
 export const COLOR_ACCENT        = "#ef4444"  // tool preview rubber-bands (NODE/FRAME ghosts)
-export const COLOR_SELECTION     = "#ef4444"  // (deprecated alias of COLOR_SELECT_DELETE; kept for back-compat)
 
 // ── Interaction state palette (per-tool hover/selection) ─────────────────────
 // Generic = MODIFY / MOVE / MODIFY_LOAD (yellow). Delete = DELETE tool (red).

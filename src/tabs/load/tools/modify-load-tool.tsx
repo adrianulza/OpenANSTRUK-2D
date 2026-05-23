@@ -1,9 +1,8 @@
 import * as React from "react"
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { Load, DistributedLoad, PointLoad, StructureModel } from "@/lib/model"
-import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { ToggleButton, ApplyButton, SelectionChip } from "@/components/flyout-shared"
 import { CaseSelectorRow } from "./case-selector-row"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
@@ -55,16 +54,22 @@ function DistributedLoadEditor({
   }
 
   const modeBtn = (mode: "local-axis" | "global-axis", label: string) => (
-    <button onClick={() => setEditDistMode(mode)} className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-      style={editDistMode === mode ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}>
+    <ToggleButton
+      active={editDistMode === mode}
+      onClick={() => setEditDistMode(mode)}
+      className="h-7 text-[11px]"
+    >
       {label}
-    </button>
+    </ToggleButton>
   )
   const distBtn = (type: "uniform" | "asymmetric", label: string) => (
-    <button onClick={() => setEditDistType(type)} className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-      style={editDistType === type ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}>
+    <ToggleButton
+      active={editDistType === type}
+      onClick={() => setEditDistType(type)}
+      className="h-7 text-[11px]"
+    >
       {label}
-    </button>
+    </ToggleButton>
   )
 
   return (
@@ -140,9 +145,7 @@ function DistributedLoadEditor({
         </>
       )}
 
-      <Button size="sm" className="w-full text-xs h-7" style={{ backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' }} onClick={handleApply}>
-        Apply
-      </Button>
+      <ApplyButton onClick={handleApply}>Apply</ApplyButton>
     </div>
   )
 }
@@ -235,9 +238,7 @@ export function ModifyLoadToolContent({
     <div className="space-y-3">
       {caseSelector}
       {totalCount > 1 && (
-        <div className="flex items-center gap-2 rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5">
-          <span className="text-xs text-gray-600">{totalCount} loads selected</span>
-        </div>
+        <SelectionChip>{totalCount} loads selected</SelectionChip>
       )}
 
       {hasPoints && (
@@ -259,9 +260,7 @@ export function ModifyLoadToolContent({
               </div>
             </div>
           </div>
-          <Button size="sm" className="w-full text-xs h-7" style={{ backgroundColor: FLYOUT_PANEL_COLORS.primary, color: 'white' }} onClick={handleApplyPoint}>
-            Apply
-          </Button>
+          <ApplyButton onClick={handleApplyPoint}>Apply</ApplyButton>
         </>
       )}
 

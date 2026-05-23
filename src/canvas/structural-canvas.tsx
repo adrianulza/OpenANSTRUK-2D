@@ -27,7 +27,6 @@ import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
 import {
   SCALE,
   COLOR_BRAND,
-  COLOR_SELECTION,
   COLOR_HOVER_GENERIC,
   COLOR_SELECT_GENERIC,
   COLOR_HOVER_DELETE,
@@ -81,8 +80,8 @@ type InteractionKind = "generic" | "delete" | "none"
 
 function interactionKind(activeTab: TabType, activeTool: ToolType): InteractionKind {
   if (activeTool === "DELETE") return "delete"
-  if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "MOVE_NODE")) return "generic"
-  if (activeTab === "Load"  &&  activeTool === "MODIFY_LOAD") return "generic"
+  if (activeTab === "Model" && (activeTool === "SELECT" || activeTool === "MOVE_NODE" || activeTool === "SUPPORT")) return "generic"
+  if (activeTab === "Load"  && (activeTool === "MODIFY_LOAD" || activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD")) return "generic"
   return "none"
 }
 
@@ -347,17 +346,15 @@ export function StructuralCanvas({
         const pa = worldToScreen(a, rect)
         const pb = worldToScreen(b, rect)
         const kind = interactionKind(activeTab, activeTool)
-        // Members are eligible for hover/selection only under Model SELECT/DELETE.
-        const memberEligible = activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")
-        const selected = memberEligible && selection.memberIds.includes(m.id)
-        const isHovered = memberEligible && m.id === hoveredMemberId && !selected
-        // DISTRIBUTED_LOAD keeps its legacy placement-target highlight (yellow stroke).
-        const isPlacementTarget = activeTool === "DISTRIBUTED_LOAD" && m.id === hoveredMemberId
+        // Members are eligible for hover under Model SELECT/DELETE and Load DISTRIBUTED_LOAD,
+        // and selected under Model SELECT/DELETE.
+        const selectionEligible = activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")
+        const hoverEligible = selectionEligible || activeTool === "DISTRIBUTED_LOAD"
+        const selected = selectionEligible && selection.memberIds.includes(m.id)
+        const isHovered = hoverEligible && m.id === hoveredMemberId && !selected
         const isTruss = m.memberType === "truss"
         const state: DrawState = selected ? "selected" : isHovered ? "hover" : "normal"
-        ctx.strokeStyle = isPlacementTarget
-          ? COLOR_HOVER_GENERIC
-          : strokeFor(kind, state, COLOR_BRAND)
+        ctx.strokeStyle = strokeFor(kind, state, COLOR_BRAND)
         ctx.lineWidth = (selected ? 5 : 4) * s
         ctx.beginPath()
         ctx.moveTo(pa.sx, pa.sy)
@@ -422,18 +419,22 @@ export function StructuralCanvas({
       const kind = interactionKind(activeTab, activeTool)
       for (const n of Object.values(model.nodes)) {
         const p = worldToScreen(n, rect)
-        // Nodes are eligible only for Model DELETE (hover+select) and Model MOVE_NODE (select).
+        // Nodes are eligible for hover under Model DELETE/MOVE_NODE/SUPPORT and Load POINT_LOAD,
+        // and selected under Model DELETE (and MOVE_NODE's target).
         const isDelete = activeTab === "Model" && activeTool === "DELETE"
         const isMove   = activeTab === "Model" && activeTool === "MOVE_NODE"
+        const isSupport   = activeTab === "Model" && activeTool === "SUPPORT"
+        const isPointLoad = activeTab === "Load"  && activeTool === "POINT_LOAD"
         const selected = isDelete && selection.nodeIds.includes(n.id)
         const isMoveTarget = isMove && (
           moveNodeMode === "screen" ? n.id === draggingNodeId : n.id === moveNodeSelectedId
         )
         const isMoveHover  = isMove && !isMoveTarget && n.id === hoveredNodeId
         const isDelHover   = isDelete && !selected && n.id === hoveredNodeId
+        const isPlacementHover = (isSupport || isPointLoad) && n.id === hoveredNodeId
         let state: DrawState = "normal"
         if (selected || isMoveTarget) state = "selected"
-        else if (isMoveHover || isDelHover) state = "hover"
+        else if (isMoveHover || isDelHover || isPlacementHover) state = "hover"
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
         ctx.fillStyle = fillFor(kind, state, "#ffffff")
@@ -1680,48 +1681,6 @@ export function StructuralCanvas({
     [model, analysisResult, showReactionNodeLabels, adaptiveView, zoom]
   )
 
-  const drawGlow = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect) => {
-      const GLOW_COLOR = "#fcd34d"
-      const s = adaptiveView ? 1 / zoom : 1
-
-      // Draw yellow circle for hovered node (POINT_LOAD tool)
-      if (hoveredNodeId && activeTool === "POINT_LOAD") {
-        const node = model.nodes[hoveredNodeId]
-        if (node) {
-          const { sx, sy } = worldToScreen(node, rect)
-          ctx.save()
-          ctx.fillStyle = "rgba(252, 211, 77, 0.4)"
-          ctx.beginPath()
-          ctx.arc(sx, sy, (NODE_RADIUS + 8) * s, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.restore()
-        }
-      }
-
-      // Draw glow for hovered node (SUPPORT tool)
-      if (hoveredNodeId && activeTool === "SUPPORT") {
-        const node = model.nodes[hoveredNodeId]
-        if (node) {
-          const { sx, sy } = worldToScreen(node, rect)
-          ctx.save()
-          ctx.strokeStyle = GLOW_COLOR
-          ctx.lineWidth = 8 * s
-          ctx.lineCap = "round"
-          ctx.beginPath()
-          ctx.arc(sx, sy, (NODE_RADIUS + 4) * s, 0, Math.PI * 2)
-          ctx.stroke()
-          ctx.restore()
-        }
-      }
-
-
-
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, activeTool, hoveredNodeId, hoveredMemberId, hoveredLoadId, adaptiveView, zoom]
-  )
-
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -1757,7 +1716,6 @@ export function StructuralCanvas({
     if (showDimensions) drawDimensions(ctx, rect)
     if (activeTab === "Model") drawPreview(ctx, rect)
     if (activeTab === "Load") drawLoads(ctx, rect)
-    drawGlow(ctx, rect)
     if (activeTab === "Analyze" && analysisResult) {
       if (activeTool === "REACTION")    drawReactions(ctx, rect)
       if (activeTool === "AXIAL")       drawAxialDiagram(ctx, rect)
@@ -1779,7 +1737,7 @@ export function StructuralCanvas({
       const rw = Math.abs(x2 - x1)
       const rh = Math.abs(y2 - y1)
       ctx.save()
-      ctx.strokeStyle = strokeFor(interactionKind(activeTab, activeTool), "selected", COLOR_SELECTION)
+      ctx.strokeStyle = strokeFor(interactionKind(activeTab, activeTool), "selected", COLOR_SELECT_GENERIC)
       ctx.lineWidth = 1
       ctx.setLineDash([4, 3])
       ctx.strokeRect(rx, ry, rw, rh)
@@ -1802,7 +1760,6 @@ export function StructuralCanvas({
     drawDimensions,
     drawPreview,
     drawLoads,
-    drawGlow,
     drawAxialDiagram,
     drawShearDiagram,
     drawMomentDiagram,
@@ -2418,7 +2375,7 @@ export function StructuralCanvas({
         </div>
       )}
       {/* Zoom slider + Adaptive View overlay — top-right of canvas */}
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto transition-opacity duration-200 opacity-100 md:opacity-20 md:hover:opacity-100 bg-background/90 border-border">
+      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto opacity-100 bg-background/90 border-border">
         <div className="flex items-center gap-2">
           <ZoomOut className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           {/* Slider + snap tick marks */}

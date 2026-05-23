@@ -1,7 +1,6 @@
 import type { StructureModel, SupportType } from "@/lib/model"
 import {
   COLOR_BRAND,
-  COLOR_SELECTION,
   COLOR_SUPPORT_HATCH,
   SUPPORT_SIZE,
 } from "@/lib/constants"
@@ -12,11 +11,11 @@ export function drawSupportGlyph(
   x: number,
   y: number,
   type: SupportType,
-  selected = false,
+  _selected = false,
   overrideColor?: string,
   s = 1,
 ) {
-  const fill  = overrideColor ?? (selected ? COLOR_SELECTION : COLOR_BRAND)
+  const fill  = overrideColor ?? COLOR_BRAND
   const hatch = overrideColor ?? COLOR_SUPPORT_HATCH
   const sz = SUPPORT_SIZE * s
   ctx.save()

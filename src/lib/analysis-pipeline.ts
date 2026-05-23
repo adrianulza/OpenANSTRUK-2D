@@ -118,7 +118,10 @@ export function solveAllCases(
  * superpose linearly in linear-elastic small-deformation analysis, so this is
  * exact, not approximate.
  *
- * Returns `null` if any referenced case is missing/failed.
+ * Returns `null` only if every referenced case is missing/disabled/failed.
+ * Individual missing terms (e.g. a preset combo's `Dead` term that resolves
+ * to a disabled Selfweight case) silently drop their contribution — this
+ * matches the inline warning shown in the Load Combination flyout.
  */
 export function combineResults(
   caseResults: Record<LoadCaseId, AnalysisResult | null>,
@@ -155,7 +158,7 @@ export function combineResults(
 
   for (const term of combo.terms) {
     const r = caseResults[term.caseId]
-    if (!r) return null
+    if (!r) continue
     const k = term.factor
 
     for (const id of Object.keys(out.nodeDisplacements)) {
@@ -206,8 +209,12 @@ export function combineResults(
 export function envelopeResults(
   comboResults: Record<LoadComboId, AnalysisResult | null>,
   envelopeComboIds: LoadComboId[],
+  combinations?: Record<LoadComboId, LoadCombination>,
 ): EnvelopeAnalysisResult | null {
+  // Skip combos the user has disabled via the row checkbox. Without this guard
+  // a "disabled" combo silently governed the envelope, contradicting the UI.
   const included = envelopeComboIds
+    .filter((id) => (combinations ? combinations[id]?.enabled !== false : true))
     .map((id) => [id, comboResults[id]] as const)
     .filter((p): p is readonly [LoadComboId, AnalysisResult] => p[1] != null)
 

@@ -1,8 +1,8 @@
 import * as React from "react"
-import { cn } from "@/lib/utils"
 import type { StructureModel } from "@/lib/model"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { ToggleButton, ApplyButton } from "@/components/flyout-shared"
 import { formatValue } from "@/lib/constants"
 import { X } from "lucide-react"
 
@@ -52,24 +52,16 @@ export function MoveNodeToolContent({
   return (
     <div className="space-y-3">
       <div className="flex gap-1.5">
-        <button
-          className={cn(
-            "flex-1 h-8 text-[10px] font-medium rounded border transition-colors",
-            moveNodeMode === "coordinates"
-              ? "bg-[#1a2f5e] text-white border-[#1a2f5e]"
-              : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
-          )}
+        <ToggleButton
+          active={moveNodeMode === "coordinates"}
           onClick={() => onMoveNodeModeChange?.("coordinates")}
-        >By Coordinates</button>
-        <button
-          className={cn(
-            "flex-1 h-8 text-[10px] font-medium rounded border transition-colors",
-            moveNodeMode === "screen"
-              ? "bg-[#1a2f5e] text-white border-[#1a2f5e]"
-              : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
-          )}
+          className="h-8 text-[10px] font-medium"
+        >By Coordinates</ToggleButton>
+        <ToggleButton
+          active={moveNodeMode === "screen"}
           onClick={() => { onMoveNodeModeChange?.("screen"); onMoveNodeSelectId?.(null) }}
-        >On-Screen</button>
+          className="h-8 text-[10px] font-medium"
+        >On-Screen</ToggleButton>
       </div>
 
       {moveNodeMode === "coordinates" && (
@@ -92,24 +84,16 @@ export function MoveNodeToolContent({
               </div>
 
               <div className="flex gap-1.5">
-                <button
-                  className={cn(
-                    "flex-1 h-7 text-[10px] font-medium rounded border transition-colors",
-                    moveNodeCoordMode === "set"
-                      ? "bg-[#1a2f5e] text-white border-[#1a2f5e]"
-                      : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
-                  )}
+                <ToggleButton
+                  active={moveNodeCoordMode === "set"}
                   onClick={() => onMoveNodeCoordModeChange?.("set")}
-                >Set Position</button>
-                <button
-                  className={cn(
-                    "flex-1 h-7 text-[10px] font-medium rounded border transition-colors",
-                    moveNodeCoordMode === "offset"
-                      ? "bg-[#1a2f5e] text-white border-[#1a2f5e]"
-                      : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700"
-                  )}
+                  className="h-7 text-[10px] font-medium"
+                >Set Position</ToggleButton>
+                <ToggleButton
+                  active={moveNodeCoordMode === "offset"}
                   onClick={() => onMoveNodeCoordModeChange?.("offset")}
-                >Offset</button>
+                  className="h-7 text-[10px] font-medium"
+                >Offset</ToggleButton>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -123,10 +107,7 @@ export function MoveNodeToolContent({
                 </div>
               </div>
 
-              <button
-                className="w-full h-8 text-xs font-medium bg-[#1a2f5e] text-white rounded hover:bg-[#243d7a] transition-colors"
-                onClick={handleApply}
-              >Apply</button>
+              <ApplyButton onClick={handleApply}>Apply</ApplyButton>
             </>
           )}
         </div>

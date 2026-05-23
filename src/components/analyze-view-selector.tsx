@@ -48,17 +48,20 @@ export function AnalyzeViewSelector({
   // Cases visible in the analyze view: only those marked enabled. Disabled cases
   // (their loads are skipped by the solver) shouldn't pollute the dropdown.
   const visibleCases = cases.filter((c) => c.enabled)
+  // Same rule for combinations: a disabled combo shouldn't be selectable in the
+  // analyze dropdown (parallel to how disabled cases are hidden above).
+  const visibleCombos = combos.filter((c) => c.enabled)
 
   const modeOptions: { value: AnalyzeViewMode; label: string }[] = combinationsEnabled
     ? [
-        { value: "case", label: "Case" },
-        { value: "combination", label: "Combination" },
+        { value: "case", label: "Load Case" },
+        { value: "combination", label: "Load Combo" },
         { value: "envelope", label: "Envelope" },
       ]
-    : [{ value: "case", label: "Case" }]
+    : [{ value: "case", label: "Load Case" }]
 
   return (
-    <div className="absolute top-16 right-3 md:top-2 md:right-auto md:left-1/2 md:-translate-x-1/2 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm rounded-lg shadow-[0_2px_12px_rgba(0,0,0,0.08)] border border-gray-100 px-2 py-1 pointer-events-auto">
+    <div className="absolute bottom-2 right-3 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm rounded-lg shadow-[0_2px_12px_rgba(0,0,0,0.08)] border border-gray-100 px-2 py-1 pointer-events-auto">
       <Select
         value={analyzeViewMode}
         onValueChange={(v) => onAnalyzeViewModeChange(v as AnalyzeViewMode)}
@@ -104,12 +107,12 @@ export function AnalyzeViewSelector({
             <SelectValue placeholder="Select combination…" />
           </SelectTrigger>
           <SelectContent>
-            {combos.length === 0 && (
+            {visibleCombos.length === 0 && (
               <div className="px-2 py-1.5 text-[11px] text-gray-500 italic">
-                No combinations defined
+                {combos.length === 0 ? "No combinations defined" : "No enabled combinations"}
               </div>
             )}
-            {combos.map((c) => (
+            {visibleCombos.map((c) => (
               <SelectItem key={c.id} value={c.id} className="text-xs">
                 {c.name}
               </SelectItem>
@@ -178,7 +181,7 @@ function EnvelopeChecklist({
       {open && (
         <div
           ref={popoverRef}
-          className="absolute top-[calc(100%+4px)] left-0 z-30 bg-white rounded-md shadow-lg border border-gray-200 p-2 min-w-[260px] max-h-[60vh] overflow-y-auto"
+          className="absolute bottom-[calc(100%+4px)] right-0 z-30 bg-white rounded-md shadow-lg border border-gray-200 p-2 min-w-[260px] max-h-[60vh] overflow-y-auto"
         >
           {combos.length === 0 ? (
             <div className="px-2 py-1.5 text-[11px] text-gray-500 italic">

@@ -1,7 +1,7 @@
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { ToggleButton } from "@/components/flyout-shared"
 import { CaseSelectorRow } from "./case-selector-row"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
@@ -44,32 +44,20 @@ export function PointLoadToolContent({
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Input Mode</Label>
         <div className="flex gap-1">
-          <button
+          <ToggleButton
+            active={inputMode === "principal"}
             onClick={() => onInputModeChange?.("principal")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={inputMode === "principal" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Principal
-          </button>
-          <button
+          </ToggleButton>
+          <ToggleButton
+            active={inputMode === "angular"}
             onClick={() => onInputModeChange?.("angular")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={inputMode === "angular" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Angular
-          </button>
+          </ToggleButton>
         </div>
       </div>
 
@@ -78,32 +66,20 @@ export function PointLoadToolContent({
           <div className="space-y-1.5">
             <Label className="text-xs text-gray-600">Global axis</Label>
             <div className="flex gap-1">
-              <button
+              <ToggleButton
+                active={axis === "x"}
                 onClick={() => onAxisChange?.("x")}
-                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-                style={axis === "x" ? {
-                  backgroundColor: FLYOUT_PANEL_COLORS.primary,
-                  color: 'white',
-                } : {
-                  backgroundColor: '#f3f4f6',
-                  color: '#4b5563',
-                }}
+                className="h-7 text-[11px]"
               >
                 X-axis
-              </button>
-              <button
+              </ToggleButton>
+              <ToggleButton
+                active={axis === "y"}
                 onClick={() => onAxisChange?.("y")}
-                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-                style={axis === "y" ? {
-                  backgroundColor: FLYOUT_PANEL_COLORS.primary,
-                  color: 'white',
-                } : {
-                  backgroundColor: '#f3f4f6',
-                  color: '#4b5563',
-                }}
+                className="h-7 text-[11px]"
               >
                 Y-axis
-              </button>
+              </ToggleButton>
             </div>
             <p className="text-[10px] text-gray-500 leading-snug">
               {axis === "x" ? "+ rightward, − leftward" : "+ upward, − downward"}

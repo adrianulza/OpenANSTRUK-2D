@@ -96,12 +96,12 @@ export default function App() {
 
   const [envelopeComboIds, setEnvelopeComboIds] = useState<LoadComboId[]>([])
   const [diagramScale, setDiagramScale] = useState(10)
-  const [invertSFD, setInvertSFD] = useState(false)
+  const [invertSFD, setInvertSFD] = useState(true)
   const [invertBMD, setInvertBMD] = useState(false)
   const [deformationScale, setDeformationScale] = useState(25)
-  const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(true)
-  const [showReactionNodeLabels, setShowReactionNodeLabels] = useState(true)
-  const [showDiagramMemberLabels, setShowDiagramMemberLabels] = useState(true)
+  const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(false)
+  const [showReactionNodeLabels, setShowReactionNodeLabels] = useState(false)
+  const [showDiagramMemberLabels, setShowDiagramMemberLabels] = useState(false)
   const [templateModal, setTemplateModal] = useState<"beam" | "frame" | "truss" | null>(null)
   const [showExamplesModal, setShowExamplesModal] = useState(false)
 
@@ -127,7 +127,7 @@ export default function App() {
   const [combinations, setCombinations] = useState<Record<LoadComboId, LoadCombination>>({})
   const [combinationsEnabled, setCombinationsEnabled] = useState(false)
   const [combinationMode, setCombinationMode] = useState<"manual" | "code">("code")
-  const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("SNI1726-2019")
+  const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("SNI 1726:2019")
   const [editingCombinationId, setEditingCombinationId] = useState<LoadComboId | null>(null)
   // Analyze view selector
   const [analyzeViewMode, setAnalyzeViewMode] = useState<AnalyzeViewMode>("case")
@@ -337,8 +337,8 @@ export default function App() {
   }, [caseResults, combinations])
 
   const envelopeResult = useMemo(
-    () => envelopeResults(comboResults, envelopeComboIds),
-    [comboResults, envelopeComboIds],
+    () => envelopeResults(comboResults, envelopeComboIds, combinations),
+    [comboResults, envelopeComboIds, combinations],
   )
 
   const displayedResult = useMemo(

@@ -1,7 +1,6 @@
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { Section, SectionId, MemberType } from "@/lib/model"
 import { Label } from "@/components/ui/label"
-import { SectionSelect } from "@/components/flyout-shared"
+import { SectionSelect, ToggleButton } from "@/components/flyout-shared"
 
 export function MemberToolContent({
   activeSection,
@@ -21,32 +20,20 @@ export function MemberToolContent({
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Member Type</Label>
         <div className="flex gap-1">
-          <button
+          <ToggleButton
+            active={activeMemberType === "frame"}
             onClick={() => onMemberTypeChange?.("frame")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={activeMemberType === "frame" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Frame
-          </button>
-          <button
+          </ToggleButton>
+          <ToggleButton
+            active={activeMemberType === "truss"}
             onClick={() => onMemberTypeChange?.("truss")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={activeMemberType === "truss" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Truss
-          </button>
+          </ToggleButton>
         </div>
         <p className="text-[10px] text-gray-400 leading-snug">
           {activeMemberType === "frame"

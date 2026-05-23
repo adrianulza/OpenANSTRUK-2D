@@ -1,8 +1,8 @@
 import * as React from "react"
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { SupportType } from "@/lib/model"
 import { Label } from "@/components/ui/label"
 import { pinIcon, rollerIcon, fixedIcon } from "@/components/ui/support-icons"
+import { ToggleButton } from "@/components/flyout-shared"
 
 export function SupportToolContent({
   activeSupportType,
@@ -11,28 +11,16 @@ export function SupportToolContent({
   activeSupportType: SupportType
   onSupportTypeChange?: (t: SupportType) => void
 }) {
-  const btn = (type: SupportType, icon: React.ReactNode, label: string) => {
-    const active = activeSupportType === type
-    return (
-      <button
-        onClick={() => onSupportTypeChange?.(type)}
-        className="flex-1 h-12 flex flex-col items-center justify-center gap-1 rounded transition-colors"
-        style={active ? {
-          borderWidth: 2,
-          borderColor: FLYOUT_PANEL_COLORS.primary,
-          backgroundColor: FLYOUT_PANEL_COLORS.primary + '0d',
-          color: FLYOUT_PANEL_COLORS.primary,
-        } : {
-          borderWidth: 1,
-          borderColor: '#e5e7eb',
-          color: '#9ca3af',
-        }}
-      >
-        {icon}
-        <span className="text-[10px] font-medium">{label}</span>
-      </button>
-    )
-  }
+  const btn = (type: SupportType, icon: React.ReactNode, label: string) => (
+    <ToggleButton
+      active={activeSupportType === type}
+      onClick={() => onSupportTypeChange?.(type)}
+      className="h-12 flex flex-col items-center justify-center gap-1"
+    >
+      {icon}
+      <span className="text-[10px] font-medium">{label}</span>
+    </ToggleButton>
+  )
 
   return (
     <div className="space-y-4">

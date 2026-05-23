@@ -26,7 +26,7 @@ interface Props {
   onKeepOverride: () => void
 }
 
-const DECK_WIDTH = 240
+const DECK_WIDTH = 420
 const PILL_WIDTH = 20
 
 export function AdvancedDeck({
@@ -118,11 +118,11 @@ export function AdvancedDeck({
       )}
       style={{ left: pos.left, top: pos.top, width: DECK_WIDTH }}
     >
-      <div className="p-3 overflow-y-auto space-y-2">
-
+      <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+        <span className="text-xs font-semibold text-[#1a2f5e]">Advanced Section Properties</span>
         {canOverride && (
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-gray-600">Override</Label>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-gray-500 uppercase tracking-wide">Override</Label>
             <Button
               size="sm"
               variant={override ? "default" : "outline"}
@@ -133,6 +133,39 @@ export function AdvancedDeck({
             </Button>
           </div>
         )}
+      </div>
+
+      <div className="p-3 overflow-y-auto space-y-2">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          {/* Left column: material + section geometry */}
+          <Row name="Elastic Modulus" symbol="E" value={editable ? buf.E : fmt(displayE(section.E, u))} unit={labelE(u)} editable={editable} onChange={(v) => setBuf({ ...buf, E: v })} />
+          {/* Right column: derived */}
+          <Row name="Section Modulus (top)" symbol="S33t" value={section.derived?.S33t != null ? fmt(section.derived.S33t) : "—"} unit="mm³" />
+
+          <Row name="Shear Modulus" symbol="G" value={editable ? buf.G : fmt(G)} unit="MPa" editable={editable} onChange={(v) => setBuf({ ...buf, G: v })} disabled />
+          <Row name="Section Modulus (bottom)" symbol="S33b" value={section.derived?.S33b != null ? fmt(section.derived.S33b) : "—"} unit="mm³" />
+
+          <Row name="Poisson Ratio" symbol="ν" value={editable ? buf.nu : fmt(nu)} unit="" editable={editable} onChange={(v) => setBuf({ ...buf, nu: v })} />
+          <Row name="Section Modulus" symbol="S22L" value={section.derived?.S22L != null ? fmt(section.derived.S22L) : "—"} unit="mm³" />
+
+          <Row name="Unit Weight" symbol="γ" value={editable ? buf.gamma : fmt(section.gamma ?? 0)} unit="kN/m³" editable={editable} onChange={(v) => setBuf({ ...buf, gamma: v })} />
+          <Row name="Section Modulus" symbol="S22R" value={section.derived?.S22R != null ? fmt(section.derived.S22R) : "—"} unit="mm³" />
+
+          <Row name="Cross-section Area" symbol="A" value={editable ? buf.A : fmt(displayA(section.A, u))} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, A: v })} />
+          <Row name="Plastic Modulus" symbol="Z33" value={section.derived?.Z33 != null ? fmt(section.derived.Z33) : "—"} unit="mm³" />
+
+          <Row name="Moment of Inertia" symbol="I33" value={editable ? buf.I33 : fmt(displayI(section.I33, u))} unit={labelI(u)} editable={editable} onChange={(v) => setBuf({ ...buf, I33: v })} />
+          <Row name="Plastic Modulus" symbol="Z22" value={section.derived?.Z22 != null ? fmt(section.derived.Z22) : "—"} unit="mm³" />
+
+          <Row name="Moment of Inertia" symbol="I22" value={section.I22 != null ? fmt(displayI(section.I22, u)) : "—"} unit={labelI(u)} />
+          <Row name="Radius of Gyration" symbol="r33" value={section.derived?.r33 != null ? fmt(section.derived.r33) : "—"} unit="mm" />
+
+          <Row name="Shear Area" symbol="Aκ2" value={editable ? buf["Aκ2"] : (section["Aκ2"] != null ? fmt(displayA(section["Aκ2"]!, u)) : "—")} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, "Aκ2": v })} />
+          <Row name="Radius of Gyration" symbol="r22" value={section.derived?.r22 != null ? fmt(section.derived.r22) : "—"} unit="mm" />
+
+          <Row name="Shear Area" symbol="Aκ3" value={section["Aκ3"] != null ? fmt(displayA(section["Aκ3"]!, u)) : "—"} unit={labelA(u)} />
+          <Row name="Centroid (from base)" symbol="ȳ" value={section.derived?.yBar != null ? fmt(section.derived.yBar) : "—"} unit="mm" />
+        </div>
 
         {overrideDirty && canOverride && (
           <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-900 space-y-1.5">
@@ -143,25 +176,6 @@ export function AdvancedDeck({
             </div>
           </div>
         )}
-
-        <Row name="Elastic Modulus"             symbol="E"   value={editable ? buf.E  : fmt(displayE(section.E, u))} unit={labelE(u)} editable={editable} onChange={(v) => setBuf({ ...buf, E: v })} />
-        <Row name="Shear Modulus"               symbol="G"   value={editable ? buf.G  : fmt(G)}                     unit="MPa"        editable={editable} onChange={(v) => setBuf({ ...buf, G: v })} disabled />
-        <Row name="Poisson Ratio"               symbol="ν"   value={editable ? buf.nu : fmt(nu)}                    unit=""           editable={editable} onChange={(v) => setBuf({ ...buf, nu: v })} />
-        <Row name="Unit Weight"                 symbol="γ"   value={editable ? buf.gamma : fmt(section.gamma ?? 0)}  unit="kN/m³"     editable={editable} onChange={(v) => setBuf({ ...buf, gamma: v })} />
-        <Row name="Cross-section Area"          symbol="A"   value={editable ? buf.A   : fmt(displayA(section.A, u))} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, A: v })} />
-        <Row name="Moment of Inertia, I33"  symbol="I33"  value={editable ? buf.I33 : fmt(displayI(section.I33, u))} unit={labelI(u)} editable={editable} onChange={(v) => setBuf({ ...buf, I33: v })} />
-        <Row name="Moment of Inertia, I22"  symbol="I22"  value={section.I22 != null ? fmt(displayI(section.I22, u)) : "—"} unit={labelI(u)} />
-        <Row name="Section Modulus (bottom)" symbol="S33b" value={section.derived?.S33b != null ? fmt(section.derived.S33b) : "—"} unit="mm³" />
-        <Row name="Section Modulus (top)"    symbol="S33t" value={section.derived?.S33t != null ? fmt(section.derived.S33t) : "—"} unit="mm³" />
-        <Row name="Section Modulus, S22L"    symbol="S22L" value={section.derived?.S22L != null ? fmt(section.derived.S22L) : "—"} unit="mm³" />
-        <Row name="Section Modulus, S22R"    symbol="S22R" value={section.derived?.S22R != null ? fmt(section.derived.S22R) : "—"} unit="mm³" />
-        <Row name="Plastic Modulus, Z33"     symbol="Z33"  value={section.derived?.Z33  != null ? fmt(section.derived.Z33)  : "—"} unit="mm³" />
-        <Row name="Plastic Modulus, Z22"     symbol="Z22"  value={section.derived?.Z22  != null ? fmt(section.derived.Z22)  : "—"} unit="mm³" />
-        <Row name="Shear Area, Aκ2"          symbol="Aκ2"  value={editable ? buf["Aκ2"] : (section["Aκ2"] != null ? fmt(displayA(section["Aκ2"]!, u)) : "—")} unit={labelA(u)} editable={editable} onChange={(v) => setBuf({ ...buf, "Aκ2": v })} />
-        <Row name="Shear Area, Aκ3"          symbol="Aκ3"  value={section["Aκ3"] != null ? fmt(displayA(section["Aκ3"]!, u)) : "—"} unit={labelA(u)} />
-        <Row name="Radius of Gyration, r33"  symbol="r33"  value={section.derived?.r33  != null ? fmt(section.derived.r33)  : "—"} unit="mm" />
-        <Row name="Radius of Gyration, r22"  symbol="r22"  value={section.derived?.r22  != null ? fmt(section.derived.r22)  : "—"} unit="mm" />
-        <Row name="Centroid (from base)"        symbol="ȳ"   value={section.derived?.yBar != null ? fmt(section.derived.yBar) : "—"} unit="mm" />
 
         {editable && (
           <>
@@ -192,11 +206,11 @@ function Row({
   disabled?: boolean
 }) {
   return (
-    <div className="space-y-1">
-      <Label className="text-xs text-gray-600">
+    <div className="space-y-1 min-w-0">
+      <Label className="text-[11px] text-gray-600 block truncate" title={`${name}, ${symbol}`}>
         {name}, <span className="font-medium text-[#1a2f5e]">{symbol}</span>
       </Label>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Input
           type="text"
           value={value}
@@ -204,7 +218,7 @@ function Row({
           onChange={(e) => onChange?.(e.target.value)}
           className={cn("h-7 text-xs font-mono flex-1 min-w-0", !editable && "bg-gray-50 text-gray-700")}
         />
-        <span className="text-xs text-gray-500 w-10 shrink-0 text-right">{unit}</span>
+        <span className="text-[10px] text-gray-500 w-10 shrink-0 text-right">{unit}</span>
       </div>
     </div>
   )

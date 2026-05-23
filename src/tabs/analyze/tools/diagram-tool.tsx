@@ -70,9 +70,10 @@ export function DiagramToolContent({
   const toDisplay = (v: number) =>
     kind === "MOMENT" ? displayMoment(v, unitSettings) : displayForce(v, unitSettings)
   const fmt = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(toDisplay(v))}`
-  const peakColor = (v: number) => v >= 0 ? "#2563eb" : "#ef4444"
+  const peakColor = (v: number) =>
+    v >= 0 ? FLYOUT_PANEL_COLORS.positiveValue : FLYOUT_PANEL_COLORS.negativeValue
 
-  const [showReport, setShowReport] = React.useState(true)
+  const [showReport, setShowReport] = React.useState(false)
 
   return (
     <div className="space-y-3">

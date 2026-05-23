@@ -26,7 +26,7 @@ export function DeformationToolContent({
 }) {
   const dispUnit = labelDisplacement(unitSettings)
   const rotUnit  = labelRotation(unitSettings)
-  const [showReport, setShowReport] = React.useState(true)
+  const [showReport, setShowReport] = React.useState(false)
   const nodeEntries = analysisResult
     ? Object.entries(analysisResult.nodeDisplacements) as [string, NodeDisplacement][]
     : []

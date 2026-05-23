@@ -1,6 +1,6 @@
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
+import { ToggleButton } from "@/components/flyout-shared"
 import { CaseSelectorRow } from "./case-selector-row"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
@@ -63,32 +63,20 @@ export function DistributedLoadToolContent({
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Input Mode</Label>
         <div className="flex gap-1">
-          <button
+          <ToggleButton
+            active={distMode === "local-axis"}
             onClick={() => onDistModeChange?.("local-axis")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={distMode === "local-axis" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Local-axis
-          </button>
-          <button
+          </ToggleButton>
+          <ToggleButton
+            active={distMode === "global-axis"}
             onClick={() => onDistModeChange?.("global-axis")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={distMode === "global-axis" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Global Axis
-          </button>
+          </ToggleButton>
         </div>
       </div>
 
@@ -96,32 +84,20 @@ export function DistributedLoadToolContent({
         <div className="space-y-1.5">
           <Label className="text-xs text-gray-600">Axis</Label>
           <div className="flex gap-1">
-            <button
+            <ToggleButton
+              active={activeAxis === "x"}
               onClick={() => onActiveAxisChange?.("x")}
-              className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-              style={activeAxis === "x" ? {
-                backgroundColor: FLYOUT_PANEL_COLORS.primary,
-                color: 'white',
-              } : {
-                backgroundColor: '#f3f4f6',
-                color: '#4b5563',
-              }}
+              className="h-7 text-[11px]"
             >
               X-axis
-            </button>
-            <button
+            </ToggleButton>
+            <ToggleButton
+              active={activeAxis === "y"}
               onClick={() => onActiveAxisChange?.("y")}
-              className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-              style={activeAxis === "y" ? {
-                backgroundColor: FLYOUT_PANEL_COLORS.primary,
-                color: 'white',
-              } : {
-                backgroundColor: '#f3f4f6',
-                color: '#4b5563',
-              }}
+              className="h-7 text-[11px]"
             >
               Y-axis
-            </button>
+            </ToggleButton>
           </div>
         </div>
       )}
@@ -129,32 +105,20 @@ export function DistributedLoadToolContent({
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Distribution</Label>
         <div className="flex gap-1">
-          <button
+          <ToggleButton
+            active={distType === "uniform"}
             onClick={() => onDistTypeChange?.("uniform")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={distType === "uniform" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Uniform
-          </button>
-          <button
+          </ToggleButton>
+          <ToggleButton
+            active={distType === "asymmetric"}
             onClick={() => onDistTypeChange?.("asymmetric")}
-            className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-            style={distType === "asymmetric" ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#4b5563',
-            }}
+            className="h-7 text-[11px]"
           >
             Asymmetric
-          </button>
+          </ToggleButton>
         </div>
       </div>
 

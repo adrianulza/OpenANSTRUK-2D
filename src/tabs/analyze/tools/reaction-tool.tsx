@@ -21,12 +21,13 @@ export function ReactionToolContent({
   onShowNodeLabelsChange?: (v: boolean) => void
   unitSettings?: UnitSettings
 }) {
-  const [showReport, setShowReport] = React.useState(true)
+  const [showReport, setShowReport] = React.useState(false)
   const forceUnit  = labelForce(unitSettings)
   const momentUnit = labelMoment(unitSettings)
 
   const entries = analysisResult ? (Object.entries(analysisResult.reactions) as [string, { Rx: number; Ry: number; Mz: number }][]) : []
-  const valColor = (v: number) => v >= 0 ? "#2563eb" : "#ef4444"
+  const valColor = (v: number) =>
+    v >= 0 ? FLYOUT_PANEL_COLORS.positiveValue : FLYOUT_PANEL_COLORS.negativeValue
   const fmtForce  = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(displayForce(v, unitSettings))} ${forceUnit}`
   const fmtMoment = (v: number) => `${v >= 0 ? "+" : ""}${formatValue(displayMoment(v, unitSettings))} ${momentUnit}`
 

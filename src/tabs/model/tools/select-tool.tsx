@@ -1,9 +1,13 @@
 import * as React from "react"
-import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { Section, SectionId, MultiSelection, SupportType } from "@/lib/model"
 import { Label } from "@/components/ui/label"
 import { pinIcon, rollerIcon, fixedIcon } from "@/components/ui/support-icons"
-import { SectionSelect } from "@/components/flyout-shared"
+import {
+  SectionSelect,
+  ToggleButton,
+  ApplyButton,
+  SelectionChip,
+} from "@/components/flyout-shared"
 
 export function ModifyComponentToolContent({
   selection,
@@ -37,22 +41,15 @@ export function ModifyComponentToolContent({
   const canApplySupport = hasSupports && !supportApplied
 
   const supportBtn = (type: SupportType, icon: React.ReactNode, title: string) => (
-    <button
+    <ToggleButton
       key={type}
+      active={supportType === type}
       onClick={() => { setSupportType(type); setSupportApplied(false) }}
-      className="flex-1 h-10 flex flex-col items-center justify-center gap-0.5 rounded transition-colors text-[11px]"
-      style={supportType === type ? {
-        color: FLYOUT_PANEL_COLORS.primary,
-        backgroundColor: FLYOUT_PANEL_COLORS.primary + '19',
-        fontWeight: 500,
-      } : {
-        backgroundColor: '#f3f4f6',
-        color: '#6b7280',
-      }}
+      className="h-12 flex flex-col items-center justify-center gap-0.5 text-[11px]"
     >
       {icon}
       {title}
-    </button>
+    </ToggleButton>
   )
 
   const memberCount = selection.memberIds.length
@@ -61,40 +58,31 @@ export function ModifyComponentToolContent({
   return (
     <div className="space-y-3">
       {memberCount > 0 && (
-        <div className="px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-100 text-[12px] text-gray-600 truncate">
+        <SelectionChip>
           {memberCount} member{memberCount > 1 ? "s" : ""} selected
-        </div>
+        </SelectionChip>
       )}
 
       {hasMembers && (
         <div className="space-y-2">
           <SectionSelect value={sectionId} sections={sections} onChange={onSectionChange} label="Modify section" />
-          <button
+          <ApplyButton
+            disabled={!canApplySection}
             onClick={() => {
               if (!canApplySection) return
               onModify?.()
               setSectionApplied(true)
             }}
-            disabled={!canApplySection}
-            className="w-full py-1.5 rounded-md text-[13px] font-medium transition-colors"
-            style={canApplySection ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#9ca3af',
-              cursor: 'not-allowed',
-            }}
           >
             Apply
-          </button>
+          </ApplyButton>
         </div>
       )}
 
       {supportCount > 0 && (
-        <div className="px-2.5 py-1.5 rounded-md bg-gray-50 border border-gray-100 text-[12px] text-gray-600 truncate">
+        <SelectionChip>
           {supportCount} support{supportCount > 1 ? "s" : ""} selected
-        </div>
+        </SelectionChip>
       )}
 
       {hasSupports && (
@@ -105,25 +93,16 @@ export function ModifyComponentToolContent({
             {supportBtn("roller", rollerIcon, "Roller")}
             {supportBtn("fixed", fixedIcon, "Fixed")}
           </div>
-          <button
+          <ApplyButton
+            disabled={!canApplySupport}
             onClick={() => {
               if (!canApplySupport) return
               onModifySupport?.(supportType)
               setSupportApplied(true)
             }}
-            disabled={!canApplySupport}
-            className="w-full py-1.5 rounded-md text-[13px] font-medium transition-colors"
-            style={canApplySupport ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-            } : {
-              backgroundColor: '#f3f4f6',
-              color: '#9ca3af',
-              cursor: 'not-allowed',
-            }}
           >
             Apply
-          </button>
+          </ApplyButton>
         </div>
       )}
 

@@ -12,9 +12,9 @@ export interface UnitSettings {
 // Base units: E in MPa, I in mm⁴, A in mm², W in N/mm³
 // Default display matches the base units — no conversion needed at rest
 export const DEFAULT_UNIT_SETTINGS: UnitSettings = {
-  force:       "N",
+  force:       "kN",
   pressure:    "MPa",
-  length:      "mm",
+  length:      "m",
   gridSpacing: 0.5,
 }
 

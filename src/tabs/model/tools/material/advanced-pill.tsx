@@ -26,8 +26,8 @@ export function AdvancedPill({ open, onToggle }: Props) {
     const update = () => {
       const r = root.getBoundingClientRect()
       setPos({
-        left: r.right - 1,                            // overlap flyout border by 1px
-        top:  r.top + r.height / 2 - PILL_HEIGHT / 2, // vertical center of flyout
+        left: r.right - 1, // overlap flyout border by 1px
+        top:  r.top,       // align with flyout top
       })
     }
     update()
@@ -60,8 +60,8 @@ export function AdvancedPill({ open, onToggle }: Props) {
         "border border-l-0 border-gray-200",
         "z-20 cursor-pointer",
         open
-          ? "bg-[#1a2f5e] text-white hover:bg-[#1a2f5e]"
-          : "bg-gray-50 text-[#1a2f5e] hover:bg-[#1a2f5e] hover:text-white hover:translate-x-0.5",
+          ? "bg-[#2563eb] text-white hover:bg-[#2563eb]"
+          : "bg-gray-50 text-[#2563eb] hover:bg-[#2563eb] hover:text-white hover:translate-x-0.5",
       )}
       style={{ left: pos.left, top: pos.top, height: PILL_HEIGHT }}
     >

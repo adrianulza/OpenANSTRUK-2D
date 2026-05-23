@@ -543,7 +543,7 @@ function FlyoutContent({
             onCombinationsEnabledChange={onCombinationsEnabledChange ?? (() => {})}
             combinationMode={combinationMode ?? "code"}
             onCombinationModeChange={onCombinationModeChange ?? (() => {})}
-            selectedCodePreset={selectedCodePreset ?? "SNI1726-2019"}
+            selectedCodePreset={selectedCodePreset ?? "SNI 1726:2019"}
             onSelectedCodePresetChange={onSelectedCodePresetChange ?? (() => {})}
             onAddCombination={onAddCombination ?? (() => {})}
             onDeleteCombination={onDeleteCombination ?? (() => {})}

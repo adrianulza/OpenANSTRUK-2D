@@ -9,7 +9,6 @@ export const FLYOUT_PANEL_COLORS = {
   // Interactive elements
   primary: "#2563eb",       // Buttons, active states, accents
   primaryHover: "#1d4ed8",  // Primary button hover
-  primaryLight: "#2563eb",  // Light background variant
 
   // Text and labels
   textNodeLabel: "#475569", // Node ID labels
