@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import type { TabType, ToolType } from "./tool-sidebar"
-import type { Section, SectionId, MultiSelection, StructureModel, SupportType, MemberType, Load, LoadId } from "@/lib/model"
+import type { Section, SectionId, MultiSelection, StructureModel, SupportPick, MemberType, Load, LoadId } from "@/lib/model"
 import { MaterialFlyout } from "@/tabs/model/tools/material/material-tool"
 import type { AnalysisResult } from "@/lib/solver"
 import type { UnitSettings } from "@/lib/units"
@@ -43,12 +43,12 @@ interface FlyoutPanelProps {
   onSectionChange?: (id: SectionId) => void
   activeMemberType?: MemberType
   onMemberTypeChange?: (t: MemberType) => void
-  activeSupportType?: SupportType
-  onSupportTypeChange?: (t: SupportType) => void
+  activeSupportType?: SupportPick
+  onSupportTypeChange?: (t: SupportPick) => void
   onSectionPropsChange?: (id: SectionId, patch: Partial<Section>) => void
   onDeleteSelection?: () => void
   onModifySelection?: () => void
-  onModifySupportSelection?: (type: SupportType) => void
+  onApplySupportSelection?: (type: SupportPick) => void
   onAddSection?: (section: Section) => void
   onDeleteSection?: (id: SectionId) => void
   unitSettings?: UnitSettings
@@ -101,6 +101,7 @@ interface FlyoutPanelProps {
   onShowDiagramMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   onToolSelect?: (tool: ToolType) => void
+  hoveredNodeId?: string | null
   // Load cases & combinations
   loadCases?: Record<LoadCaseId, LoadCase>
   activeLoadCaseId?: LoadCaseId
@@ -147,7 +148,7 @@ export function FlyoutPanel({
   onSectionPropsChange,
   onDeleteSelection,
   onModifySelection,
-  onModifySupportSelection,
+  onApplySupportSelection,
   onAddSection,
   onDeleteSection,
   unitSettings,
@@ -199,6 +200,7 @@ export function FlyoutPanel({
   onShowDiagramMemberLabelsChange,
   analysisResult,
   onToolSelect,
+  hoveredNodeId,
   moveNodeMode = "coordinates",
   onMoveNodeModeChange,
   moveNodeCoordMode = "set",
@@ -235,8 +237,8 @@ export function FlyoutPanel({
     <div
       data-flyout-root
       className={cn(
-        "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-10",
-        wide ? "md:right-auto md:w-[640px]" : "sm:right-auto sm:w-[200px]",
+        "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-20",
+        wide ? "md:right-auto md:w-[500px]" : "sm:right-auto sm:w-[200px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}
@@ -266,7 +268,8 @@ export function FlyoutPanel({
           onSectionPropsChange={onSectionPropsChange}
           onDeleteSelection={onDeleteSelection}
           onModifySelection={onModifySelection}
-          onModifySupportSelection={onModifySupportSelection}
+          onApplySupportSelection={onApplySupportSelection}
+          hoveredNodeId={hoveredNodeId}
           onAddSection={onAddSection}
           onDeleteSection={onDeleteSection}
           unitSettings={unitSettings}
@@ -353,7 +356,7 @@ export function FlyoutPanel({
 
 function getToolTitle(tool: ToolType, activeTab?: TabType): string {
   if (!tool) return ""
-  if (tool === "SELECT") return "MODIFY COMPONENT"
+  if (tool === "SELECT") return "MODIFY SECTION"
   if (tool === "MOVE_NODE") return "MOVE NODE"
   if (tool === "DELETE") return activeTab === "Load" ? "DELETE LOAD" : "DELETE COMPONENT"
   return tool.replace(/_/g, " ")
@@ -375,7 +378,8 @@ function FlyoutContent({
   onSectionPropsChange,
   onDeleteSelection,
   onModifySelection,
-  onModifySupportSelection,
+  onApplySupportSelection,
+  hoveredNodeId,
   onAddSection,
   onDeleteSection,
   unitSettings,
@@ -464,7 +468,6 @@ function FlyoutContent({
             sections={model?.sections}
             onSectionChange={onSectionChange}
             onModify={onModifySelection}
-            onModifySupport={onModifySupportSelection}
           />
         )
       case "MOVE_NODE":
@@ -504,6 +507,10 @@ function FlyoutContent({
           <SupportToolContent
             activeSupportType={activeSupportType ?? "pin"}
             onSupportTypeChange={onSupportTypeChange}
+            selection={selection ?? { nodeIds: [], memberIds: [], supportNodeIds: [] }}
+            supports={model?.supports}
+            hoveredNodeId={hoveredNodeId ?? null}
+            onApply={onApplySupportSelection}
           />
         )
       case "MATERIAL":
@@ -543,7 +550,7 @@ function FlyoutContent({
             onCombinationsEnabledChange={onCombinationsEnabledChange ?? (() => {})}
             combinationMode={combinationMode ?? "code"}
             onCombinationModeChange={onCombinationModeChange ?? (() => {})}
-            selectedCodePreset={selectedCodePreset ?? "SNI 1726:2019"}
+            selectedCodePreset={selectedCodePreset ?? "ASCE7-22"}
             onSelectedCodePresetChange={onSelectedCodePresetChange ?? (() => {})}
             onAddCombination={onAddCombination ?? (() => {})}
             onDeleteCombination={onDeleteCombination ?? (() => {})}

@@ -3,6 +3,7 @@ import { Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { StructureModel } from "@/lib/model"
 import { newNodeId, newMemberId, defaultSections } from "@/lib/model"
+import { ToggleButton } from "@/components/flyout-shared"
 
 type FrameType =
   | "portal"
@@ -339,7 +340,7 @@ function Stepper({ label, value, min, max, hint, onChange }: {
         <button
           onClick={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
-          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors"
         >
           <Minus size={11} strokeWidth={2.5} />
         </button>
@@ -347,7 +348,7 @@ function Stepper({ label, value, min, max, hint, onChange }: {
         <button
           onClick={() => onChange(Math.min(max, value + 1))}
           disabled={value >= max}
-          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors"
         >
           <Plus size={11} strokeWidth={2.5} />
         </button>
@@ -493,18 +494,14 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
               <span className="block text-xs font-medium text-gray-500 mb-1.5">Supports</span>
               <div className="flex gap-2">
                 {(["fixed", "pin"] as const).map((t) => (
-                  <button
+                  <ToggleButton
                     key={t}
+                    active={supportType === t}
                     onClick={() => setSupportType(t)}
-                    className={cn(
-                      "h-7 px-4 rounded-md text-xs font-medium transition-colors",
-                      supportType === t
-                        ? "bg-[#1a2f5e] text-white"
-                        : "border border-gray-200 text-gray-600 hover:bg-gray-50"
-                    )}
+                    className="!flex-none h-7 px-4 text-xs font-medium"
                   >
                     {t === "fixed" ? "Fixed" : "Pinned"}
-                  </button>
+                  </ToggleButton>
                 ))}
               </div>
             </div>
@@ -521,7 +518,7 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
         <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
           <button
             onClick={onClose}
-            className="h-8 px-4 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            className="h-8 px-4 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
           >
             Cancel
           </button>
@@ -529,7 +526,7 @@ export function FrameTemplateModal({ onConfirm, onClose }: Props) {
             onClick={() =>
               onConfirm(buildFrameModel(numStories, numBays, storyHeight, bayWidth, section, supportType, frameType))
             }
-            className="h-8 px-5 rounded-md text-xs font-semibold bg-[#1a2f5e] text-white hover:bg-[#243d77] transition-colors"
+            className="h-8 px-5 rounded-md text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
           >
             OK
           </button>

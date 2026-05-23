@@ -22,6 +22,7 @@ import {
   computeBoxSelection,
   computeBoxSelectionWithNodes,
   computeBoxSelectionLoads,
+  computeBoxSelectionSupportTool,
 } from "@/canvas/box-selection"
 import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
 import {
@@ -155,6 +156,7 @@ interface StructuralCanvasProps {
   hoveredNodeId?: NodeId | null
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
+  activeSupportType?: import("@/lib/model").SupportPick
   loadCases?: Record<string, { id: string; name: string; color: string }>
   /** When non-null, only loads with this loadCaseId are drawn/hit-tested. */
   loadViewFilter?: string | null
@@ -201,6 +203,7 @@ export function StructuralCanvas({
   hoveredNodeId,
   hoveredMemberId,
   hoveredLoadId,
+  activeSupportType = "pin",
   loadCases,
   loadViewFilter = null,
   moveNodeMode = "coordinates",
@@ -425,13 +428,16 @@ export function StructuralCanvas({
         const isMove   = activeTab === "Model" && activeTool === "MOVE_NODE"
         const isSupport   = activeTab === "Model" && activeTool === "SUPPORT"
         const isPointLoad = activeTab === "Load"  && activeTool === "POINT_LOAD"
-        const selected = isDelete && selection.nodeIds.includes(n.id)
+        const supportNodeSelected = isSupport && (
+          selection.nodeIds.includes(n.id) || selection.supportNodeIds.includes(n.id)
+        )
+        const selected = (isDelete && selection.nodeIds.includes(n.id)) || supportNodeSelected
         const isMoveTarget = isMove && (
           moveNodeMode === "screen" ? n.id === draggingNodeId : n.id === moveNodeSelectedId
         )
         const isMoveHover  = isMove && !isMoveTarget && n.id === hoveredNodeId
         const isDelHover   = isDelete && !selected && n.id === hoveredNodeId
-        const isPlacementHover = (isSupport || isPointLoad) && n.id === hoveredNodeId
+        const isPlacementHover = (isSupport || isPointLoad) && !selected && n.id === hoveredNodeId
         let state: DrawState = "normal"
         if (selected || isMoveTarget) state = "selected"
         else if (isMoveHover || isDelHover || isPlacementHover) state = "hover"
@@ -455,18 +461,18 @@ export function StructuralCanvas({
         const n = model.nodes[s.nodeId]
         if (!n) continue
         const { sx, sy } = worldToScreen(n, rect)
-        // Supports are eligible for: Model SELECT (hover+select), Model DELETE (hover+select),
+        // Supports are eligible for: Model SUPPORT (hover+select), Model DELETE (hover+select),
         // and Model MOVE_NODE (mirror the node's hover/selection state).
-        const isSelectTool = activeTab === "Model" && activeTool === "SELECT"
+        const isSupportTool = activeTab === "Model" && activeTool === "SUPPORT"
         const isDeleteTool = activeTab === "Model" && activeTool === "DELETE"
         const isMoveTool   = activeTab === "Model" && activeTool === "MOVE_NODE"
         const moveSelected = isMoveTool && (
           moveNodeMode === "screen" ? s.nodeId === draggingNodeId : s.nodeId === moveNodeSelectedId
         )
-        const selectionTouched = (isSelectTool || isDeleteTool) && selection.supportNodeIds.includes(s.nodeId)
+        const selectionTouched = (isSupportTool || isDeleteTool) && selection.supportNodeIds.includes(s.nodeId)
         const isSelected = selectionTouched || moveSelected
         const moveHover   = isMoveTool && !moveSelected && s.nodeId === hoveredNodeId
-        const otherHover  = (isSelectTool || isDeleteTool) && !isSelected && s.nodeId === hoveredNodeId
+        const otherHover  = (isSupportTool || isDeleteTool) && !isSelected && s.nodeId === hoveredNodeId
         let state: DrawState = "normal"
         if (isSelected) state = "selected"
         else if (moveHover || otherHover) state = "hover"
@@ -475,8 +481,28 @@ export function StructuralCanvas({
         // we drive the body color via `overrideColor` for both hover and selected states.
         drawSupportGlyph(ctx, sx, sy, s.type, false, overrideColor, sc)
       }
+
+      // SUPPORT tool: ghost preview on hovered bare nodes (no support yet).
+      // Skip when activeSupportType is "none" — there's no glyph to preview.
+      if (
+        activeTab === "Model" &&
+        activeTool === "SUPPORT" &&
+        hoveredNodeId &&
+        !model.supports[hoveredNodeId] &&
+        activeSupportType !== "none"
+      ) {
+        const ghostType: import("@/lib/model").SupportType = activeSupportType
+        const n = model.nodes[hoveredNodeId]
+        if (n) {
+          const { sx, sy } = worldToScreen(n, rect)
+          ctx.save()
+          ctx.globalAlpha = 0.45
+          drawSupportGlyph(ctx, sx, sy, ghostType, false, COLOR_HOVER_GENERIC, sc)
+          ctx.restore()
+        }
+      }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, draggingNodeId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, draggingNodeId, adaptiveView, zoom, activeSupportType]
   )
 
   const drawPreview = useCallback(
@@ -2100,7 +2126,7 @@ export function StructuralCanvas({
     }
 
     // Update box selection rubber-band
-    if ((activeTool === "SELECT" || activeTool === "DELETE" || (activeTab === "Load" && activeTool === "MODIFY_LOAD")) && boxStartRef.current) {
+    if ((activeTool === "SELECT" || activeTool === "DELETE" || (activeTab === "Model" && activeTool === "SUPPORT") || (activeTab === "Load" && activeTool === "MODIFY_LOAD")) && boxStartRef.current) {
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
@@ -2140,7 +2166,8 @@ export function StructuralCanvas({
     // Middle mouse or left-drag when not using SELECT/DELETE/MODIFY_LOAD box — start pan tracking
     const isMiddle = e.button === 1
     const isLoadModify = activeTab === "Load" && activeTool === "MODIFY_LOAD"
-    const isLeftNonSelect = e.button === 0 && activeTool !== "SELECT" && activeTool !== "DELETE" && !isLoadModify
+    const isModelSupport = activeTab === "Model" && activeTool === "SUPPORT"
+    const isLeftNonSelect = e.button === 0 && activeTool !== "SELECT" && activeTool !== "DELETE" && !isLoadModify && !isModelSupport
     if (isMiddle || isLeftNonSelect) {
       panStartRef.current = { mx: e.clientX, my: e.clientY, basePanX: panX, basePanY: panY }
       isPanningRef.current = false
@@ -2152,7 +2179,7 @@ export function StructuralCanvas({
     const w = toWorldCoords(e)
     if (w) onCanvasMouseDown?.(w.x, w.y)
 
-    if (activeTool === "SELECT" || activeTool === "DELETE" || isLoadModify) {
+    if (activeTool === "SELECT" || activeTool === "DELETE" || isLoadModify || isModelSupport) {
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
@@ -2186,6 +2213,21 @@ export function StructuralCanvas({
         const items = activeTool === "DELETE"
           ? computeBoxSelectionWithNodes(model, wx1.x, wx1.y, wx2.x, wx2.y)
           : computeBoxSelection(model, wx1.x, wx1.y, wx2.x, wx2.y)
+        if (!isEmptySelection(items)) onSelectItems?.(items)
+      }
+    }
+
+    // Handle Model tab SUPPORT tool box selection
+    if (activeTab === "Model" && activeTool === "SUPPORT" && hasDraggedRef.current && boxRect) {
+      const container = containerRef.current
+      if (container) {
+        const rect = container.getBoundingClientRect()
+        const dims = { width: rect.width, height: rect.height }
+        const { vmx: vx1, vmy: vy1 } = toVirtual(boxRect.x1, boxRect.y1)
+        const { vmx: vx2, vmy: vy2 } = toVirtual(boxRect.x2, boxRect.y2)
+        const wx1 = screenToWorld({ sx: vx1, sy: vy1 }, dims)
+        const wx2 = screenToWorld({ sx: vx2, sy: vy2 }, dims)
+        const items = computeBoxSelectionSupportTool(model, wx1.x, wx1.y, wx2.x, wx2.y)
         if (!isEmptySelection(items)) onSelectItems?.(items)
       }
     }
@@ -2231,6 +2273,12 @@ export function StructuralCanvas({
       return
     }
 
+    // Suppress click after box drag for Model SUPPORT — mouseup already handled selection
+    if (activeTab === "Model" && activeTool === "SUPPORT" && hasDraggedRef.current) {
+      hasDraggedRef.current = false
+      return
+    }
+
     if (activeTool === "SELECT" || (activeTab === "Model" && activeTool === "DELETE")) {
       // Suppress click after box drag — mouseup already handled it
       if (hasDraggedRef.current) {
@@ -2242,16 +2290,8 @@ export function StructuralCanvas({
 
       const nodeId = hitTestNode(model, w, HIT_TOL_NODE)
       if (nodeId) {
-        // MODIFY (SELECT) does not operate on nodes — if the hit node carries a support,
-        // promote the hit to that support so the user gets a generous target.
-        if (activeTool === "SELECT" && model.supports[nodeId]) {
-          const item: MultiSelection = { nodeIds: [], memberIds: [], supportNodeIds: [nodeId] }
-          if (selection.supportNodeIds.includes(nodeId)) onDeselectItems?.(item)
-          else onSelectItems?.(item)
-          return
-        }
         if (activeTool === "SELECT") {
-          // Bare node under MODIFY — nothing to select; fall through to member/support glyph.
+          // MODIFY SECTION does not operate on nodes/supports — fall through to member hit.
         } else {
           const item: MultiSelection = { nodeIds: [nodeId], memberIds: [], supportNodeIds: [] }
           if (selection.nodeIds.includes(nodeId)) onDeselectItems?.(item)

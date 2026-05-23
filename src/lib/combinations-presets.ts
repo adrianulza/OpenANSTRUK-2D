@@ -231,14 +231,14 @@ const AS_NZS_1170_0: PresetCombo[] = [
 // preset label "BSL/AIJ (ASD)" flags the design philosophy in the UI.
 const BSL_AIJ_ASD: PresetCombo[] = [
   {
-    name: "1.0G + 1.0L  (long-term)",
+    name: "1.0G + 1.0L",
     terms: [
       { factor: 1.0, kind: "Dead" },
       { factor: 1.0, kind: "Live" },
     ],
   },
   {
-    name: "1.0G + 1.0L + 1.0S  (short-term, snow)",
+    name: "1.0G + 1.0L + 1.0S",
     terms: [
       { factor: 1.0, kind: "Dead" },
       { factor: 1.0, kind: "Live" },
@@ -246,7 +246,7 @@ const BSL_AIJ_ASD: PresetCombo[] = [
     ],
   },
   {
-    name: "1.0G + 1.0L + 1.0W  (short-term, wind)",
+    name: "1.0G + 1.0L + 1.0W",
     terms: [
       { factor: 1.0, kind: "Dead" },
       { factor: 1.0, kind: "Live" },
@@ -255,7 +255,7 @@ const BSL_AIJ_ASD: PresetCombo[] = [
     permuteWindSign: true,
   },
   {
-    name: "1.0G + 1.0L + 1.0E  (short-term, seismic)",
+    name: "1.0G + 1.0L + 1.0E",
     terms: [
       { factor: 1.0, kind: "Dead" },
       { factor: 1.0, kind: "Live" },

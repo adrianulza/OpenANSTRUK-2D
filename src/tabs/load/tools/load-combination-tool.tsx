@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
+import { ToggleButton, Checkbox } from "@/components/flyout-shared"
+import { cn } from "@/lib/utils"
 import {
   type LoadCase,
   type LoadCaseId,
@@ -77,17 +79,18 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
   return (
     <div className="space-y-3">
       {/* Master toggle */}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
+      <div
+        onClick={() => onCombinationsEnabledChange(!combinationsEnabled)}
+        className="flex items-center gap-2 cursor-pointer group"
+      >
+        <Checkbox
           checked={combinationsEnabled}
-          onChange={(e) => onCombinationsEnabledChange(e.target.checked)}
-          className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
+          onChange={onCombinationsEnabledChange}
         />
-        <span className="text-xs text-gray-700 font-medium">
+        <span className="text-xs text-gray-700 font-medium select-none">
           Enable load combinations
         </span>
-      </label>
+      </div>
 
       {!combinationsEnabled && (
         <p className="text-[11px] text-gray-500 leading-relaxed">
@@ -110,28 +113,20 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
           <div className="space-y-1.5">
             <Label className="text-xs text-gray-600">Mode</Label>
             <div className="flex gap-1">
-              <button
+              <ToggleButton
+                active={combinationMode === "manual"}
                 onClick={() => onCombinationModeChange("manual")}
-                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-                style={
-                  combinationMode === "manual"
-                    ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: "white" }
-                    : { backgroundColor: "#f3f4f6", color: "#4b5563" }
-                }
+                className="h-7 text-[11px]"
               >
                 Manual
-              </button>
-              <button
+              </ToggleButton>
+              <ToggleButton
+                active={combinationMode === "code"}
                 onClick={() => onCombinationModeChange("code")}
-                className="flex-1 h-7 text-[11px] rounded-md transition-colors"
-                style={
-                  combinationMode === "code"
-                    ? { backgroundColor: FLYOUT_PANEL_COLORS.primary, color: "white" }
-                    : { backgroundColor: "#f3f4f6", color: "#4b5563" }
-                }
+                className="h-7 text-[11px]"
               >
                 Code
-              </button>
+              </ToggleButton>
             </div>
           </div>
 
@@ -216,10 +211,7 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
           {combinationMode === "manual" && (
             <button
               onClick={onAddCombination}
-              className="w-full h-8 text-[11px] rounded-md transition-colors flex items-center justify-center gap-1.5"
-              style={{ backgroundColor: "#f3f4f6", color: "#4b5563" }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e5e7eb")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+              className="w-full h-8 text-[11px] rounded-md border border-gray-200 bg-white text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5 transition-colors flex items-center justify-center gap-1.5"
             >
               <Plus size={12} />
               Add New Combination
@@ -333,13 +325,13 @@ function GenerateConfirmDialog({
         <div className="flex justify-end gap-2 pt-1">
           <button
             onClick={onCancel}
-            className="h-8 px-4 text-xs rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+            className="h-8 px-4 text-xs rounded-md border border-gray-200 text-gray-500 bg-white hover:border-gray-400 hover:text-gray-700 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="h-8 px-4 text-xs rounded-md text-white transition-colors"
+            className="h-8 px-4 text-xs rounded-md text-white font-medium transition-colors hover:opacity-90"
             style={{ backgroundColor: FLYOUT_PANEL_COLORS.primary }}
           >
             Generate
@@ -381,11 +373,9 @@ function ComboRow({
         className="grid items-center gap-2 py-1 px-1 grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]"
         style={{ opacity: dim ? 0.5 : 1 }}
       >
-        <input
-          type="checkbox"
+        <Checkbox
           checked={combo.enabled}
-          onChange={(e) => onToggle(e.target.checked)}
-          className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
+          onChange={onToggle}
           title="Include in envelope"
         />
         <span
@@ -404,7 +394,12 @@ function ComboRow({
           {!readonly && (
             <button
               onClick={onEdit}
-              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded hover:bg-gray-100"
+              className={cn(
+                "p-0.5 rounded transition-colors",
+                isEditing
+                  ? "text-[#2563eb] bg-[#2563eb]/10"
+                  : "text-gray-400 hover:text-[#2563eb] hover:bg-[#2563eb]/10",
+              )}
               title={isEditing ? "Close editor" : "Edit"}
             >
               <Pencil size={12} />
@@ -519,7 +514,7 @@ function ComboEditor({
           ))}
           <button
             onClick={addTerm}
-            className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors bg-gray-100 hover:bg-gray-200 text-gray-600"
+            className="inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md border border-gray-200 bg-white text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5 transition-colors"
             title="Add term"
           >
             <Plus size={11} />

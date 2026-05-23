@@ -15,6 +15,7 @@ import type {
   MultiSelection,
   StructureModel,
   SupportType,
+  SupportPick,
   MemberType,
   Load,
   LoadId,
@@ -90,7 +91,7 @@ export default function App() {
   const [model, setModel] = useState<StructureModel>(template1SimpleBeam)
   const [activeSection, setActiveSection] = useState<SectionId>("section")
   const [activeMemberType, setActiveMemberType] = useState<MemberType>("frame")
-  const [activeSupportType, setActiveSupportType] = useState<SupportType>("pin")
+  const [activeSupportType, setActiveSupportType] = useState<SupportPick>("pin")
   const [selection, setSelection] = useState<MultiSelection>(emptySelection)
   const [pendingFrameStart, setPendingFrameStart] = useState<NodeId | null>(null)
 
@@ -127,7 +128,7 @@ export default function App() {
   const [combinations, setCombinations] = useState<Record<LoadComboId, LoadCombination>>({})
   const [combinationsEnabled, setCombinationsEnabled] = useState(false)
   const [combinationMode, setCombinationMode] = useState<"manual" | "code">("code")
-  const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("SNI 1726:2019")
+  const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("ASCE7-22")
   const [editingCombinationId, setEditingCombinationId] = useState<LoadComboId | null>(null)
   // Analyze view selector
   const [analyzeViewMode, setAnalyzeViewMode] = useState<AnalyzeViewMode>("case")
@@ -477,11 +478,9 @@ export default function App() {
         setHoveredMemberId(memberId)
       }
     } else if (activeTab === "Model" && activeTool === "SELECT") {
-      // MODIFY (SELECT) — members + supports only. Try support first via node hit, then member.
-      const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
-      // Only treat node hit as hover when the node carries a support (renderer gates by support too).
-      setHoveredNodeId(nodeId && model.supports[nodeId] ? nodeId : null)
-      const memberId = (!nodeId) ? hitTestMember(model, raw, HIT_TOL_MEMBER) : null
+      // MODIFY SECTION — members only.
+      setHoveredNodeId(null)
+      const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
       setHoveredMemberId(memberId)
     } else if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE" || activeTool === null)) {
       // Hover applies on Modify, Delete, or when no tool is picked in the Load tab.
@@ -630,7 +629,21 @@ export default function App() {
 
         if (activeTool === "SUPPORT") {
           const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
-          if (!nodeId) return
+          if (!nodeId) {
+            // Click on empty canvas → clear any pending support selection
+            if (!isEmptySelection(selection)) setSelection(emptySelection())
+            return
+          }
+          if (model.supports[nodeId]) {
+            // Existing support → toggle into selection; Apply commits the change.
+            const item: MultiSelection = { nodeIds: [], memberIds: [], supportNodeIds: [nodeId] }
+            if (selection.supportNodeIds.includes(nodeId)) handleDeselectItems(item)
+            else handleSelectItems(item)
+            return
+          }
+          // Bare node, type = "none" → no-op (nothing to remove or assign)
+          if (activeSupportType === "none") return
+          // Bare node → immediate assignment (fast path)
           setModel((m) => ({
             ...m,
             supports: { ...m.supports, [nodeId]: { nodeId, type: activeSupportType } },
@@ -855,16 +868,27 @@ export default function App() {
     })
   }, [selection, activeSection])
 
-  const handleModifySupportSelection = useCallback((type: import("./lib/model").SupportType) => {
-    if (selection.supportNodeIds.length === 0) return
+  const handleApplySupportSelection = useCallback((type: SupportPick) => {
+    if (selection.supportNodeIds.length === 0 && selection.nodeIds.length === 0) return
     setModel((m) => {
       const supports = { ...m.supports }
-      for (const nodeId of selection.supportNodeIds) {
-        if (supports[nodeId]) supports[nodeId] = { ...supports[nodeId], type }
+      if (type === "none") {
+        // Remove supports from any selected support nodes; bare nodes are ignored.
+        for (const nodeId of selection.supportNodeIds) {
+          delete supports[nodeId]
+        }
+      } else {
+        for (const nodeId of selection.supportNodeIds) {
+          if (supports[nodeId]) supports[nodeId] = { ...supports[nodeId], type }
+        }
+        for (const nodeId of selection.nodeIds) {
+          supports[nodeId] = { nodeId, type }
+        }
       }
       return { ...m, supports }
     })
-  }, [selection.supportNodeIds])
+    setSelection(emptySelection())
+  }, [selection.supportNodeIds, selection.nodeIds])
 
   const handleModifyLoad = useCallback(
     (patch: Partial<Load>) => {
@@ -1039,7 +1063,8 @@ export default function App() {
             onDeleteSection={handleDeleteSection}
             onDeleteSelection={handleDeleteSelection}
             onModifySelection={handleModifySelection}
-            onModifySupportSelection={handleModifySupportSelection}
+            onApplySupportSelection={handleApplySupportSelection}
+            hoveredNodeId={hoveredNodeId}
             unitSettings={unitSettings}
             activePtInputMode={activePtInputMode}
             onPtInputModeChange={setActivePtInputMode}
@@ -1149,6 +1174,7 @@ export default function App() {
             hoveredNodeId={hoveredNodeId}
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
+            activeSupportType={activeSupportType}
             loadCases={loadCases}
             loadViewFilter={loadViewFilter === LOAD_VIEW_ALL ? null : loadViewFilter}
             moveNodeMode={moveNodeMode}

@@ -14,6 +14,7 @@ import {
   LOAD_CASE_KINDS,
   caseShortLabel,
 } from "@/lib/load-cases"
+import { Checkbox } from "@/components/flyout-shared"
 
 interface LoadCaseToolContentProps {
   loadCases: Record<LoadCaseId, LoadCase>
@@ -53,10 +54,7 @@ export function LoadCaseToolContent({
 
       <button
         onClick={onAddLoadCase}
-        className="w-full h-8 text-[11px] rounded-md transition-colors flex items-center justify-center gap-1.5"
-        style={{ backgroundColor: "#f3f4f6", color: "#4b5563" }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#e5e7eb")}
-        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#f3f4f6")}
+        className="w-full h-8 text-[11px] rounded-md border border-gray-200 bg-white text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5 transition-colors flex items-center justify-center gap-1.5"
       >
         <Plus size={12} />
         Add Case
@@ -79,11 +77,9 @@ function CaseRow({
       {/* Col 1 — enabled checkbox. For Selfweight: gates body-force inclusion.
                  For other cases: skips this case (and its loads) in the solver. */}
       <div className="flex items-center justify-center">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={loadCase.enabled}
-          onChange={(e) => onPatch({ enabled: e.target.checked })}
-          className="h-3.5 w-3.5 cursor-pointer accent-[#1a2f5e]"
+          onChange={(v) => onPatch({ enabled: v })}
           title={
             loadCase.locked
               ? "Include self-weight body force (γ·A per member) in solve & analyze"

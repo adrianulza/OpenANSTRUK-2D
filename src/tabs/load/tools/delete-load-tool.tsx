@@ -1,6 +1,6 @@
 import type { StructureModel } from "@/lib/model"
 import { Trash2 } from "lucide-react"
-import { SelectionChip } from "@/components/flyout-shared"
+import { SelectionChip, DeleteButton } from "@/components/flyout-shared"
 import { CaseSelectorRow } from "./case-selector-row"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
 
@@ -51,13 +51,10 @@ export function DeleteLoadToolContent({
       {caseSelector}
       <SelectionChip>{parts.join(", ")} selected</SelectionChip>
 
-      <button
-        onClick={onDelete}
-        className="w-full flex items-center justify-center gap-2.5 py-2 px-2.5 rounded-lg transition-colors text-[13px] font-medium bg-red-50 text-red-600 hover:bg-red-100"
-      >
-        <Trash2 size={15} />
+      <DeleteButton onClick={onDelete}>
+        <Trash2 size={14} />
         <span>Delete {selectedLoadIds.length > 1 ? `${selectedLoadIds.length} Loads` : "Load"}</span>
-      </button>
+      </DeleteButton>
     </div>
   )
 }

@@ -26,15 +26,27 @@ export function ToggleButton({
   children: React.ReactNode
   type?: "button" | "submit"
 }) {
+  const [hover, setHover] = React.useState(false)
+  const hovered = hover && !active
   return (
     <button
       type={type}
       onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       className={cn("flex-1 rounded transition-colors", className)}
       style={
         active
           ? {
               borderWidth: 2,
+              borderColor: FLYOUT_PANEL_COLORS.primary,
+              backgroundColor: FLYOUT_PANEL_COLORS.primary + "0d",
+              color: FLYOUT_PANEL_COLORS.primary,
+              borderStyle: "solid",
+            }
+          : hovered
+          ? {
+              borderWidth: 1,
               borderColor: FLYOUT_PANEL_COLORS.primary,
               backgroundColor: FLYOUT_PANEL_COLORS.primary + "0d",
               color: FLYOUT_PANEL_COLORS.primary,
@@ -81,6 +93,107 @@ export function ApplyButton({
       }
     >
       {children}
+    </button>
+  )
+}
+
+// Bordered red destructive button (Delete). Mirrors ApplyButton sizing/shape but in
+// red, with a 1px border at rest and a faint red tint on hover — consistent with the
+// bordered ToggleButton style used across Model/Load flyouts.
+export function DeleteButton({
+  onClick,
+  disabled,
+  children,
+  className,
+}: {
+  onClick?: () => void
+  disabled?: boolean
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "w-full h-8 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors",
+        className,
+      )}
+      style={
+        disabled
+          ? {
+              borderWidth: 1,
+              borderColor: "#e5e7eb",
+              color: "#d1d5db",
+              backgroundColor: "white",
+              borderStyle: "solid",
+              cursor: "not-allowed",
+            }
+          : {
+              borderWidth: 1,
+              borderColor: "#f87171",
+              color: "#dc2626",
+              backgroundColor: "#fef2f2",
+              borderStyle: "solid",
+            }
+      }
+      onMouseEnter={(e) => {
+        if (disabled) return
+        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = "#fee2e2"
+        ;(e.currentTarget as HTMLButtonElement).style.borderColor = "#dc2626"
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return
+        ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = "#fef2f2"
+        ;(e.currentTarget as HTMLButtonElement).style.borderColor = "#f87171"
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Square checkmark checkbox matching the GridUnitsPanel style. Filled blue when
+// checked, white with gray border when unchecked. Use for include/exclude row toggles.
+export function Checkbox({
+  checked,
+  onChange,
+  disabled,
+  title,
+  className,
+}: {
+  checked: boolean
+  onChange?: (v: boolean) => void
+  disabled?: boolean
+  title?: string
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!disabled) onChange?.(!checked)
+      }}
+      disabled={disabled}
+      title={title}
+      aria-checked={checked}
+      role="checkbox"
+      className={cn(
+        "w-4 h-4 rounded shrink-0 flex items-center justify-center border transition-colors",
+        checked
+          ? "bg-[#2563eb] border-[#2563eb]"
+          : "bg-white border-gray-300 hover:border-gray-400",
+        disabled && "opacity-50 cursor-not-allowed",
+        className,
+      )}
+    >
+      {checked && (
+        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+          <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
     </button>
   )
 }

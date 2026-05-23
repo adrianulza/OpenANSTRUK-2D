@@ -1,3 +1,9 @@
+export const noneIcon = (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>
+    <circle cx="8" cy="8" r="4" />
+  </svg>
+)
+
 export const pinIcon = (
   <svg width={16} height={16} viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" strokeWidth={0.5}>
     <polygon points="8,2 12,10 4,10" />

@@ -179,13 +179,13 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
         <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
           <button
             onClick={onClose}
-            className="h-8 px-4 rounded-md text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+            className="h-8 px-4 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
-            className="h-8 px-5 rounded-md text-xs font-semibold bg-[#1a2f5e] text-white hover:bg-[#243d77] transition-colors"
+            className="h-8 px-5 rounded-md text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
           >
             OK
           </button>

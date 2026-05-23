@@ -1,7 +1,6 @@
-import { cn } from "@/lib/utils"
 import type { MultiSelection } from "@/lib/model"
 import { Trash2 } from "lucide-react"
-import { SelectionChip } from "@/components/flyout-shared"
+import { SelectionChip, DeleteButton } from "@/components/flyout-shared"
 
 export function DeleteComponentToolContent({
   selection,
@@ -28,19 +27,10 @@ export function DeleteComponentToolContent({
     <div className="space-y-3">
       <SelectionChip>{label}</SelectionChip>
 
-      <button
-        onClick={onDelete}
-        disabled={!hasSelection}
-        className={cn(
-          "w-full flex items-center justify-center gap-2.5 py-2 px-2.5 rounded-lg transition-colors text-[13px] font-medium",
-          hasSelection
-            ? "bg-red-50 text-red-600 hover:bg-red-100"
-            : "text-gray-300 cursor-not-allowed"
-        )}
-      >
-        <Trash2 size={15} />
+      <DeleteButton onClick={onDelete} disabled={!hasSelection}>
+        <Trash2 size={14} />
         <span>Delete</span>
-      </button>
+      </DeleteButton>
     </div>
   )
 }

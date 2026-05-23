@@ -195,12 +195,7 @@ export function MaterialFlyout({
 
   const handleDeleteClick = () => {
     if (!canDelete) return
-    if (!deleteArmed) {
-      setDeleteArmed(true)
-      return
-    }
     onDeleteSection?.(activeSection)
-    setDeleteArmed(false)
   }
 
   // ── Advanced panel: parametric override workflow ─────────────────────────────
@@ -333,7 +328,7 @@ function Toolbar({
         <ToolbarButton
           icon={<X size={14} />}
           label="Cancel"
-          tone="neutral"
+          tone="destructive"
           onClick={onCancelAdd}
         />
       </div>
@@ -350,14 +345,14 @@ function Toolbar({
       <ToolbarButton
         icon={<Pencil size={14} />}
         label="Save changes"
-        tone={canModify ? "primary" : "muted"}
+        tone={canModify ? "neutral" : "muted"}
         disabled={!canModify}
         onClick={onModify}
       />
       <ToolbarButton
         icon={<Trash2 size={14} />}
         label={deleteArmed ? "Click again to confirm delete" : "Delete material"}
-        tone={deleteArmed ? "danger" : (canDelete ? "neutral" : "muted")}
+        tone={deleteArmed ? "danger" : (canDelete ? "destructive" : "muted")}
         disabled={!canDelete}
         onClick={onDeleteClick}
       />
@@ -370,15 +365,16 @@ function ToolbarButton({
 }: {
   icon: React.ReactNode
   label: string
-  tone: "primary" | "neutral" | "muted" | "danger"
+  tone: "primary" | "neutral" | "muted" | "danger" | "destructive"
   disabled?: boolean
   onClick?: () => void
 }) {
   const styles: Record<typeof tone, string> = {
-    primary: "border-[#2563eb] text-[#2563eb] hover:bg-[#2563eb]/10",
-    neutral: "border-gray-200 text-gray-600 hover:border-[#2563eb] hover:text-[#2563eb]",
-    muted:   "border-gray-200 text-gray-300 cursor-not-allowed",
-    danger:  "border-red-400 text-red-500 bg-red-50 hover:bg-red-100",
+    primary: "border-2 border-[#2563eb] text-[#2563eb] bg-[#2563eb]/5 hover:bg-[#2563eb]/10",
+    neutral: "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
+    muted:   "border border-gray-200 text-gray-300 cursor-not-allowed",
+    danger:  "border-2 border-red-400 text-red-500 bg-red-50 hover:bg-red-100",
+    destructive: "border border-gray-200 text-gray-400 hover:border-red-400 hover:text-red-500 hover:bg-red-50",
   }
   return (
     <button
@@ -388,7 +384,7 @@ function ToolbarButton({
       title={label}
       aria-label={label}
       className={cn(
-        "flex-1 h-8 rounded border bg-white flex items-center justify-center transition-colors",
+        "flex-1 h-8 rounded bg-white flex items-center justify-center transition-colors",
         styles[tone],
       )}
     >

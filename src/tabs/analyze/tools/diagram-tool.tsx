@@ -1,5 +1,6 @@
 import * as React from "react"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
+import { ToggleButton } from "@/components/flyout-shared"
 import type { StructureModel } from "@/lib/model"
 import type { AnalysisResult } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
@@ -94,62 +95,38 @@ export function DiagramToolContent({
 
       <div className="flex items-center justify-between select-none">
         <span className="text-xs text-gray-600">Member Labels</span>
-        <button
+        <ToggleButton
+          active={showMemberLabels}
           onClick={() => onShowMemberLabelsChange?.(!showMemberLabels)}
-          className="text-xs px-2 py-0.5 rounded border transition-colors"
-          style={showMemberLabels ? {
-            backgroundColor: FLYOUT_PANEL_COLORS.primary,
-            color: 'white',
-            borderColor: FLYOUT_PANEL_COLORS.primary,
-          } : {
-            backgroundColor: 'white',
-            color: '#6b7280',
-            borderColor: '#d1d5db',
-          }}
+          className="!flex-none h-6 text-xs px-3"
         >
           {showMemberLabels ? "On" : "Off"}
-        </button>
+        </ToggleButton>
       </div>
 
       {onInvertChange !== undefined && (
         <div className="flex items-center justify-between select-none">
           <span className="text-xs text-gray-600">Invert Diagram</span>
-          <button
+          <ToggleButton
+            active={invert}
             onClick={() => onInvertChange(!invert)}
-            className="text-xs px-2 py-0.5 rounded border transition-colors"
-            style={invert ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-              borderColor: FLYOUT_PANEL_COLORS.primary,
-            } : {
-              backgroundColor: 'white',
-              color: '#6b7280',
-              borderColor: '#d1d5db',
-            }}
+            className="!flex-none h-6 text-xs px-3"
           >
             {invert ? "On" : "Off"}
-          </button>
+          </ToggleButton>
         </div>
       )}
 
       <div className="space-y-1.5 border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
         <div className="flex items-center justify-between">
           <Label className="text-xs text-gray-600">{sectionLabel}</Label>
-          <button
+          <ToggleButton
+            active={showReport}
             onClick={() => setShowReport(v => !v)}
-            className="text-xs px-2 py-0.5 rounded border transition-colors"
-            style={showReport ? {
-              backgroundColor: FLYOUT_PANEL_COLORS.primary,
-              color: 'white',
-              borderColor: FLYOUT_PANEL_COLORS.primary,
-            } : {
-              backgroundColor: 'white',
-              color: '#6b7280',
-              borderColor: '#d1d5db',
-            }}
+            className="!flex-none h-6 text-xs px-3"
           >
             {showReport ? "On" : "Off"}
-          </button>
+          </ToggleButton>
         </div>
         {showReport && (
           memberRows.length === 0 ? (

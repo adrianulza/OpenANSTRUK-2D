@@ -63,6 +63,32 @@ export function computeBoxSelectionWithNodes(
   return { nodeIds, memberIds, supportNodeIds }
 }
 
+// Select every node inside the box, split into bare nodes vs nodes-with-support.
+// Used by the SUPPORT tool's rectangular selection.
+export function computeBoxSelectionSupportTool(
+  model: StructureModel,
+  wx1: number, wy1: number, wx2: number, wy2: number,
+): MultiSelection {
+  const minX = Math.min(wx1, wx2)
+  const maxX = Math.max(wx1, wx2)
+  const minY = Math.min(wy1, wy2)
+  const maxY = Math.max(wy1, wy2)
+
+  const nodeIds: string[] = []
+  const supportNodeIds: string[] = []
+
+  const inside = (x: number, y: number) =>
+    x >= minX && x <= maxX && y >= minY && y <= maxY
+
+  for (const n of Object.values(model.nodes)) {
+    if (!inside(n.x, n.y)) continue
+    if (model.supports[n.id]) supportNodeIds.push(n.id)
+    else nodeIds.push(n.id)
+  }
+
+  return { nodeIds, memberIds: [], supportNodeIds }
+}
+
 export function computeBoxSelectionLoads(
   model: StructureModel,
   wx1: number, wy1: number, wx2: number, wy2: number,

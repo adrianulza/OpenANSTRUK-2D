@@ -3,6 +3,8 @@ import type { LoadCaseId } from "./load-cases"
 export type NodeId = string
 export type MemberId = string
 export type SupportType = "pin" | "roller" | "fixed"
+// UI-only union for the SUPPORT tool's type picker. "none" means "remove support" (no glyph).
+export type SupportPick = SupportType | "none"
 export type SectionId = string
 export type LoadId = string
 
