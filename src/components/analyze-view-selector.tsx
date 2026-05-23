@@ -58,7 +58,7 @@ export function AnalyzeViewSelector({
     : [{ value: "case", label: "Case" }]
 
   return (
-    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm rounded-lg shadow-[0_2px_12px_rgba(0,0,0,0.08)] border border-gray-100 px-2 py-1 pointer-events-auto">
+    <div className="absolute top-16 right-3 md:top-2 md:right-auto md:left-1/2 md:-translate-x-1/2 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-sm rounded-lg shadow-[0_2px_12px_rgba(0,0,0,0.08)] border border-gray-100 px-2 py-1 pointer-events-auto">
       <Select
         value={analyzeViewMode}
         onValueChange={(v) => onAnalyzeViewModeChange(v as AnalyzeViewMode)}

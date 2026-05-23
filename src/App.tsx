@@ -27,6 +27,7 @@ import {
 } from "@/lib/analysis-pipeline"
 import type { AnalysisResult } from "@/lib/analysis-pipeline"
 import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
+import { LoadViewSelector, LOAD_VIEW_ALL, type LoadViewSelection } from "@/components/load-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
 import { FrameTemplateModal } from "@/templates/frame-template-modal"
 import { TrussTemplateModal } from "@/templates/truss-template-modal"
@@ -132,6 +133,8 @@ export default function App() {
   const [analyzeViewMode, setAnalyzeViewMode] = useState<AnalyzeViewMode>("case")
   const [selectedCaseId, setSelectedCaseId] = useState<LoadCaseId>("dead")
   const [selectedCombinationId, setSelectedCombinationId] = useState<LoadComboId | null>(null)
+  // Load tab: which case to show on canvas (or "all loads"). Default "all".
+  const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
 
   // Generate (or regenerate) preset combinations on demand. Auto-creates
   // any missing load cases the preset needs (matched by kind, not name) and
@@ -477,20 +480,14 @@ export default function App() {
       setHoveredNodeId(nodeId && model.supports[nodeId] ? nodeId : null)
       const memberId = (!nodeId) ? hitTestMember(model, raw, HIT_TOL_MEMBER) : null
       setHoveredMemberId(memberId)
-    } else if (activeTab === "Load" && activeTool === "POINT_LOAD") {
-      const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
-      setHoveredNodeId(nodeId)
-      setHoveredMemberId(null)
-      setHoveredLoadId(null)
-    } else if (activeTab === "Load" && activeTool === "DISTRIBUTED_LOAD") {
-      const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
-      setHoveredMemberId(memberId)
-      setHoveredNodeId(null)
-      setHoveredLoadId(null)
-    } else if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")) {
+    } else if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE" || activeTool === null)) {
+      // Hover applies on Modify, Delete, or when no tool is picked in the Load tab.
+      // Other Load tools (POINT_LOAD, DISTRIBUTED_LOAD, LOAD_CASE, LOAD_COMBINATION) get no hover.
       setHoveredNodeId(null)
       setHoveredMemberId(null)
-      const loads = Object.values(model.loads)
+      const loads = Object.values(model.loads).filter(
+        (l) => loadViewFilter === LOAD_VIEW_ALL || l.loadCaseId === loadViewFilter
+      )
       const ARROW_W = LOAD_PT_ARROW_LEN_PX / SCALE
 
       // Pass 1: point loads â€” always take priority
@@ -544,7 +541,7 @@ export default function App() {
       setHoveredMemberId(null)
       setHoveredLoadId(null)
     }
-  }, [activeTab, activeTool, model, isMobile])
+  }, [activeTab, activeTool, model, isMobile, loadViewFilter])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -651,7 +648,7 @@ export default function App() {
           const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
           if (!nodeId) return
           const existingLoad = Object.values(model.loads).find(
-            (l) => l.type === "point" && l.nodeId === nodeId
+            (l) => l.type === "point" && l.nodeId === nodeId && l.loadCaseId === activeLoadCaseId
           )
           const id = existingLoad?.id ?? newLoadId()
 
@@ -687,7 +684,7 @@ export default function App() {
           const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
           if (!memberId) return
           const existing = Object.values(model.loads).find(
-            (l) => l.type === "distributed" && l.memberId === memberId
+            (l) => l.type === "distributed" && l.memberId === memberId && l.loadCaseId === activeLoadCaseId
           )
           const id = existing?.id ?? newLoadId()
 
@@ -726,7 +723,9 @@ export default function App() {
         }
 
         if (activeTool === "MODIFY_LOAD" || (activeTab === "Load" && activeTool === "DELETE")) {
-          const loads = Object.values(model.loads)
+          const loads = Object.values(model.loads).filter(
+            (l) => loadViewFilter === LOAD_VIEW_ALL || l.loadCaseId === loadViewFilter
+          )
           const ARROW_W = LOAD_PT_ARROW_LEN_PX / SCALE
           const isDeleteTool = activeTool === "DELETE"
 
@@ -795,6 +794,7 @@ export default function App() {
       activeDistMode, activeDistAxis, activeDistWxStart, activeDistWxEnd, activeDistWyStart, activeDistWyEnd,
       activeLoadCaseId,
       model, pendingFrameStart, ensureNodeAt, unitSettings.gridSpacing, snapToGrid, snapToNode,
+      loadViewFilter,
     ]
   )
 
@@ -996,6 +996,13 @@ export default function App() {
         />
 
         <main className="flex-1 relative overflow-hidden">
+          {activeTab === "Load" && (
+            <LoadViewSelector
+              loadCases={loadCases}
+              value={loadViewFilter}
+              onChange={setLoadViewFilter}
+            />
+          )}
           {activeTab === "Analyze" && (
             <AnalyzeViewSelector
               combinationsEnabled={combinationsEnabled}
@@ -1139,6 +1146,7 @@ export default function App() {
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
             loadCases={loadCases}
+            loadViewFilter={loadViewFilter === LOAD_VIEW_ALL ? null : loadViewFilter}
             moveNodeMode={moveNodeMode}
             moveNodeSelectedId={moveNodeSelectedId}
             draggingNodeId={draggingNodeId}

@@ -156,6 +156,8 @@ interface StructuralCanvasProps {
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
   loadCases?: Record<string, { id: string; name: string; color: string }>
+  /** When non-null, only loads with this loadCaseId are drawn/hit-tested. */
+  loadViewFilter?: string | null
 
   moveNodeMode?: "coordinates" | "screen"
   moveNodeSelectedId?: NodeId | null
@@ -199,6 +201,7 @@ export function StructuralCanvas({
   hoveredMemberId,
   hoveredLoadId,
   loadCases,
+  loadViewFilter = null,
   moveNodeMode = "coordinates",
   moveNodeSelectedId,
   draggingNodeId,
@@ -774,6 +777,7 @@ export function StructuralCanvas({
       // Loads are eligible for hover/selection only under Load MODIFY_LOAD and Load DELETE.
       const loadEligible = activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")
       for (const load of Object.values(model.loads)) {
+        if (loadViewFilter && load.loadCaseId !== loadViewFilter) continue
         const isSelected = loadEligible && (load.id === selectedLoadId || selectedLoadIds.includes(load.id))
         const isHovered  = loadEligible && !isSelected && load.id === hoveredLoadId
         const state: DrawState = isSelected ? "selected" : isHovered ? "hover" : "normal"
@@ -1087,7 +1091,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, activeTab, activeTool, adaptiveView, zoom]
+    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, activeTab, activeTool, adaptiveView, zoom, loadViewFilter]
   )
 
   const drawAxialDiagram = useCallback(
@@ -2232,7 +2236,10 @@ export function StructuralCanvas({
         const { vmx: vx2, vmy: vy2 } = toVirtual(boxRect.x2, boxRect.y2)
         const wx1 = screenToWorld({ sx: vx1, sy: vy1 }, dims)
         const wx2 = screenToWorld({ sx: vx2, sy: vy2 }, dims)
-        const loadIds = computeBoxSelectionLoads(model, wx1.x, wx1.y, wx2.x, wx2.y)
+        const rawLoadIds = computeBoxSelectionLoads(model, wx1.x, wx1.y, wx2.x, wx2.y)
+        const loadIds = loadViewFilter
+          ? rawLoadIds.filter((id) => model.loads[id]?.loadCaseId === loadViewFilter)
+          : rawLoadIds
         if (loadIds.length > 0) {
           onSelectLoadIds?.(loadIds)
         }
@@ -2373,7 +2380,7 @@ export function StructuralCanvas({
     if (!load) return null
     const c = loadCases[load.loadCaseId]
     if (!c) return null
-    return { name: c.name, color: c.color, x: cursorPx.x, y: cursorPx.y }
+    return { name: c.name, x: cursorPx.x, y: cursorPx.y }
   })()
 
   return (
@@ -2391,23 +2398,19 @@ export function StructuralCanvas({
       />
       {hoveredLoadTooltip && (
         <div
-          className="absolute z-30 pointer-events-none bg-white shadow-md rounded-md border border-gray-200 px-2 py-1 flex items-center gap-1.5"
+          className="absolute z-30 pointer-events-none bg-white shadow-md rounded-md border border-gray-200 px-2 py-1"
           style={{
             left: hoveredLoadTooltip.x + 12,
             top: hoveredLoadTooltip.y + 12,
           }}
         >
-          <span
-            className="inline-block w-2 h-2 rounded-full"
-            style={{ backgroundColor: hoveredLoadTooltip.color }}
-          />
           <span className="text-[11px] text-gray-700 whitespace-nowrap">
             {hoveredLoadTooltip.name}
           </span>
         </div>
       )}
       {/* Zoom slider + Adaptive View overlay — top-right of canvas */}
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto transition-opacity duration-200 opacity-20 hover:opacity-100 bg-background/90 border-border">
+      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto transition-opacity duration-200 opacity-100 md:opacity-20 md:hover:opacity-100 bg-background/90 border-border">
         <div className="flex items-center gap-2">
           <ZoomOut className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           {/* Slider + snap tick marks */}
