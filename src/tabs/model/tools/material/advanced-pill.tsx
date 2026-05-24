@@ -27,7 +27,7 @@ export function AdvancedPill({ open, onToggle }: Props) {
       const r = root.getBoundingClientRect()
       setPos({
         left: r.right - 1, // overlap flyout border by 1px
-        top:  r.top,       // align with flyout top
+        top:  r.top + 12,  // start below flyout's rounded-xl corner (12px radius)
       })
     }
     update()

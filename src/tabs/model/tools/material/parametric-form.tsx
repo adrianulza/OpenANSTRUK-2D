@@ -61,9 +61,10 @@ interface Props {
   fields: ParametricFields
   onChange: (next: ParametricFields) => void
   validation: ParametricValidation
+  disabled?: boolean
 }
 
-export function ParametricForm({ fields, onChange, validation }: Props) {
+export function ParametricForm({ fields, onChange, validation, disabled }: Props) {
   const mat = materialDef(fields.materialClass)
   const shape = shapeDef(fields.shape)
 
@@ -97,7 +98,7 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
       {/* Material class */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Material Class</Label>
-        <Select value={fields.materialClass} onValueChange={(v) => setMaterialClass(v as MaterialClass)}>
+        <Select value={fields.materialClass} onValueChange={(v) => setMaterialClass(v as MaterialClass)} disabled={disabled}>
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {(Object.values(MATERIALS)).map((m) => (
@@ -111,7 +112,7 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <Label className="text-xs text-gray-600">Geometry</Label>
-          <Select value={fields.shape} onValueChange={(v) => setShape(v as SectionShape)}>
+          <Select value={fields.shape} onValueChange={(v) => setShape(v as SectionShape)} disabled={disabled}>
             <SelectTrigger
               className={cn(
                 "h-6 text-xs px-1 py-0 border-0 shadow-none bg-transparent",
@@ -143,6 +144,7 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
               type="number"
               value={fields.dims[key] ?? 0}
               onChange={setDim(key)}
+              disabled={disabled}
               className={cn(
                 "h-7 text-xs font-mono flex-1",
                 (!Number.isFinite(fields.dims[key]) || fields.dims[key] <= 0) &&
@@ -163,13 +165,14 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
             value={fields.strength.fc ?? 0}
             onChange={setStrength("fc")}
             unit="MPa"
+            disabled={disabled}
           />
         )}
         {fields.materialClass === "steel" && (
           <>
-            <StrengthInput name="Yield Strength"    symbol="fy" value={fields.strength.fy ?? 0} onChange={setStrength("fy")} unit="MPa" />
-            <StrengthInput name="Ultimate Strength" symbol="fu" value={fields.strength.fu ?? 0} onChange={setStrength("fu")} unit="MPa" />
-            <StrengthInput name="Elastic Modulus"   symbol="E"  value={fields.strength.E  ?? 0} onChange={setStrength("E")}  unit="MPa" />
+            <StrengthInput name="Yield Strength"    symbol="fy" value={fields.strength.fy ?? 0} onChange={setStrength("fy")} unit="MPa" disabled={disabled} />
+            <StrengthInput name="Ultimate Strength" symbol="fu" value={fields.strength.fu ?? 0} onChange={setStrength("fu")} unit="MPa" disabled={disabled} />
+            <StrengthInput name="Elastic Modulus"   symbol="E"  value={fields.strength.E  ?? 0} onChange={setStrength("E")}  unit="MPa" disabled={disabled} />
           </>
         )}
         {validation.materialError && (
@@ -181,13 +184,14 @@ export function ParametricForm({ fields, onChange, validation }: Props) {
 }
 
 function StrengthInput({
-  name, symbol, value, onChange, unit,
+  name, symbol, value, onChange, unit, disabled,
 }: {
   name: string
   symbol: string
   value: number
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   unit: string
+  disabled?: boolean
 }) {
   return (
     <div className="space-y-1">
@@ -199,6 +203,7 @@ function StrengthInput({
           type="number"
           value={value}
           onChange={onChange}
+          disabled={disabled}
           className={cn(
             "h-7 text-xs font-mono flex-1 min-w-0",
             (!Number.isFinite(value) || value <= 0) && "border-red-400 focus-visible:ring-red-300",

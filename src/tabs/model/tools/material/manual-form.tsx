@@ -77,9 +77,10 @@ interface Props {
   onChange: (next: ManualFields) => void
   validation: ManualValidation
   u: UnitSettings
+  disabled?: boolean
 }
 
-export function ManualForm({ fields, onChange, validation, u }: Props) {
+export function ManualForm({ fields, onChange, validation, u, disabled }: Props) {
   const set = (key: keyof ManualFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...fields, [key]: e.target.value })
 
@@ -97,6 +98,7 @@ export function ManualForm({ fields, onChange, validation, u }: Props) {
           type="number"
           value={fields[key]}
           onChange={set(key)}
+          disabled={disabled}
           className={cn("h-7 text-xs font-mono flex-1", invalid && "border-red-400 focus-visible:ring-red-300")}
         />
         {unit && <span className="text-xs text-gray-500 self-center whitespace-nowrap">{unit}</span>}

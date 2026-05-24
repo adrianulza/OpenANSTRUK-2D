@@ -63,6 +63,9 @@ export function MaterialFlyout({
   // ── Adding mode (toolbar +) ──────────────────────────────────────────────────
   const [adding, setAdding] = React.useState<boolean>(false)
 
+  // ── Editing mode (toolbar ✎): unlocks fields for in-place edit ───────────────
+  const [editing, setEditing] = React.useState<boolean>(false)
+
   // ── Delete inline confirm ────────────────────────────────────────────────────
   const [deleteArmed, setDeleteArmed] = React.useState<boolean>(false)
   React.useEffect(() => {
@@ -95,6 +98,7 @@ export function MaterialFlyout({
     const pf = s.mode === "parametric" ? parametricFieldsFromSection(s) : defaultParametricFields()
     setParametric(pf); setSavedParametric(pf)
     setAdding(false)
+    setEditing(false)
     setDeleteArmed(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection, u.pressure, u.length, u.force])
@@ -176,8 +180,30 @@ export function MaterialFlyout({
     setAdding(false)
   }
 
+  const handleStartEdit = () => {
+    setEditing(true)
+    setDeleteArmed(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditing(false)
+    if (s) {
+      setName(s.name)
+      setSavedName(s.name)
+      const mf = manualFieldsFromSection(s, u)
+      setManual(mf); setSavedManual(mf)
+      const pf = s.mode === "parametric" ? parametricFieldsFromSection(s) : defaultParametricFields()
+      setParametric(pf); setSavedParametric(pf)
+      setMode(s.mode === "parametric" ? "parametric" : "manual")
+    }
+  }
+
   const handleModify = () => {
-    if (!canModify) return
+    if (!canModify) {
+      // No changes → just exit edit mode if active.
+      if (editing) setEditing(false)
+      return
+    }
     const patch = buildPatch()
     if (mode === "manual") {
       patch.materialClass = undefined
@@ -191,6 +217,20 @@ export function MaterialFlyout({
     setSavedName(name)
     setSavedManual(manual)
     setSavedParametric(parametric)
+    setEditing(false)
+  }
+
+  // Mode toggle during edit: reseed destination with defaults (Interpretation A,
+  // matching handleStartAdd). Destructive — discards any in-progress edits in
+  // the source mode.
+  const handleModeSwitch = (next: Mode) => {
+    if (next === mode) return
+    setMode(next)
+    if (next === "manual") {
+      setManual(manualFieldsFromSection({ id: "", name: "", E: 200000, I33: 1, A: 1 }, u))
+    } else {
+      setParametric(defaultParametricFields())
+    }
   }
 
   const handleDeleteClick = () => {
@@ -216,42 +256,46 @@ export function MaterialFlyout({
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-3">
-      {/* Toolbar: Add / Modify / Delete  OR  Save / Cancel (when adding) */}
+      {/* Toolbar: Add / Modify / Delete  OR  Save / Cancel (when adding or editing) */}
       <Toolbar
         adding={adding}
+        editing={editing}
         canModify={canModify}
         canDelete={canDelete}
         canSaveNew={canSaveNew}
         deleteArmed={deleteArmed}
         onStartAdd={handleStartAdd}
+        onStartEdit={handleStartEdit}
         onModify={handleModify}
         onDeleteClick={handleDeleteClick}
         onSaveNew={handleSaveNew}
         onCancelAdd={handleCancelAdd}
+        onCancelEdit={handleCancelEdit}
       />
 
-      {/* Mode: interactive toggle while adding; locked badge when editing */}
-      {adding ? (
+      {/* Mode: interactive toggle while adding OR editing; locked badge otherwise */}
+      {(adding || editing) ? (
         <div className="flex gap-1 rounded border p-0.5" style={{ borderColor: "#e5e7eb" }}>
-          <ModeButton active={mode === "parametric"} onClick={() => setMode("parametric")}>Parametric</ModeButton>
-          <ModeButton active={mode === "manual"}     onClick={() => setMode("manual")}>Manual</ModeButton>
+          <ModeButton active={mode === "parametric"} onClick={() => (adding ? setMode("parametric") : handleModeSwitch("parametric"))}>Parametric</ModeButton>
+          <ModeButton active={mode === "manual"}     onClick={() => (adding ? setMode("manual")     : handleModeSwitch("manual"))}>Manual</ModeButton>
         </div>
       ) : (
         <ModeBadge mode={mode} />
       )}
 
-      {/* Section dropdown — disabled while adding */}
-      <div className={cn(adding && "opacity-50 pointer-events-none")}>
+      {/* Section dropdown — disabled while adding or editing */}
+      <div className={cn((adding || editing) && "opacity-50 pointer-events-none")}>
         <SectionSelect value={activeSection} sections={sections} onChange={onSectionChange} />
       </div>
 
-      {/* Name */}
+      {/* Name — editable while adding or editing */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Name</Label>
         <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          disabled={!adding && !editing}
           className={cn(
             "h-7 text-xs flex-1",
             (nameEmpty || nameTaken) && "border-red-400 focus-visible:ring-red-300",
@@ -262,11 +306,11 @@ export function MaterialFlyout({
         {nameTaken && <p className="text-[10px] text-red-500">Name already exists</p>}
       </div>
 
-      {/* Active form */}
+      {/* Active form — disabled outside add/edit mode */}
       {mode === "parametric" ? (
-        <ParametricForm fields={parametric} onChange={setParametric} validation={parametricV} />
+        <ParametricForm fields={parametric} onChange={setParametric} validation={parametricV} disabled={!adding && !editing} />
       ) : (
-        <ManualForm fields={manual} onChange={setManual} validation={manualV} u={u} />
+        <ManualForm fields={manual} onChange={setManual} validation={manualV} u={u} disabled={!adding && !editing} />
       )}
 
       {/* Vertical "ADVANCED" pill + sibling deck — parametric only */}
@@ -301,19 +345,22 @@ export function MaterialFlyout({
 
 // ── Toolbar ────────────────────────────────────────────────────────────────────
 function Toolbar({
-  adding, canModify, canDelete, canSaveNew, deleteArmed,
-  onStartAdd, onModify, onDeleteClick, onSaveNew, onCancelAdd,
+  adding, editing, canModify, canDelete, canSaveNew, deleteArmed,
+  onStartAdd, onStartEdit, onModify, onDeleteClick, onSaveNew, onCancelAdd, onCancelEdit,
 }: {
   adding: boolean
+  editing: boolean
   canModify: boolean
   canDelete: boolean
   canSaveNew: boolean
   deleteArmed: boolean
   onStartAdd: () => void
+  onStartEdit: () => void
   onModify: () => void
   onDeleteClick: () => void
   onSaveNew: () => void
   onCancelAdd: () => void
+  onCancelEdit: () => void
 }) {
   if (adding) {
     return (
@@ -334,6 +381,25 @@ function Toolbar({
       </div>
     )
   }
+  if (editing) {
+    return (
+      <div className="flex gap-1.5">
+        <ToolbarButton
+          icon={<Check size={14} />}
+          label="Save changes"
+          tone={canModify ? "primary" : "muted"}
+          disabled={!canModify}
+          onClick={onModify}
+        />
+        <ToolbarButton
+          icon={<X size={14} />}
+          label="Cancel"
+          tone="destructive"
+          onClick={onCancelEdit}
+        />
+      </div>
+    )
+  }
   return (
     <div className="flex gap-1.5">
       <ToolbarButton
@@ -344,10 +410,9 @@ function Toolbar({
       />
       <ToolbarButton
         icon={<Pencil size={14} />}
-        label="Save changes"
-        tone={canModify ? "neutral" : "muted"}
-        disabled={!canModify}
-        onClick={onModify}
+        label="Edit material"
+        tone="neutral"
+        onClick={onStartEdit}
       />
       <ToolbarButton
         icon={<Trash2 size={14} />}
@@ -393,15 +458,25 @@ function ToolbarButton({
   )
 }
 
-// ── Mode badge (read-only display when editing an existing section) ───────────
+// ── Mode badge (read-only display when not adding/editing) ────────────────────
+// Visually mirrors the Parametric/Manual toggle frame, but the inner button
+// fills the entire width and uses a muted grey palette to signal read-only.
 function ModeBadge({ mode }: { mode: Mode }) {
   const label = mode === "parametric" ? "Parametric" : "Manual"
   return (
-    <div
-      className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded"
-      style={{ backgroundColor: "#2563eb", color: "white" }}
-    >
-      {label}
+    <div className="flex rounded border p-0.5" style={{ borderColor: "#e5e7eb" }}>
+      <div
+        className="flex-1 h-6 text-[11px] rounded flex items-center justify-center"
+        style={{
+          borderWidth: 2,
+          borderStyle: "solid",
+          borderColor: "#6b7280",
+          backgroundColor: "#f3f4f6",
+          color: "#6b7280",
+        }}
+      >
+        Mode: {label}
+      </div>
     </div>
   )
 }
