@@ -69,6 +69,7 @@ export const COLOR_LOAD_FILL      = "#D7FDEB"  // distributed load fill (soft pa
 export const COLOR_LOAD_FILL_SEL  = "#FFD6D6"  // distributed load fill when selected (soft pastel red)
 export const COLOR_LOAD_FILL_HVR  = "#FFFFCC"  // distributed load fill when hovered (soft pastel yellow)
 export const COLOR_LOAD_STROKE    = "#0BE77E"  // distributed load stroke (green)
+export const COLOR_LOAD_STACK_STROKE = "#0a5d2e"  // stroke for coincident-load stack (dark green)
 export const COLOR_LOAD_LABEL     = "#107343"  // load magnitude label text
 export const LOAD_PT_ARROW_LEN_PX      = 50   // point load max shaft length in pixels
 export const LOAD_PT_ARROWHEAD_SIZE_PX = 13   // point load arrowhead triangle size in pixels

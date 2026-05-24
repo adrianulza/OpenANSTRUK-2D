@@ -34,7 +34,6 @@ export interface LoadCase {
   id: LoadCaseId
   name: string
   kind: LoadCaseKind
-  color: string
   /**
    * Whether this case contributes to analysis.
    *  - For regular cases: false = case is muted (its loads are skipped by the solver
@@ -60,25 +59,12 @@ export interface LoadCombination {
   enabled: boolean
 }
 
-// Palette for new cases — cycles after the seeded defaults.
-export const CASE_COLOR_PALETTE = [
-  "#6b7280", // gray (Selfweight)
-  "#ef4444", // red (Dead)
-  "#3b82f6", // blue (Live)
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#8b5cf6", // violet
-  "#ec4899", // pink
-  "#14b8a6", // teal
-]
-
 export function DEFAULT_LOAD_CASES(): Record<LoadCaseId, LoadCase> {
   return {
     selfweight: {
       id: "selfweight",
       name: "Selfweight",
       kind: "Dead",
-      color: CASE_COLOR_PALETTE[0],
       locked: true,
       enabled: false,
     },
@@ -87,7 +73,6 @@ export function DEFAULT_LOAD_CASES(): Record<LoadCaseId, LoadCase> {
       id: "dead",
       name: "Dead",
       kind: "Dead",
-      color: CASE_COLOR_PALETTE[1],
       enabled: true,
     },
   }
@@ -106,10 +91,6 @@ export function newLoadComboId(): LoadComboId {
   return `cmb${loadComboSeq}`
 }
 
-export function nextPaletteColor(existing: number): string {
-  return CASE_COLOR_PALETTE[existing % CASE_COLOR_PALETTE.length]
-}
-
 const KIND_SHORT: Record<LoadCaseKind, string> = {
   Dead: "D",
   Live: "L",
@@ -122,6 +103,29 @@ const KIND_SHORT: Record<LoadCaseKind, string> = {
 
 export function caseShortLabel(kind: LoadCaseKind): string {
   return KIND_SHORT[kind]
+}
+
+// Conventional engineering priority — used by the canvas coincidence renderer
+// to pick which load's arrow geometry is drawn when multiple cases share the
+// same node/member (e.g., Dead + Live point loads on one node → Dead wins the
+// arrow direction, label reads `[D, L]`). Lower index = higher priority.
+const KIND_PRIORITY: LoadCaseKind[] = [
+  "Dead",
+  "Live",
+  "Roof Live",
+  "Wind",
+  "Seismic",
+  "Snow",
+  "Rain",
+]
+
+export function kindPriorityIndex(kind: LoadCaseKind): number {
+  const i = KIND_PRIORITY.indexOf(kind)
+  return i < 0 ? KIND_PRIORITY.length : i
+}
+
+export function compareKindPriority(a: LoadCaseKind, b: LoadCaseKind): number {
+  return kindPriorityIndex(a) - kindPriorityIndex(b)
 }
 
 function formatFactor(n: number): string {

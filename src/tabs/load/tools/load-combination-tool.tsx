@@ -95,19 +95,15 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
       {!combinationsEnabled && (
         <p className="text-[11px] text-gray-500 leading-relaxed">
           Combinations let you apply code-based or custom factor sets across
-          your load cases. Envelopes show the max/min effect across all
-          checked combinations. Existing combinations are preserved below —
-          re-enable to use them.
+          your load cases.
         </p>
       )}
 
-      {/* The block stays visible but greys out when combinations are disabled,
-          so users can see their work is preserved (combos aren't destroyed by
-          toggling). Inputs become non-interactive in that state. */}
-      <div
-        className={combinationsEnabled ? "" : "opacity-50 pointer-events-none"}
-        aria-disabled={!combinationsEnabled}
-      >
+      {/* Mode/Code/Generate/list are hidden entirely when combinations are
+          disabled — they'd add visual clutter for users who aren't using
+          combinations. Existing combos are kept in state and reappear on
+          re-enable; only the UI is hidden, not the data. */}
+      {combinationsEnabled && (
         <>
           {/* Mode radio */}
           <div className="space-y-1.5">
@@ -165,14 +161,17 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             </div>
           )}
 
-          {/* Header row — code rows get a delete-only action column, manual rows
-              get edit + delete. Grid template stays uniform so columns align. */}
-          <div className="grid items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 pt-1 grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]">
-            <span />
-            <span>Name</span>
-            <span>Expression</span>
-            <span className="text-right">Actions</span>
-          </div>
+          {/* Header row — shown only when the active mode has at least one
+              row. Hides the empty NAME/EXPRESSION/ACTIONS strip before the
+              user clicks Generate (code) or adds the first manual combo. */}
+          {(combinationMode === "code" ? codeCombos : manualCombos).length > 0 && (
+            <div className="grid items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 pt-1 grid-cols-[16px_100px_1fr_40px] md:grid-cols-[20px_160px_1fr_60px]">
+              <span />
+              <span>Name</span>
+              <span>Expression</span>
+              <span className="text-right">Actions</span>
+            </div>
+          )}
 
           {/* List */}
           <div className="space-y-1">
@@ -193,13 +192,6 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
                 onPatch={(patch) => onPatchCombination(c.id, patch)}
               />
             ))}
-
-            {combinationMode === "code" && codeCombos.length === 0 && (
-              <p className="text-[11px] text-gray-500 italic px-1 py-2">
-                No matching cases — add cases of the right type (Dead, Live,
-                Wind, etc.) for this preset to generate combinations.
-              </p>
-            )}
 
             {combinationMode === "manual" && manualCombos.length === 0 && (
               <p className="text-[11px] text-gray-500 italic px-1 py-2">
@@ -232,7 +224,7 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             </div>
           )}
         </>
-      </div>
+      )}
 
       {confirmGenerate && (
         <GenerateConfirmDialog
@@ -277,7 +269,6 @@ function GenerateConfirmDialog({
       id: `tmp_${k}`,
       name: k,
       kind: k,
-      color: "#000",
       enabled: true,
     }
   }

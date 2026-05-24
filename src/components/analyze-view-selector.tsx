@@ -66,7 +66,7 @@ export function AnalyzeViewSelector({
         value={analyzeViewMode}
         onValueChange={(v) => onAnalyzeViewModeChange(v as AnalyzeViewMode)}
       >
-        <SelectTrigger className="h-7 text-xs min-w-[120px]" size="sm">
+        <SelectTrigger className="h-7 text-xs min-w-[80px] w-auto" size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -80,7 +80,7 @@ export function AnalyzeViewSelector({
 
       {analyzeViewMode === "case" && (
         <Select value={selectedCaseId} onValueChange={onSelectedCaseIdChange}>
-          <SelectTrigger className="h-7 text-xs min-w-[160px]" size="sm">
+          <SelectTrigger className="h-7 text-xs min-w-[80px] w-auto" size="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -103,7 +103,7 @@ export function AnalyzeViewSelector({
           value={selectedCombinationId ?? ""}
           onValueChange={(v) => onSelectedCombinationIdChange(v || null)}
         >
-          <SelectTrigger className="h-7 text-xs min-w-[200px]" size="sm">
+          <SelectTrigger className="h-7 text-xs min-w-[120px] w-auto" size="sm">
             <SelectValue placeholder="Select combination…" />
           </SelectTrigger>
           <SelectContent>
@@ -170,7 +170,7 @@ function EnvelopeChecklist({
       <button
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
-        className="h-7 px-3 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 min-w-[200px] text-left flex items-center justify-between gap-2"
+        className="h-7 px-3 text-xs rounded-md border border-gray-200 bg-white hover:bg-gray-50 min-w-[140px] w-auto text-left flex items-center justify-between gap-2"
       >
         <span className="text-gray-700">
           Envelope set: {includedCount} of {combos.length}

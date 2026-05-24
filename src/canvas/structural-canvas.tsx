@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react"
 import { ZoomIn, ZoomOut } from "lucide-react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { NodeId, MultiSelection, StructureModel, LoadId } from "@/lib/model"
+import { caseShortLabel, compareKindPriority, type LoadCaseKind } from "@/lib/load-cases"
 import type { AnalysisResult } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import { isEmptySelection } from "@/lib/model"
@@ -46,6 +47,7 @@ import {
   COLOR_CANVAS_BG,
   COLOR_LOAD_FILL,
   COLOR_LOAD_STROKE,
+  COLOR_LOAD_STACK_STROKE,
   LOAD_PT_ARROW_LEN_PX,
   LOAD_PT_ARROWHEAD_SIZE_PX,
   LOAD_PT_LINE_WIDTH_PX,
@@ -155,7 +157,7 @@ interface StructuralCanvasProps {
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
   activeSupportType?: import("@/lib/model").SupportPick
-  loadCases?: Record<string, { id: string; name: string; color: string }>
+  loadCases?: Record<string, { id: string; name: string; kind: LoadCaseKind }>
   /** When non-null, only loads with this loadCaseId are drawn/hit-tested. */
   loadViewFilter?: string | null
 
@@ -809,14 +811,99 @@ export function StructuralCanvas({
       const loadKind = interactionKind(activeTab, activeTool)
       // Loads are eligible for hover/selection only under Load MODIFY_LOAD and Load DELETE.
       const loadEligible = activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")
-      for (const load of Object.values(model.loads)) {
-        if (loadViewFilter && load.loadCaseId !== loadViewFilter) continue
+
+      // ── Coincidence pre-pass ───────────────────────────────────────────────
+      // Group visible loads by anchor so we can detect when two or more cases
+      // share the same node/member. When ≥2 land on one anchor, only the
+      // highest-priority case's arrow is drawn (dark-green stroke + bracket
+      // label like `[D, L]` enumerating all stacked cases).
+      const isLoadVisible = (l: typeof model.loads[string]) => {
+        const offCase = !!loadViewFilter && l.loadCaseId !== loadViewFilter
+        return !offCase
+      }
+      const kindOf = (loadCaseId: string): LoadCaseKind | null =>
+        loadCases?.[loadCaseId]?.kind ?? null
+      const groupPoint = new Map<NodeId, string[]>()
+      const groupDist = new Map<string, string[]>()
+      for (const l of Object.values(model.loads)) {
+        if (!isLoadVisible(l)) continue
+        if (l.type === "point") {
+          const arr = groupPoint.get(l.nodeId) ?? []
+          arr.push(l.id)
+          groupPoint.set(l.nodeId, arr)
+        } else if (l.type === "distributed") {
+          const arr = groupDist.get(l.memberId) ?? []
+          arr.push(l.id)
+          groupDist.set(l.memberId, arr)
+        }
+      }
+      // For each group of size ≥2: pick the winner id (highest priority by
+      // kind) and pre-build the bracket label "[D, L, ...]" (sorted by
+      // priority, capped at 4 entries with "+N" overflow).
+      const stackWinner = new Map<string, true>()   // loadId → is winner
+      const stackSkip   = new Map<string, true>()   // loadId → skip (non-winner in a stack)
+      const stackLabel  = new Map<string, string>() // loadId (winner) → bracket label
+      const buildBracketLabel = (loadIds: string[]): string => {
+        const entries = loadIds
+          .map((id) => kindOf(model.loads[id]?.loadCaseId ?? ""))
+          .filter((k): k is LoadCaseKind => k !== null)
+          .sort(compareKindPriority)
+        const shorts = entries.map(caseShortLabel)
+        const CAP = 4
+        if (shorts.length <= CAP) return `[${shorts.join(", ")}]`
+        return `[${shorts.slice(0, CAP).join(", ")}, +${shorts.length - CAP}]`
+      }
+      const processGroup = (loadIds: string[]) => {
+        if (loadIds.length < 2) return
+        let winnerId = loadIds[0]
+        let winnerKind = kindOf(model.loads[winnerId]?.loadCaseId ?? "")
+        for (let i = 1; i < loadIds.length; i++) {
+          const id = loadIds[i]
+          const k = kindOf(model.loads[id]?.loadCaseId ?? "")
+          if (!winnerKind || (k && compareKindPriority(k, winnerKind) < 0)) {
+            winnerId = id
+            winnerKind = k
+          }
+        }
+        for (const id of loadIds) {
+          if (id === winnerId) stackWinner.set(id, true)
+          else stackSkip.set(id, true)
+        }
+        stackLabel.set(winnerId, buildBracketLabel(loadIds))
+      }
+      for (const ids of groupPoint.values()) processGroup(ids)
+      for (const ids of groupDist.values()) processGroup(ids)
+
+      // Paint order (later = on top): distributed-single < distributed-stack
+      // < point-single < point-stack. Combined loads win over single loads of
+      // the same type; point loads win over distributed regardless.
+      const zRank = (l: typeof model.loads[string]): number => {
+        const isPoint = l.type === "point"
+        const isStack = stackWinner.has(l.id)
+        if (isPoint && isStack) return 4
+        if (isPoint)            return 3
+        if (isStack)            return 2
+        return 1
+      }
+      const orderedLoads = Object.values(model.loads)
+        .slice()
+        .sort((a, b) => zRank(a) - zRank(b))
+
+      for (const load of orderedLoads) {
+        const isOffCase = !!loadViewFilter && load.loadCaseId !== loadViewFilter
+        if (isOffCase) continue
+        // Non-winning stack participants are entirely skipped (the winner
+        // draws a single arrow + bracket label that represents them all).
+        if (stackSkip.has(load.id)) continue
+        const isStackWinner = stackWinner.has(load.id)
+        const stackLabelText = isStackWinner ? stackLabel.get(load.id) ?? null : null
         const isSelected = loadEligible && (load.id === selectedLoadId || selectedLoadIds.includes(load.id))
         const isHovered  = loadEligible && !isSelected && load.id === hoveredLoadId
         const state: DrawState = isSelected ? "selected" : isHovered ? "hover" : "normal"
-        const strokeColor = strokeFor(loadKind, state, COLOR_LOAD_STROKE)
+        const baseStroke = isStackWinner ? COLOR_LOAD_STACK_STROKE : COLOR_LOAD_STROKE
+        const strokeColor = strokeFor(loadKind, state, baseStroke)
         const fillColor   = fillFor  (loadKind, state, COLOR_LOAD_FILL)
-        const labelColor  = strokeFor(loadKind, state, COLOR_LOAD_LABEL)
+        const labelColor  = isStackWinner ? COLOR_LOAD_STACK_STROKE : strokeFor(loadKind, state, COLOR_LOAD_LABEL)
 
         ctx.save()
         ctx.strokeStyle = strokeColor
@@ -851,7 +938,8 @@ export function StructuralCanvas({
           ctx.textBaseline = "bottom"
           const labelX = bx
           const labelY = by - 3
-          ctx.fillText(`${formatValue(Math.abs(mag) * forceScale)} ${forceLabel}`, labelX, labelY)
+          const ptLabelText = stackLabelText ?? `${formatValue(Math.abs(mag) * forceScale)} ${forceLabel}`
+          ctx.fillText(ptLabelText, labelX, labelY)
 
         } else if (load.type === "distributed") {
           const member = model.members[load.memberId]
@@ -971,12 +1059,13 @@ export function StructuralCanvas({
               }
             }
 
-            if (labelText) {
+            const finalParallelLabel = stackLabelText ?? labelText
+            if (finalParallelLabel) {
               ctx.fillStyle = labelColor
               ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
               ctx.textAlign = "center"
               ctx.textBaseline = "bottom"
-              ctx.fillText(labelText, midX, midY - LABEL_OFFSET_Y)
+              ctx.fillText(finalParallelLabel, midX, midY - LABEL_OFFSET_Y)
             }
           } else {
             // PERPENDICULAR LOAD STYLE: Traditional fill region with arrows
@@ -1089,9 +1178,10 @@ export function StructuralCanvas({
               const LABEL_GAP = LOAD_DIST_LABEL_GAP_PX
               const labelX = midBase.x - signMid * snx * LABEL_GAP
               const labelY = midBase.y - signMid * sny * LABEL_GAP
-              const labelText = (load.wStart ?? 0) === (load.wEnd ?? 0)
+              const magnitudeLabel = (load.wStart ?? 0) === (load.wEnd ?? 0)
                 ? `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)} ${distLoadLabel}`
                 : `${formatValue(Math.abs(load.wStart ?? 0) * forceScale)}–${formatValue(Math.abs(load.wEnd ?? 0) * forceScale)} ${distLoadLabel}`
+              const labelText = stackLabelText ?? magnitudeLabel
               ctx.fillStyle = labelColor
               ctx.font = `${11 * s}px 'JetBrains Mono', monospace`
               ctx.textAlign = "center"
@@ -1108,9 +1198,10 @@ export function StructuralCanvas({
                 const LABEL_GAP = LOAD_DIST_LABEL_GAP_PX
                 const labelX = midBase.x - dirXMid * LABEL_GAP
                 const labelY = midBase.y + dirYMid * LABEL_GAP  // flip back for screen
-                const labelText = wxStart === wxEnd && wyStart === wyEnd
+                const magnitudeLabel = wxStart === wxEnd && wyStart === wyEnd
                   ? `${formatValue(magMid * forceScale)} ${distLoadLabel}`
                   : `${formatValue(Math.abs(wxStart) * forceScale)}/${formatValue(Math.abs(wyStart) * forceScale)}–${formatValue(Math.abs(wxEnd) * forceScale)}/${formatValue(Math.abs(wyEnd) * forceScale)} ${distLoadLabel}`
+                const labelText = stackLabelText ?? magnitudeLabel
                 ctx.fillStyle = labelColor
                 ctx.font = `${10 * s}px 'JetBrains Mono', monospace`
                 ctx.textAlign = "center"
@@ -1124,7 +1215,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, activeTab, activeTool, adaptiveView, zoom, loadViewFilter]
+    [model, selectedLoadId, selectedLoadIds, hoveredLoadId, activeTab, activeTool, adaptiveView, zoom, loadViewFilter, loadCases]
   )
 
   const drawAxialDiagram = useCallback(
@@ -2461,9 +2552,8 @@ export function StructuralCanvas({
     ? "cursor-pointer"
     : "cursor-default"
 
-  // Hover tooltip data for the currently-hovered load. Shows the case name and
-  // a color swatch so users can identify which case a load belongs to without
-  // having to click into Modify Load.
+  // Hover tooltip data for the currently-hovered load — shows the case name so
+  // users can identify which case a load belongs to without opening Modify Load.
   const hoveredLoadTooltip = (() => {
     if (!hoveredLoadId || !cursorPx || !loadCases) return null
     const load = model.loads[hoveredLoadId]

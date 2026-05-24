@@ -72,7 +72,6 @@ import {
   DEFAULT_LOAD_CASES,
   newLoadCaseId,
   newLoadComboId,
-  nextPaletteColor,
 } from "@/lib/load-cases"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
@@ -137,6 +136,18 @@ export default function App() {
   // Load tab: which case to show on canvas (or "all loads"). Default "all".
   const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
 
+  // While a placement tool is active, the flyout's active load case drives the
+  // canvas "Show Load" filter so users never place into a hidden case. Off-case
+  // loads are hidden during placement; on tool exit, snap back to "All Loads".
+  const isPlacingLoad = activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD"
+  useEffect(() => {
+    if (isPlacingLoad) {
+      setLoadViewFilter(activeLoadCaseId)
+    } else {
+      setLoadViewFilter(LOAD_VIEW_ALL)
+    }
+  }, [isPlacingLoad, activeLoadCaseId])
+
   // Generate (or regenerate) preset combinations on demand. Auto-creates
   // any missing load cases the preset needs (matched by kind, not name) and
   // then replaces all preset-sourced combinations. Custom combos are kept.
@@ -145,7 +156,6 @@ export default function App() {
     // the final case map synchronously so the combo generator sees it too.
     const needed = requiredKindsForPreset(selectedCodePreset)
     const finalCases: Record<LoadCaseId, LoadCase> = { ...loadCases }
-    let paletteIdx = Object.keys(finalCases).length
     for (const kind of needed) {
       const exists = Object.values(finalCases).some((c) => c.kind === kind)
       if (exists) continue
@@ -154,7 +164,6 @@ export default function App() {
         id,
         name: kind,
         kind,
-        color: nextPaletteColor(paletteIdx++),
         enabled: true,
       }
     }
@@ -190,7 +199,6 @@ export default function App() {
         id,
         name: `Case ${count + 1}`,
         kind: "Live",
-        color: nextPaletteColor(count),
         enabled: true,
       }
       return { ...prev, [id]: newCase }
@@ -231,12 +239,11 @@ export default function App() {
       setLoadCases((prev) => {
         const existing = prev[id]
         if (!existing) return prev
-        // Locked cases can only patch enabled + color. For Selfweight, `enabled`
-        // gates the synthetic γ·A body force computed in solveCase("selfweight").
+        // Locked cases can only patch `enabled`. For Selfweight, `enabled` gates
+        // the synthetic γ·A body force computed in solveCase("selfweight").
         if (existing.locked) {
           const safePatch: Partial<LoadCase> = {}
           if ("enabled" in patch) safePatch.enabled = patch.enabled
-          if ("color" in patch) safePatch.color = patch.color
           return { ...prev, [id]: { ...existing, ...safePatch } }
         }
         return { ...prev, [id]: { ...existing, ...patch } }
@@ -482,9 +489,20 @@ export default function App() {
       setHoveredNodeId(null)
       const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
       setHoveredMemberId(memberId)
+    } else if (activeTab === "Load" && activeTool === "POINT_LOAD") {
+      // Placement: hover the candidate node so the user sees what they'll target.
+      setHoveredMemberId(null)
+      setHoveredLoadId(null)
+      const nodeId = hitTestNode(model, raw, HIT_TOL_NODE)
+      setHoveredNodeId(nodeId)
+    } else if (activeTab === "Load" && activeTool === "DISTRIBUTED_LOAD") {
+      // Placement: hover the candidate member so the user sees what they'll target.
+      setHoveredNodeId(null)
+      setHoveredLoadId(null)
+      const memberId = hitTestMember(model, raw, HIT_TOL_MEMBER)
+      setHoveredMemberId(memberId)
     } else if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE" || activeTool === null)) {
       // Hover applies on Modify, Delete, or when no tool is picked in the Load tab.
-      // Other Load tools (POINT_LOAD, DISTRIBUTED_LOAD, LOAD_CASE, LOAD_COMBINATION) get no hover.
       setHoveredNodeId(null)
       setHoveredMemberId(null)
       const loads = Object.values(model.loads).filter(
@@ -1026,8 +1044,10 @@ export default function App() {
           {activeTab === "Load" && (
             <LoadViewSelector
               loadCases={loadCases}
+              loads={model.loads}
               value={loadViewFilter}
               onChange={setLoadViewFilter}
+              disabled={isPlacingLoad}
             />
           )}
           {activeTab === "Analyze" && (
