@@ -56,8 +56,6 @@ import {
   LOAD_DIST_FILL_ALPHA,
   LOAD_DIST_LABEL_GAP_PX,
   COLOR_LOAD_LABEL,
-  DIAGRAM_BASE_PX_PER_KN,
-  DIAGRAM_BASE_PX_PER_KNM,
   COLOR_SFD_POS,
   COLOR_SFD_NEG,
   COLOR_DIAGRAM_STROKE,
@@ -193,10 +191,10 @@ export function StructuralCanvas({
   selectedLoadId,
   selectedLoadIds = [],
   analysisResult,
-  diagramScale = 50,
+  diagramScale = 1,
   invertSFD = false,
   invertBMD = false,
-  deformationScale = 25,
+  deformationScale = 1,
   showDeformNodeLabels = true,
   showReactionNodeLabels = true,
   showDiagramMemberLabels = true,
@@ -1133,7 +1131,14 @@ export function StructuralCanvas({
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
-      const BASE = DIAGRAM_BASE_PX_PER_KN * (diagramScale / 50)
+      // Auto-fit: peak |N| renders at TARGET_PX (1 grid cell) at scale 1.0×
+      const TARGET_PX = 80
+      let peakN = 0
+      for (const m of Object.values(model.members)) {
+        const ef = analysisResult.memberEndForces[m.id]
+        if (ef && Math.abs(ef.N1) > peakN) peakN = Math.abs(ef.N1)
+      }
+      const BASE = peakN > 1e-9 ? (TARGET_PX / peakN) * diagramScale : 0
 
       for (const member of Object.values(model.members)) {
         const ef = analysisResult.memberEndForces[member.id]
@@ -1212,8 +1217,22 @@ export function StructuralCanvas({
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
-      const BASE = DIAGRAM_BASE_PX_PER_KN * (diagramScale / 50)
       const N_PTS = 60
+      // Auto-fit: peak |V| sampled across all members renders at TARGET_PX at scale 1.0×
+      const TARGET_PX = 80
+      let peakV = 0
+      for (const m of Object.values(model.members)) {
+        const ef = analysisResult.memberEndForces[m.id]
+        const nA = model.nodes[m.a], nB = model.nodes[m.b]
+        if (!ef || !nA || !nB) continue
+        const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
+        if (L < 1e-9) continue
+        for (let i = 0; i <= N_PTS; i++) {
+          const { V } = memberInternalForces(ef, (i / N_PTS) * L, L)
+          if (Math.abs(V) > peakV) peakV = Math.abs(V)
+        }
+      }
+      const BASE = peakV > 1e-9 ? (TARGET_PX / peakV) * diagramScale : 0
 
       for (const member of Object.values(model.members)) {
         const ef = analysisResult.memberEndForces[member.id]
@@ -1335,8 +1354,22 @@ export function StructuralCanvas({
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
-      const BASE = DIAGRAM_BASE_PX_PER_KNM * (diagramScale / 50)
       const N_PTS = 60
+      // Auto-fit: peak |M| sampled across all members renders at TARGET_PX at scale 1.0×
+      const TARGET_PX = 80
+      let peakM_all = 0
+      for (const m of Object.values(model.members)) {
+        const ef = analysisResult.memberEndForces[m.id]
+        const nA = model.nodes[m.a], nB = model.nodes[m.b]
+        if (!ef || !nA || !nB) continue
+        const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
+        if (L < 1e-9) continue
+        for (let i = 0; i <= N_PTS; i++) {
+          const { M } = memberInternalForces(ef, (i / N_PTS) * L, L)
+          if (Math.abs(M) > peakM_all) peakM_all = Math.abs(M)
+        }
+      }
+      const BASE = peakM_all > 1e-9 ? (TARGET_PX / peakM_all) * diagramScale : 0
 
       for (const member of Object.values(model.members)) {
         const ef = analysisResult.memberEndForces[member.id]
@@ -1448,14 +1481,18 @@ export function StructuralCanvas({
       const N_PTS = 40
       const COLOR = "#7c3aed"
       const s = adaptiveView ? 1 / zoom : 1
+      // Auto-fit: peak displacement magnitude *along the member line* (not just at
+      // nodes) renders at TARGET_M in world space at scale 1.0×. Sampling along
+      // the cubic-Hermite spline captures mid-span sag — critical for simply-
+      // supported beams where end nodes have ~0 transverse displacement.
+      const TARGET_M = 1
 
-      type MemberSpline = {
-        memberId: string
-        pts: { sx: number; sy: number; dispX: number; dispY: number; mag: number }[]
-      }
+      type RawPt = { xi: number; dispX: number; dispY: number; nA: { x: number; y: number }; dx: number; dy: number }
+      type MemberRaw = { memberId: string; pts: RawPt[] }
 
-      // Pass 1: compute splines for all members
-      const memberSplines: MemberSpline[] = []
+      // Pass 1: compute raw displacements along each member's spline (no k applied yet)
+      const memberRaws: MemberRaw[] = []
+      let peakDisp = 0
       for (const member of Object.values(model.members)) {
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
@@ -1470,8 +1507,7 @@ export function StructuralCanvas({
         const u1 =  c * dA.u + s * dA.v, v1 = -s * dA.u + c * dA.v, th1 = dA.theta
         const u2 =  c * dB.u + s * dB.v, v2 = -s * dB.u + c * dB.v, th2 = dB.theta
 
-        type Pt = { sx: number; sy: number; dispX: number; dispY: number; mag: number }
-        const pts: Pt[] = []
+        const pts: RawPt[] = []
         for (let i = 0; i <= N_PTS; i++) {
           const xi = i / N_PTS
           const uLoc = (1 - xi) * u1 + xi * u2
@@ -1482,13 +1518,30 @@ export function StructuralCanvas({
           const vLoc = H1*v1 + H2*th1 + H3*v2 + H4*th2
           const dispX = c * uLoc - s * vLoc
           const dispY = s * uLoc + c * vLoc
-          const wx = nA.x + xi * dx + deformationScale * dispX
-          const wy = nA.y + xi * dy + deformationScale * dispY
-          const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-          pts.push({ sx, sy, dispX, dispY, mag: Math.hypot(dispX, dispY) })
+          const mag = Math.hypot(dispX, dispY)
+          if (mag > peakDisp) peakDisp = mag
+          pts.push({ xi, dispX, dispY, nA, dx, dy })
         }
-        memberSplines.push({ memberId: member.id, pts })
+        memberRaws.push({ memberId: member.id, pts })
       }
+
+      const k = peakDisp > 1e-12 ? (TARGET_M / peakDisp) * deformationScale : 0
+
+      type MemberSpline = {
+        memberId: string
+        pts: { sx: number; sy: number; dispX: number; dispY: number; mag: number }[]
+      }
+
+      // Pass 2: apply k and project to screen coords
+      const memberSplines: MemberSpline[] = memberRaws.map(({ memberId, pts }) => ({
+        memberId,
+        pts: pts.map(p => {
+          const wx = p.nA.x + p.xi * p.dx + k * p.dispX
+          const wy = p.nA.y + p.xi * p.dy + k * p.dispY
+          const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
+          return { sx, sy, dispX: p.dispX, dispY: p.dispY, mag: Math.hypot(p.dispX, p.dispY) }
+        }),
+      }))
 
       // Pass 2: draw splines
       for (const { pts } of memberSplines) {
@@ -1508,8 +1561,8 @@ export function StructuralCanvas({
         const node = model.nodes[sup.nodeId]
         const d    = analysisResult.nodeDisplacements[sup.nodeId]
         if (!node || !d) continue
-        const wx = node.x + deformationScale * d.u
-        const wy = node.y + deformationScale * d.v
+        const wx = node.x + k * d.u
+        const wy = node.y + k * d.v
         const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
         drawSupportGlyph(ctx, sx, sy, "roller", false, COLOR, s)
       }
@@ -1519,8 +1572,8 @@ export function StructuralCanvas({
         for (const [nodeId, node] of Object.entries(model.nodes)) {
           const d = analysisResult.nodeDisplacements[nodeId]
           if (!d) continue
-          const wx = node.x + deformationScale * d.u
-          const wy = node.y + deformationScale * d.v
+          const wx = node.x + k * d.u
+          const wy = node.y + k * d.v
           const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
           drawNodeIdTag(ctx, sx, sy, nodeId)
         }
@@ -1541,8 +1594,40 @@ export function StructuralCanvas({
       const s = adaptiveView ? 1 / zoom : 1
       const pad = 5 * s
       const lineH = 13 * s
-      const wx = node.x + deformationScale * d.u
-      const wy = node.y + deformationScale * d.v
+      // Match drawDeformedShape's auto-fit (peak along the member spline, not just nodes)
+      const TARGET_M = 1
+      const N_PTS = 40
+      let peakDisp = 0
+      for (const member of Object.values(model.members)) {
+        const nA = model.nodes[member.a]
+        const nB = model.nodes[member.b]
+        if (!nA || !nB) continue
+        const dA = analysisResult.nodeDisplacements[member.a]
+        const dB = analysisResult.nodeDisplacements[member.b]
+        if (!dA || !dB) continue
+        const dx = nB.x - nA.x, dy = nB.y - nA.y
+        const L = Math.hypot(dx, dy)
+        if (L < 1e-9) continue
+        const c = dx / L, sn = dy / L
+        const u1 =  c * dA.u + sn * dA.v, v1 = -sn * dA.u + c * dA.v, th1 = dA.theta
+        const u2 =  c * dB.u + sn * dB.v, v2 = -sn * dB.u + c * dB.v, th2 = dB.theta
+        for (let i = 0; i <= N_PTS; i++) {
+          const xi = i / N_PTS
+          const uLoc = (1 - xi) * u1 + xi * u2
+          const H1 = 1 - 3*xi*xi + 2*xi*xi*xi
+          const H2 = L * xi * (1 - xi) * (1 - xi)
+          const H3 = 3*xi*xi - 2*xi*xi*xi
+          const H4 = L * xi*xi * (xi - 1)
+          const vLoc = H1*v1 + H2*th1 + H3*v2 + H4*th2
+          const dispX = c * uLoc - sn * vLoc
+          const dispY = sn * uLoc + c * vLoc
+          const mag = Math.hypot(dispX, dispY)
+          if (mag > peakDisp) peakDisp = mag
+        }
+      }
+      const k = peakDisp > 1e-12 ? (TARGET_M / peakDisp) * deformationScale : 0
+      const wx = node.x + k * d.u
+      const wy = node.y + k * d.v
       const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
 
       const lines = [

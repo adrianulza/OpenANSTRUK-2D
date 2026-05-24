@@ -184,13 +184,13 @@ export function FlyoutPanel({
   onModifyLoadsByType,
   onDeleteLoad,
   onDeleteLoadIds,
-  diagramScale = 10,
+  diagramScale = 1,
   onDiagramScaleChange,
   invertSFD = false,
   onInvertSFDChange,
   invertBMD = false,
   onInvertBMDChange,
-  deformationScale = 25,
+  deformationScale = 1,
   onDeformationScaleChange,
   showDeformNodeLabels = true,
   onShowDeformNodeLabelsChange,
@@ -415,13 +415,13 @@ function FlyoutContent({
   onModifyLoadsByType,
   onDeleteLoad: _onDeleteLoad,
   onDeleteLoadIds,
-  diagramScale = 10,
+  diagramScale = 1,
   onDiagramScaleChange,
   invertSFD = false,
   onInvertSFDChange,
   invertBMD = false,
   onInvertBMDChange,
-  deformationScale = 25,
+  deformationScale = 1,
   onDeformationScaleChange,
   showDeformNodeLabels = true,
   onShowDeformNodeLabelsChange,
@@ -646,7 +646,7 @@ function FlyoutContent({
       case "MOMENT":
         return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "DEFORMATION":
-        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} showNodeLabels={showDeformNodeLabels} onShowNodeLabelsChange={onShowDeformNodeLabelsChange} analysisResult={analysisResult} unitSettings={unitSettings} />
+        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} showNodeLabels={showDeformNodeLabels} onShowNodeLabelsChange={onShowDeformNodeLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       default:
         return null
     }

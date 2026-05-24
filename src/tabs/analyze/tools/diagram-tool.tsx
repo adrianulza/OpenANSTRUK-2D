@@ -40,7 +40,7 @@ export function DiagramToolContent({
 }) {
   const kind = label
 
-  const sectionLabel = "Forces Summary"
+  const sectionLabel = "Summary"
 
   const memberRows = React.useMemo(() => {
     if (!analysisResult || !model) return []
@@ -76,22 +76,66 @@ export function DiagramToolContent({
 
   const [showReport, setShowReport] = React.useState(false)
 
+  // Slider position s ∈ [-1, +1] maps to multiplier:
+  //   s ≤ 0 → 0.1 + 0.9·(s+1)   (linear 0.1 → 1.0)
+  //   s > 0 → 1.0 + 3.0·s        (linear 1.0 → 4.0)
+  const m = scale ?? 1
+  const sliderPos = m <= 1.0 ? (m - 1.0) / 0.9 : (m - 1.0) / 3.0
+  const posToMult = (s: number) => {
+    if (Math.abs(s) < 0.06) return 1.0
+    return s <= 0 ? 0.1 + 0.9 * (s + 1) : 1.0 + 3.0 * s
+  }
+  const atCenter = Math.abs(m - 1.0) < 0.01
+
+  // Peak |value| across all members for the readout
+  const peakValue = React.useMemo(() => {
+    let p = 0
+    for (const row of memberRows) if (Math.abs(row.peak) > Math.abs(p)) p = row.peak
+    return p
+  }, [memberRows])
+
   return (
     <div className="space-y-3">
       <div className="space-y-1.5 select-none">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-600">Diagram Scale Factor</span>
-          <span className="text-xs font-mono text-gray-500">{scale ?? 10}</span>
+        <span className="text-xs text-gray-600">Diagram Size</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 font-mono w-2 text-center">−</span>
+          <div className="relative flex-1 flex flex-col items-start">
+            <input
+              type="range"
+              value={sliderPos}
+              min={-1}
+              max={1}
+              step={0.01}
+              className="w-full h-1.5 accent-[#2563eb] cursor-pointer touch-none"
+              onChange={(e) => onScaleChange?.(posToMult(Number(e.target.value)))}
+            />
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: "50%",
+                top: "100%",
+                transform: "translateX(-50%)",
+                opacity: atCenter ? 0.2 : 0.55,
+                transition: "opacity 0.15s",
+              }}
+            >
+              <div style={{
+                width: 0, height: 0,
+                borderLeft: "2.5px solid transparent",
+                borderRight: "2.5px solid transparent",
+                borderBottom: "3.5px solid #1a2f5e",
+              }} />
+            </div>
+          </div>
+          <span className="text-xs text-gray-400 font-mono w-2 text-center">+</span>
         </div>
-        <input
-          type="range"
-          value={scale ?? 10}
-          min={1}
-          max={200}
-          className="w-full h-1.5 accent-[#2563eb] cursor-pointer touch-none"
-          onChange={(e) => onScaleChange?.(Number(e.target.value))}
-        />
+        <div className="text-[11px] font-mono text-gray-500 text-center pt-0.5">
+          {memberRows.length === 0 ? "—" : `Max. force: ${fmt(peakValue)} ${unit}`}
+        </div>
       </div>
+
+      <div className="border-t" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }} />
 
       <div className="flex items-center justify-between select-none">
         <span className="text-xs text-gray-600">Member Labels</span>
@@ -117,7 +161,7 @@ export function DiagramToolContent({
         </div>
       )}
 
-      <div className="space-y-1.5 border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
+      <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <Label className="text-xs text-gray-600">{sectionLabel}</Label>
           <ToggleButton

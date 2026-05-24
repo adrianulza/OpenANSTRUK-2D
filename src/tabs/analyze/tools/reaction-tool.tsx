@@ -44,8 +44,8 @@ export function ReactionToolContent({
           {showNodeLabels ? "On" : "Off"}
         </ToggleButton>
       </div>
-      <div className="flex items-center justify-between border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
-        <Label className="text-xs text-gray-600">Reactions Summary</Label>
+      <div className="flex items-center justify-between">
+        <Label className="text-xs text-gray-600">Summary</Label>
         <ToggleButton
           active={showReport}
           onClick={() => setShowReport(v => !v)}

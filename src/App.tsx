@@ -96,10 +96,10 @@ export default function App() {
   const [pendingFrameStart, setPendingFrameStart] = useState<NodeId | null>(null)
 
   const [envelopeComboIds, setEnvelopeComboIds] = useState<LoadComboId[]>([])
-  const [diagramScale, setDiagramScale] = useState(10)
+  const [diagramScale, setDiagramScale] = useState(1)
   const [invertSFD, setInvertSFD] = useState(true)
   const [invertBMD, setInvertBMD] = useState(false)
-  const [deformationScale, setDeformationScale] = useState(25)
+  const [deformationScale, setDeformationScale] = useState(1)
   const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(false)
   const [showReactionNodeLabels, setShowReactionNodeLabels] = useState(false)
   const [showDiagramMemberLabels, setShowDiagramMemberLabels] = useState(false)
