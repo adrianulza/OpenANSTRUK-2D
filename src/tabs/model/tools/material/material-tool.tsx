@@ -435,7 +435,7 @@ function ToolbarButton({
   onClick?: () => void
 }) {
   const styles: Record<typeof tone, string> = {
-    primary: "border-2 border-[#2563eb] text-[#2563eb] bg-[#2563eb]/5 hover:bg-[#2563eb]/10",
+    primary: "border border-[#2563eb] text-[#2563eb] bg-[#2563eb]/5 hover:bg-[#2563eb]/10",
     neutral: "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
     muted:   "border border-gray-200 text-gray-300 cursor-not-allowed",
     danger:  "border-2 border-red-400 text-red-500 bg-red-50 hover:bg-red-100",
