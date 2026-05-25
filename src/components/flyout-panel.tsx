@@ -123,6 +123,8 @@ interface FlyoutPanelProps {
   onGenerateCodeCombinations?: () => void
   editingCombinationId?: LoadComboId | null
   onEditingCombinationIdChange?: (id: LoadComboId | null) => void
+  /** Sections with γ ≤ 0 — drives the Selfweight γ=0 inline warning. */
+  zeroGammaSectionIds?: string[]
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -228,6 +230,7 @@ export function FlyoutPanel({
   onGenerateCodeCombinations,
   editingCombinationId,
   onEditingCombinationIdChange,
+  zeroGammaSectionIds,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
@@ -348,6 +351,7 @@ export function FlyoutPanel({
           onGenerateCodeCombinations={onGenerateCodeCombinations}
           editingCombinationId={editingCombinationId}
           onEditingCombinationIdChange={onEditingCombinationIdChange}
+          zeroGammaSectionIds={zeroGammaSectionIds}
         />
       </div>
     </div>
@@ -457,6 +461,7 @@ function FlyoutContent({
   onGenerateCodeCombinations,
   editingCombinationId,
   onEditingCombinationIdChange,
+  zeroGammaSectionIds,
 }: FlyoutContentProps) {
   if (activeTab === "Model") {
     switch (activeTool) {
@@ -539,6 +544,7 @@ function FlyoutContent({
             onAddLoadCase={onAddLoadCase ?? (() => {})}
             onDeleteLoadCase={onDeleteLoadCase ?? (() => {})}
             onPatchLoadCase={onPatchLoadCase ?? (() => {})}
+            zeroGammaSectionIds={zeroGammaSectionIds ?? []}
           />
         )
       case "LOAD_COMBINATION":
@@ -558,6 +564,7 @@ function FlyoutContent({
             onGenerateCodeCombinations={onGenerateCodeCombinations ?? (() => {})}
             editingCombinationId={editingCombinationId ?? null}
             onEditingCombinationIdChange={onEditingCombinationIdChange ?? (() => {})}
+            zeroGammaSectionIds={zeroGammaSectionIds ?? []}
           />
         )
       case "POINT_LOAD":

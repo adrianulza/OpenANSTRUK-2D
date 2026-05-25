@@ -27,6 +27,15 @@ import {
   pickDisplayedResult,
 } from "@/lib/analysis-pipeline"
 import type { AnalysisResult } from "@/lib/analysis-pipeline"
+import { analyze, type SolverResult } from "@/lib/solver"
+import {
+  runDiagnostics,
+  dofToLocation,
+  findZeroGammaSections,
+  type DiagnosticIssue,
+  type DiagnosticsReport,
+} from "@/lib/analysis-diagnostics"
+import { AnalysisIssuesDialog } from "@/components/analysis-issues-dialog"
 import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
 import { LoadViewSelector, LOAD_VIEW_ALL, type LoadViewSelection } from "@/components/load-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
@@ -42,7 +51,6 @@ import {
 } from "@/templates/examples"
 import {
   createEmptyModel,
-  stabilityOf,
   emptySelection,
   isEmptySelection,
   mergeSelection,
@@ -329,11 +337,18 @@ export default function App() {
   )
 
 
-  // Case-aware analysis pipeline. Each enabled case solves once; combinations and
-  // envelope are derived by linear superposition. See src/lib/analysis-pipeline.ts.
-  const caseResults = useMemo(
-    () => solveAllCases(model, loadCases),
-    [model, loadCases],
+  // Case-aware analysis pipeline. Each enabled case solves once; combinations
+  // and envelope are derived by linear superposition. See
+  // src/lib/analysis-pipeline.ts.
+  //
+  // Lazy gate (v1.0.6): the solver only runs while the Analyze tab is active.
+  // Editing in Model/Load tabs no longer triggers solves whose results would
+  // never be drawn — entering the Analyze tab is the implicit "Analyze"
+  // trigger. Edits while on Analyze still re-solve live (memo dep includes
+  // model/loadCases), preserving the no-button UX inside the tab.
+  const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
+    () => activeTab === "Analyze" ? solveAllCases(model, loadCases) : {},
+    [activeTab, model, loadCases],
   )
 
   const comboResults = useMemo(() => {
@@ -360,6 +375,79 @@ export default function App() {
     ),
     [analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
   )
+
+  // ── Diagnostics (always reactive) ──────────────────────────────────────────
+  // Cheap structural pre-flight: empty model, reaction count, connectivity,
+  // γ=0 sections. Cost is microseconds even on large models. Runs in every
+  // tab so the status-bar STATUS label stays live.
+  const diagnostics = useMemo(() => runDiagnostics(model), [model])
+
+  // Sections with no positive unit weight — used by Load Case + Load
+  // Combination tools to show the γ=0 inline warning.
+  const zeroGammaSectionIds = useMemo(() => findZeroGammaSections(model), [model])
+
+  // Diagnostic solve (Option B, v1.0.6+). The topology-only diagnostics above
+  // can't detect every geometric mechanism (e.g. an isolated supported node
+  // whose support doesn't constrain θ, or 3 collinear pins). To keep the
+  // STATUS pill honest in every tab — not just Analyze — we run *one* solve
+  // on a loadless slice of the model. The result itself is discarded; only
+  // the `singularDof` from a failed solve is used to upgrade the diagnostics
+  // report. Cost is one analyze() per edit, roughly N× cheaper than the full
+  // lazy pipeline that runs on Analyze entries (N = enabled cases).
+  //
+  // Skipped if topology diagnostics already returned an error — the solver
+  // would also fail and we'd just get a less specific message. Also skipped
+  // on the Analyze tab because `caseResults` already has solver outcomes for
+  // every enabled case and merging two sources would duplicate issues.
+  const diagnosticSolve = useMemo<SolverResult | null>(() => {
+    if (activeTab === "Analyze") return null
+    if (diagnostics.issues.some((i) => i.severity === "error")) return null
+    const slice: StructureModel = { ...model, loads: {} }
+    return analyze(slice)
+  }, [model, diagnostics, activeTab])
+
+  // Merge solver-side singular-DOF errors into the diagnostics report. On the
+  // Analyze tab the source is the full `caseResults`; in other tabs the
+  // single-shot `diagnosticSolve` covers the same ground for structural
+  // validity (singular K shows up in any case since K depends only on
+  // geometry + sections, not on loads).
+  const mergedReport = useMemo<DiagnosticsReport>(() => {
+    const solverResults: SolverResult[] =
+      activeTab === "Analyze"
+        ? Object.values(caseResults)
+        : diagnosticSolve
+          ? [diagnosticSolve]
+          : []
+    if (solverResults.length === 0) return diagnostics
+    const extras: DiagnosticIssue[] = []
+    const nodeIds = Object.keys(model.nodes)
+    const seen = new Set<string>()
+    for (const res of solverResults) {
+      if (!res.ok && res.singularDof !== undefined) {
+        const loc = dofToLocation(res.singularDof, nodeIds)
+        const key = `${loc.nodeId}:${loc.direction}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        extras.push({ kind: "singular-at-dof", severity: "error", ...loc })
+      }
+    }
+    if (extras.length === 0) return diagnostics
+    return { status: "unstable", issues: [...diagnostics.issues, ...extras] }
+  }, [diagnostics, caseResults, diagnosticSolve, activeTab, model.nodes])
+
+  // Analysis-issues dialog: auto-opens once per Analyze-tab entry when the
+  // merged report contains any error-severity issue. Closable via the "×".
+  // Manually re-openable by clicking the status-bar STATUS label.
+  const [issuesDialogOpen, setIssuesDialogOpen] = useState(false)
+  const wasOnAnalyzeRef = useRef(false)
+  useEffect(() => {
+    const onAnalyze = activeTab === "Analyze"
+    const entering = onAnalyze && !wasOnAnalyzeRef.current
+    wasOnAnalyzeRef.current = onAnalyze
+    if (entering && mergedReport.issues.some((i) => i.severity === "error")) {
+      setIssuesDialogOpen(true)
+    }
+  }, [activeTab, mergedReport])
 
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
@@ -991,7 +1079,6 @@ export default function App() {
 
   const nodeCount = Object.keys(model.nodes).length
   const memberCount = Object.keys(model.members).length
-  const stability = stabilityOf(model)
 
   return (
     <div className="relative h-screen w-screen flex flex-col overflow-hidden bg-[#F0F2F5]">
@@ -1160,6 +1247,7 @@ export default function App() {
             onGenerateCodeCombinations={handleGenerateCodeCombinations}
             editingCombinationId={editingCombinationId}
             onEditingCombinationIdChange={setEditingCombinationId}
+            zeroGammaSectionIds={zeroGammaSectionIds}
           />
 
           <StructuralCanvas
@@ -1239,7 +1327,8 @@ export default function App() {
       <StatusBar
         nodes={nodeCount}
         members={memberCount}
-        stability={stability}
+        status={mergedReport.status}
+        onStatusClick={() => setIssuesDialogOpen(true)}
         unitSettings={unitSettings}
         showDimensions={showDimensions}
         cursorX={cursorX}
@@ -1252,6 +1341,12 @@ export default function App() {
         onAdaptiveViewChange={setAdaptiveView}
         onUnitSettingsChange={setUnitSettings}
         onToggleDimensions={() => setShowDimensions(!showDimensions)}
+      />
+
+      <AnalysisIssuesDialog
+        open={issuesDialogOpen}
+        onClose={() => setIssuesDialogOpen(false)}
+        report={mergedReport}
       />
     </div>
   )

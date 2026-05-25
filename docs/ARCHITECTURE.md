@@ -256,7 +256,24 @@ M(x) = M1 − V1·x + q1·x²/2 + (q2−q1)·x³/(6L)
 
 where `x` is distance from the i-end along the member.
 
-> **Note:** `solver.ts` numerical math (`localStiffness`, `transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
+> **Note:** `solver.ts` numerical math (`localStiffness`, `transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. Only `gaussSolve` (singular-pivot tracking + tightened tolerance, v1.0.6) and the `SolverResult` failure branch have changed. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
+
+### Analysis Diagnostics & Lazy Solve (v1.0.6)
+
+A separate module `src/lib/analysis-diagnostics.ts` performs cheap structural pre-flight checks without calling the solver:
+
+- **Empty-model checks** — no nodes / no members / no supports.
+- **Reaction count** — fewer than 3 reaction components → error.
+- **Connectivity** — union-find over members; every connected component must touch at least one supported node. Reports "There are nodes disconnected from any support" when a floating substructure exists.
+- **γ = 0 sections** — lists referenced sections with no positive unit weight (warning, doesn't block).
+
+It returns a typed `DiagnosticsReport { status, issues[] }` with three statuses — `determinate` / `indeterminate` / `unstable`. The first two are distinguished by the count formula `3m + r vs 3j` *only after* the error checks have passed.
+
+**Solver-side singular DOF tracking.** `gaussSolve` in `solver.ts` returns the index of the failing DOF when the pivot drops below `1e-12 · max|diag(K)|`. `dofToLocation` translates it to `(nodeId, direction)`. The App layer (`mergedReport` memo in `App.tsx`) merges these into the diagnostics report so the issues dialog can say *"Instability detected. Likely cause: missing constraint or geometric mechanism."* alongside a node label.
+
+**Lazy solve.** `solveAllCases` is gated on `activeTab === "Analyze"` in `App.tsx`. Editing in Model/Load tabs does not solve — entering the Analyze tab is the implicit "Analyze" trigger. Diagnostics remain reactive on every tab so the status-bar STATUS label is always live (the connectivity check is microseconds even on large models).
+
+**UI surfaces.** The status bar shows the three-state STATUS pill (clickable). `src/components/analysis-issues-dialog.tsx` auto-opens once per Analyze-tab entry when there is any error-severity issue; closable via `×`, backdrop, or Esc. The γ = 0 warning is also rendered inline in the Load Case and Load Combination flyout tools.
 
 ---
 

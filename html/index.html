@@ -307,13 +307,12 @@
 
     .sw-layout {
       display: grid;
-      grid-template-columns: 3fr 2fr;
+      grid-template-columns: 1fr;
       grid-template-areas:
-        "label      label"
-        "title      title"
-        "desc       ."
-        "album      features";
-      column-gap: 30px;
+        "label"
+        "title"
+        "desc"
+        "album";
       row-gap: 20px;
       align-items: start;
     }
@@ -322,67 +321,22 @@
     .sw-title { grid-area: title; margin-bottom: 32px; }
     .sw-desc { grid-area: desc; margin-bottom: 20px; }
     .sw-album { grid-area: album; }
-    .sw-features-col { grid-area: features; }
-
-    .sw-album {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
 
     .album-main {
       position: relative;
       width: 100%;
-      padding-bottom: 66.67%;
+      padding-bottom: 56.25%;
       background: rgba(11,37,80,0.6);
       border: 1px solid rgba(180,210,255,0.15);
       border-radius: 2px;
       overflow: hidden;
-      cursor: zoom-in;
     }
-    .album-main img {
+    .album-main iframe {
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      object-fit: cover;
-      transition: opacity 0.35s ease;
+      border: 0;
     }
-    .album-main-hint {
-      position: absolute;
-      bottom: 12px; right: 14px;
-      font-family: var(--ff-mono);
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      color: rgba(180,210,255,0.3);
-      text-transform: uppercase;
-      pointer-events: none;
-    }
-
-    .album-thumbs {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(180,210,255,0.15) transparent;
-    }
-    .album-thumbs::-webkit-scrollbar { height: 3px; }
-    .album-thumbs::-webkit-scrollbar-track { background: transparent; }
-    .album-thumbs::-webkit-scrollbar-thumb { background: rgba(180,210,255,0.2); border-radius: 2px; }
-
-    .album-thumb {
-      flex-shrink: 0;
-      width: 88px;
-      height: 60px;
-      object-fit: cover;
-      border: 1px solid rgba(180,210,255,0.1);
-      border-radius: 2px;
-      cursor: pointer;
-      opacity: 0.45;
-      transition: opacity 0.2s, border-color 0.2s;
-    }
-    .album-thumb:hover { opacity: 0.75; }
-    .album-thumb.active { opacity: 1; border-color: var(--cyan); }
 
     .sw-label {
       font-family: var(--ff-mono);
@@ -418,7 +372,6 @@
     }
 
     .sw-desc,
-    .sw-features,
     .about-body,
     .about-right,
     .oss-body,
@@ -426,18 +379,6 @@
       font-size: 16px;
       line-height: 1.7;
       color: rgba(180,210,255,0.55);
-    }
-
-    .sw-features {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .feature-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
     }
 
     .feature-check {
@@ -453,16 +394,6 @@
       font-size: 13px;
     }
 
-    .feature-text {
-      font-size: inherit;
-      line-height: inherit;
-      color: inherit;
-    }
-    .feature-text strong {
-      color: #e8f3ff;
-      font-weight: 600;
-    }
-
     .about-right .v-body,
     .oss-pillars p {
       font-size: inherit;
@@ -470,39 +401,6 @@
       color: inherit;
       margin: 0;
     }
-
-    .lightbox {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(4,12,30,0.96);
-      z-index: 500;
-      align-items: center;
-      justify-content: center;
-      cursor: zoom-out;
-    }
-    .lightbox.open { display: flex; }
-    .lightbox img {
-      max-width: 92vw;
-      max-height: 92vh;
-      object-fit: contain;
-      border: 1px solid rgba(180,210,255,0.12);
-      border-radius: 2px;
-      box-shadow: 0 0 80px rgba(0,0,0,0.6);
-    }
-    .lightbox-close {
-      position: absolute;
-      top: 24px; right: 32px;
-      font-family: var(--ff-mono);
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      color: rgba(180,210,255,0.4);
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: color 0.2s;
-      user-select: none;
-    }
-    .lightbox-close:hover { color: var(--blueprint-text); }
 
     .about-grid {
       display: grid;
@@ -791,15 +689,8 @@
       text-shadow: 0 0 18px rgba(11,37,80,0.7);
     }
 
-    .sw-album { perspective: 1200px; }
     .album-main {
-      transform-style: preserve-3d;
-      transition: transform 0.45s cubic-bezier(.2,.7,.2,1), box-shadow 0.45s;
       box-shadow: 0 6px 24px rgba(0,0,0,0.28);
-    }
-    .album-main:hover {
-      transform: rotateX(3deg) rotateY(-5deg) translateZ(18px);
-      box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 0 32px rgba(180,210,255,0.08);
     }
     .pillar { transition: transform 0.3s, border-color 0.3s; }
     .pillar:hover { transform: translateX(6px); border-color: rgba(180,210,255,0.3); }
@@ -891,19 +782,11 @@
       .carousel-section { overflow-x: hidden; }
       .carousel-container { padding: 60px 24px; min-height: unset; width: 100%; box-sizing: border-box; }
       .sw-layout {
-        grid-template-columns: 1fr;
-        grid-template-areas:
-          "label"
-          "title"
-          "desc"
-          "album"
-          "features";
-        column-gap: 0;
         row-gap: 8px;
         width: 100%;
       }
       /* Prevent grid children from overflowing their cell */
-      .sw-label, .sw-title, .sw-desc, .sw-album, .sw-features-col {
+      .sw-label, .sw-title, .sw-desc, .sw-album {
         min-width: 0;
         max-width: 100%;
       }
@@ -911,14 +794,8 @@
       .sw-title { font-size: clamp(28px, 7vw, 42px); max-width: 100%; word-spacing: 0; margin-bottom: 10px !important; }
       .sw-desc { margin-bottom: 10px !important; }
 
-      /* Album: constrain image and thumbs fully */
       .sw-album { width: 100%; }
       .album-main { width: 100%; }
-      .album-main img { max-width: 100%; }
-      .album-thumbs { width: 100%; }
-      .album-thumb { width: 64px; height: 44px; flex-shrink: 0; }
-
-      .sw-features-col { margin-top: 4px; }
 
       /* About section */
       .section-label { margin-bottom: 12px !important; }
@@ -1029,52 +906,19 @@
       </p>
 
       <div class="sw-album">
-        <div class="album-main" id="album-main" onclick="openLightbox()">
-          <img id="album-active-img" src="/demo/1.png" alt="Structural Model">
-          <span class="album-main-hint">Click to enlarge</span>
-        </div>
-        <div class="album-thumbs" id="album-thumbs">
-          <img src="/demo/1.png" alt="Structural Model"    class="album-thumb active" onclick="setSlide(0)">
-          <img src="/demo/2.png" alt="Load Definition"     class="album-thumb"        onclick="setSlide(1)">
-          <img src="/demo/3.png" alt="Analysis Results"    class="album-thumb"        onclick="setSlide(2)">
-          <img src="/demo/4.png" alt="Shear Force Diagram" class="album-thumb"        onclick="setSlide(3)">
-          <img src="/demo/5.png" alt="Moment Diagram"      class="album-thumb"        onclick="setSlide(4)">
-          <img src="/demo/6.png" alt="Deformation"         class="album-thumb"        onclick="setSlide(5)">
-          <img src="/demo/7.png" alt="Interface"           class="album-thumb"        onclick="setSlide(6)">
-          <img src="/demo/8.png" alt="Reactions"           class="album-thumb"        onclick="setSlide(7)">
-        </div>
-      </div>
-
-      <div class="sw-features-col">
-        <div class="sw-features">
-          <div class="feature-item">
-            <div class="feature-check">✓</div>
-            <div class="feature-text"><strong>Interactive Modeling:</strong> Place nodes and members with snap-to-grid. Define supports and loads visually. Get results instantly as you model. No cluttered menus. No steep learning curve.</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-check">✓</div>
-            <div class="feature-text"><strong>Web-based:</strong> No installation, pure web app that works offline after initial load. Run anywhere, anytime.</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-check">✓</div>
-            <div class="feature-text"><strong>Real-time Results:</strong> See shear force and bending moment diagrams instantly as you model. Direct stiffness method, computed entirely in your browser.</div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-check">✓</div>
-            <div class="feature-text"><strong>We're expanding beyond 2D:</strong> 3D analysis, dynamic, nonlinear solver, design code check, BIM integration, ML/AI optimization. This is the future of structural engineering software. We're building toward it.</div>
-          </div>
+        <div class="album-main">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/eHlsxe8HhqM"
+            title="OpenAnstruk-2D"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
         </div>
       </div>
 
     </div>
   </div>
 </section>
-
-<!-- LIGHTBOX -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
-  <div class="lightbox-close">ESC / click to close</div>
-  <img id="lightbox-img" src="" alt="">
-</div>
 
 <!-- ABOUT -->
 <section id="about" data-screen-label="About">
@@ -1206,54 +1050,6 @@
 </footer>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-  const slides = [
-    { src: 'demo/1.png', alt: 'Structural Model' },
-    { src: 'demo/2.png', alt: 'Load Definition' },
-    { src: 'demo/3.png', alt: 'Analysis Results' },
-    { src: 'demo/4.png', alt: 'Shear Force Diagram' },
-    { src: 'demo/5.png', alt: 'Moment Diagram' },
-    { src: 'demo/6.png', alt: 'Deformation' },
-    { src: 'demo/7.png', alt: 'Interface' },
-    { src: 'demo/8.png', alt: 'Reactions' },
-  ];
-
-  let currentSlide = 0;
-  let autoplayTimer = null;
-
-  function setSlide(n, resetTimer = true) {
-    currentSlide = n;
-    const activeImg = document.getElementById('album-active-img');
-    activeImg.src = slides[n].src;
-    activeImg.alt = slides[n].alt;
-    document.querySelectorAll('.album-thumb').forEach((t, i) => {
-      t.classList.toggle('active', i === n);
-    });
-    if (resetTimer) startAutoplay();
-  }
-
-  function startAutoplay() {
-    clearInterval(autoplayTimer);
-    autoplayTimer = setInterval(() => {
-      setSlide((currentSlide + 1) % slides.length, false);
-    }, 5000);
-  }
-
-  function openLightbox() {
-    clearInterval(autoplayTimer);
-    const lb = document.getElementById('lightbox');
-    const lbImg = document.getElementById('lightbox-img');
-    lbImg.src = slides[currentSlide].src;
-    lbImg.alt = slides[currentSlide].alt;
-    lb.classList.add('open');
-  }
-
-  function closeLightbox() {
-    document.getElementById('lightbox').classList.remove('open');
-    startAutoplay();
-  }
-
-  document.addEventListener('DOMContentLoaded', () => startAutoplay());
-
   // ── Tier 3 — WebGL wireframe truss ─────────────────
   (function () {
     const canvas = document.getElementById('hero-canvas');
@@ -1433,13 +1229,6 @@
     document.getElementById('nav-mobile-menu').classList.remove('open');
   }
 
-  document.addEventListener('keydown', (e) => {
-    const lbOpen = document.getElementById('lightbox').classList.contains('open');
-    if (e.key === 'Escape') { closeLightbox(); return; }
-    if (e.key === 'ArrowRight') setSlide(Math.min(currentSlide + 1, slides.length - 1));
-    if (e.key === 'ArrowLeft')  setSlide(Math.max(currentSlide - 1, 0));
-    if (lbOpen) openLightbox();
-  });
 </script>
 
 </body>

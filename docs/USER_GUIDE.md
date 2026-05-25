@@ -77,12 +77,25 @@ The locked **Selfweight** load case (visible in the LOAD CASE tool) applies a bo
 - **Where γ comes from**: parametric sections set γ automatically (concrete 24 kN/m³, steel 78.5 kN/m³). Manual sections start with γ = 0 — set a value in the MATERIAL tool's manual form, or override it in the Advanced panel. Sections with γ = 0 contribute no self-weight.
 - **Combinations**: the Selfweight case has kind = "Dead", so any code-preset Dead-factor term (1.4D, 1.2D, …) automatically includes it once enabled. You don't need to add Selfweight manually to combos.
 - **Trusses**: self-weight is applied to truss members too. Each truss member shows a parabolic moment diagram from its own weight (simply-supported between its end nodes), and the reactions at supports correctly include the truss self-weight.
+- **γ = 0 warning** (v1.0.6+): when Selfweight is enabled but at least one referenced section has γ = 0, an amber warning appears at the bottom of the Load Case panel — and also at the bottom of the Load Combination panel when any combination references Selfweight. Open the MATERIAL tool and set Unit Weight on the offending section to include it in self-weight.
 
 ---
 
 ## Analyze Tab
 
-Switch to the Analyze tab to run analysis. Results update automatically whenever the model or loads change.
+Switch to the Analyze tab to run analysis. The solver runs the moment you enter the tab and continues to update automatically while you edit on the Analyze tab. Editing in the Model or Load tabs no longer triggers a solve — re-enter Analyze to refresh results. The Analyze tab itself acts as the implicit "Analyze" trigger.
+
+### Analysis Status
+
+The status indicator at the bottom-left of the screen reports one of three states:
+
+- **DETERMINATE** (green) — the model is statically determinate; reactions follow directly from equilibrium.
+- **INDETERMINATE** (amber) — the model has more constraints than equilibrium alone can resolve; the stiffness method still produces a unique solution.
+- **UNSTABLE** (red) — the model has a structural-validity issue that prevents analysis. Click the status pill to open the **Analysis Issues** dialog and see what went wrong.
+
+The issues dialog auto-opens whenever you enter the Analyze tab and the model has any error-severity issue (no nodes/members/supports, fewer than 3 reaction components, a disconnected substructure, or a singular stiffness matrix from a geometric mechanism). Close it with the × button, by clicking the backdrop, or by pressing Esc. You can reopen it at any time by clicking the STATUS label.
+
+Warnings (e.g., γ = 0 sections under Selfweight) do not block analysis but are listed in the dialog and inline in the Load tab panels.
 
 ### REACTION
 Displays support reactions at each restrained node:

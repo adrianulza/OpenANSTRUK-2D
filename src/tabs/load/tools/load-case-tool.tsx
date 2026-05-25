@@ -15,12 +15,18 @@ import {
   caseShortLabel,
 } from "@/lib/load-cases"
 import { Checkbox } from "@/components/flyout-shared"
+import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 
 interface LoadCaseToolContentProps {
   loadCases: Record<LoadCaseId, LoadCase>
   onAddLoadCase: () => void
   onDeleteLoadCase: (id: LoadCaseId) => void
   onPatchLoadCase: (id: LoadCaseId, patch: Partial<LoadCase>) => void
+  /**
+   * Sections referenced by at least one member that have γ ≤ 0. Drives the
+   * inline Selfweight γ=0 warning at the bottom of the panel.
+   */
+  zeroGammaSectionIds?: string[]
 }
 
 export function LoadCaseToolContent({
@@ -28,8 +34,15 @@ export function LoadCaseToolContent({
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
+  zeroGammaSectionIds = [],
 }: LoadCaseToolContentProps) {
   const cases = Object.values(loadCases)
+  // Warn when Selfweight is enabled but at least one referenced section has
+  // γ ≤ 0 — those members contribute nothing to the synthetic body-force
+  // load (see analysis-pipeline.ts::solveCase("selfweight")).
+  const selfweightCase = loadCases["selfweight"]
+  const showZeroGammaWarning =
+    !!selfweightCase?.enabled && zeroGammaSectionIds.length > 0
 
   return (
     <div className="space-y-3">
@@ -59,6 +72,14 @@ export function LoadCaseToolContent({
         <Plus size={12} />
         Add Case
       </button>
+
+      {showZeroGammaWarning && (
+        <div className="border-t pt-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }}>
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 leading-snug">
+            Warning: Some sections have Unit Weight (γ) = 0 and will produce zero self-weight contribution.
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -59,6 +59,28 @@ export function validateManual(f: ManualFields): ManualValidation {
   }
 }
 
+/**
+ * Soft physical-plausibility check for a manual section.
+ *
+ * Returns `true` if the radius of gyration r = √(I33 / A) is within physically
+ * reasonable bounds for a real cross-section (between 0.1 mm and 10 m). Outside
+ * that range the section will run, but the EA/EI ratio becomes pathological
+ * and the stiffness matrix is ill-conditioned to the point that the solver may
+ * report false instabilities. A warning is rendered inline in the form — this
+ * is intentionally *not* a hard validation, to leave room for unusual but
+ * legitimate authoring (e.g. educational testing).
+ *
+ * Internal units: I in mm⁴, A in mm² → r in mm.
+ */
+export function isSectionPhysicallyReasonable(f: ManualFields, u: UnitSettings): boolean {
+  const I_mm4 = parseI(parseFloat(f.I33), u)  // mm⁴
+  const A_mm2 = parseA(parseFloat(f.A), u)    // mm²
+  if (!Number.isFinite(I_mm4) || !Number.isFinite(A_mm2)) return true
+  if (I_mm4 <= 0 || A_mm2 <= 0) return true   // already covered by hard validation
+  const r_mm = Math.sqrt(I_mm4 / A_mm2)
+  return r_mm >= 0.1 && r_mm <= 10_000        // 0.1 mm ≤ r ≤ 10 m
+}
+
 export function parseManualFields(f: ManualFields, u: UnitSettings): Partial<Section> {
   const out: Partial<Section> = {
     E:     parseE(parseFloat(f.E), u),
@@ -83,6 +105,12 @@ interface Props {
 export function ManualForm({ fields, onChange, validation, u, disabled }: Props) {
   const set = (key: keyof ManualFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...fields, [key]: e.target.value })
+
+  // Soft check — does not block save; just informs the user that the section
+  // properties are physically implausible and the solver may misbehave.
+  const physicallyReasonable = validation.isValid
+    ? isSectionPhysicallyReasonable(fields, u)
+    : true
 
   const field = (
     label: string,
@@ -115,6 +143,12 @@ export function ManualForm({ fields, onChange, validation, u, disabled }: Props)
       {field("Poisson Ratio, ν",            "nu",  "",        validation.invalidNu,       "0 < ν < 0.5")}
       {field("Shear Area, Aκ2",             "Aκ2", labelA(u), validation["invalidAκ2"],   "If set, must be > 0")}
       {field("Unit Weight, γ",             "gamma", "kN/m³",   validation.invalidGamma,     "Must be ≥ 0")}
+
+      {!physicallyReasonable && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 leading-snug">
+          Warning: A and I33 give an unrealistic radius of gyration √(I/A). The solver may flag false instabilities.
+        </div>
+      )}
     </div>
   )
 }

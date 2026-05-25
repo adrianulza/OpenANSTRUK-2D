@@ -4,11 +4,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Grid3X3 } from "lucide-react"
 import type { UnitSettings } from "@/lib/units"
 import { GridUnitsPanel } from "@/components/grid-units-panel"
+import type { AnalysisStatus } from "@/lib/analysis-diagnostics"
 
 interface StatusBarProps {
   nodes: number
   members: number
-  stability: "STABLE" | "UNSTABLE"
+  status: AnalysisStatus
+  onStatusClick?: () => void
   unitSettings: UnitSettings
   showDimensions: boolean
   cursorX: number
@@ -23,10 +25,17 @@ interface StatusBarProps {
   onToggleDimensions: () => void
 }
 
+const STATUS_STYLE: Record<AnalysisStatus, { text: string; bg: string; label: string }> = {
+  determinate:   { text: "text-[#16a34a]", bg: "bg-[#16a34a]", label: "DETERMINATE" },
+  indeterminate: { text: "text-[#d97706]", bg: "bg-[#d97706]", label: "INDETERMINATE" },
+  unstable:      { text: "text-[#dc2626]", bg: "bg-[#dc2626]", label: "UNSTABLE" },
+}
+
 export function StatusBar({
   nodes,
   members,
-  stability,
+  status,
+  onStatusClick,
   unitSettings,
   showDimensions,
   cursorX,
@@ -42,6 +51,7 @@ export function StatusBar({
 }: StatusBarProps) {
   const lenUnit = unitSettings.length
   const coordScale = lenUnit === "mm" ? 1000 : 1
+  const statusStyle = STATUS_STYLE[status]
 
   return (
     <footer className="h-9 bg-white border-t border-gray-200 flex items-center px-4 text-xs">
@@ -56,21 +66,20 @@ export function StatusBar({
           <span className="font-medium">{members}</span>
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="text-gray-500">STABILITY:</span>
-          <span
+          <span className="text-gray-500">STATUS:</span>
+          <button
+            type="button"
+            onClick={onStatusClick}
             className={cn(
-              "flex items-center gap-1 font-medium",
-              stability === "STABLE" ? "text-[#16a34a]" : "text-[#dc2626]"
+              "flex items-center gap-1 font-medium rounded px-1 -mx-1",
+              "hover:bg-gray-100 transition-colors cursor-pointer",
+              statusStyle.text,
             )}
+            title="Click to view analysis issues"
           >
-            <span
-              className={cn(
-                "w-2 h-2 rounded-full",
-                stability === "STABLE" ? "bg-[#16a34a]" : "bg-[#dc2626]"
-              )}
-            />
-            {stability}
-          </span>
+            <span className={cn("w-2 h-2 rounded-full", statusStyle.bg)} />
+            {statusStyle.label}
+          </button>
         </span>
       </div>
 

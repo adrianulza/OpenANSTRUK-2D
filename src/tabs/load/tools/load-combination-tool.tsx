@@ -42,6 +42,12 @@ interface LoadCombinationToolContentProps {
   onGenerateCodeCombinations: () => void
   editingCombinationId: LoadComboId | null
   onEditingCombinationIdChange: (id: LoadComboId | null) => void
+  /**
+   * Sections referenced by at least one member that have γ ≤ 0. Drives the
+   * inline Selfweight γ=0 warning, sibling to the existing
+   * "Selfweight is deactivated" warning.
+   */
+  zeroGammaSectionIds?: string[]
 }
 
 export function LoadCombinationToolContent(props: LoadCombinationToolContentProps) {
@@ -60,6 +66,7 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
     onGenerateCodeCombinations,
     editingCombinationId,
     onEditingCombinationIdChange,
+    zeroGammaSectionIds = [],
   } = props
 
   const [confirmGenerate, setConfirmGenerate] = useState(false)
@@ -71,10 +78,19 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
   // Warn when any combination references Selfweight but the case is disabled —
   // such combos silently lose their self-weight contribution at solve time.
   const selfweightCase = loadCases["selfweight"]
+  const referencesSelfweight = combos.some((c) =>
+    c.terms.some((t) => t.caseId === "selfweight"),
+  )
   const selfweightInactiveWarning =
     selfweightCase != null &&
     !selfweightCase.enabled &&
-    combos.some((c) => c.terms.some((t) => t.caseId === "selfweight"))
+    referencesSelfweight
+  // Sibling warning: Selfweight is *enabled* but some referenced sections have
+  // γ ≤ 0, so those members contribute zero body force.
+  const zeroGammaWarning =
+    !!selfweightCase?.enabled &&
+    zeroGammaSectionIds.length > 0 &&
+    referencesSelfweight
 
   return (
     <div className="space-y-3">
@@ -220,6 +236,28 @@ export function LoadCombinationToolContent(props: LoadCombinationToolContentProp
             >
               <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 leading-snug">
                 Warning: Selfweight is deactivated in the load case. Enable it to get the results.
+              </div>
+            </div>
+          )}
+
+          {/* Selfweight γ=0 warning. Surfaces when Selfweight is enabled and
+              referenced by at least one combo, but some referenced sections
+              have γ ≤ 0 — those members contribute zero self-weight. */}
+          {zeroGammaWarning && (
+            <div
+              className={
+                selfweightInactiveWarning
+                  ? "pt-2"
+                  : "border-t pt-3"
+              }
+              style={
+                selfweightInactiveWarning
+                  ? undefined
+                  : { borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }
+              }
+            >
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 leading-snug">
+                Warning: Some sections have Unit Weight (γ) = 0 and will produce zero self-weight contribution.
               </div>
             </div>
           )}

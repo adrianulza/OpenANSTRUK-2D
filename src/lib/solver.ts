@@ -15,7 +15,9 @@ export interface AnalysisResult {
   reactions:         Record<string, { Rx: number; Ry: number; Mz: number }>
 }
 
-export type SolverResult = AnalysisResult | { ok: false; reason: string }
+export type SolverResult =
+  | AnalysisResult
+  | { ok: false; reason: string; singularDof?: number }
 
 // ── Linear algebra helpers ────────────────────────────────────────────────────
 
@@ -40,8 +42,27 @@ function matVec(A: number[][], v: number[]): number[] {
   return A.map(row => row.reduce((s, a, j) => s + a * v[j], 0))
 }
 
-function gaussSolve(K: number[][], F: number[]): number[] | null {
+type GaussResult = { x: number[] } | { singular: true; dofIndex: number }
+
+function gaussSolve(K: number[][], F: number[]): GaussResult {
   const n = K.length
+  // Per-DOF singularity tolerance (v1.0.6 refinement).
+  //
+  // Naively scaling the tolerance by the global max-diagonal makes ill-
+  // conditioned matrices report false singularities: when EA and EI differ
+  // by many orders of magnitude (e.g. user authors A = 100 m² with
+  // I = 1e-12 m⁴), the axial diagonal entries dominate maxDiag and the
+  // bending diagonal entries fall below `1e-12 · maxDiag` even though they
+  // are physically nonzero. Compare each pivot against *its own* original
+  // diagonal instead — a DOF is singular only if its column collapsed
+  // relative to its starting scale, not relative to some other DOF's scale.
+  // `1e-12 · |K[i][i]|` keeps the same relative threshold per DOF while
+  // tolerating extreme stiffness contrasts across the model.
+  const origDiagTol = new Array(n).fill(0)
+  for (let i = 0; i < n; i++) {
+    origDiagTol[i] = Math.max(Math.abs(K[i][i]), 1) * 1e-12
+  }
+
   const A = K.map((row, i) => [...row, F[i]])
   for (let col = 0; col < n; col++) {
     let maxRow = col
@@ -52,7 +73,9 @@ function gaussSolve(K: number[][], F: number[]): number[] | null {
         maxRow = row
       }
     }
-    if (maxVal < 1e-30) return null
+    // Capture *which* DOF is unconstrained so the diagnostics layer can
+    // translate it into a node + direction message ("node n4, rotation").
+    if (maxVal < origDiagTol[col]) return { singular: true, dofIndex: col }
     if (maxRow !== col) [A[col], A[maxRow]] = [A[maxRow], A[col]]
     const pivot = A[col][col]
     for (let row = col + 1; row < n; row++) {
@@ -66,7 +89,7 @@ function gaussSolve(K: number[][], F: number[]): number[] | null {
     for (let j = i + 1; j < n; j++) x[i] -= A[i][j] * x[j]
     x[i] /= A[i][i]
   }
-  return x
+  return { x }
 }
 
 // ── Local stiffness and transformation ───────────────────────────────────────
@@ -336,8 +359,11 @@ export function analyze(model: StructureModel): SolverResult {
     F[dof] = 0
   }
 
-  const d = gaussSolve(K, F)
-  if (!d) return { ok: false, reason: "Singular stiffness matrix" }
+  const gs = gaussSolve(K, F)
+  if ("singular" in gs) {
+    return { ok: false, reason: "Singular stiffness matrix", singularDof: gs.dofIndex }
+  }
+  const d = gs.x
 
   // Node displacements
   const nodeDisplacements: Record<string, NodeDisplacement> = {}

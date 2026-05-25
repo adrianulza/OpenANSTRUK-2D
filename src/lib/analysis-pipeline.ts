@@ -12,7 +12,7 @@
  * case slice and never persisted in `model.loads`.
  */
 
-import { analyze, type AnalysisResult } from "./solver"
+import { analyze, type AnalysisResult, type SolverResult } from "./solver"
 import type { StructureModel } from "./model"
 import type {
   LoadCase,
@@ -44,15 +44,17 @@ export interface EnvelopeAnalysisResult extends AnalysisResult {
 
 /**
  * Solve a single load case. Builds a shallow copy of the model with only this
- * case's loads, then delegates to `analyze()`. Selfweight returns a zero result
- * (placeholder until real body-force computation lands).
+ * case's loads, then delegates to `analyze()`.
  *
- * Returns `null` if the solver fails for this case — other cases are unaffected.
+ * Returns the full `SolverResult` — including the `reason` string and
+ * `singularDof` on failure — so the diagnostics layer can surface specific
+ * messages to the user. Previous behaviour collapsed failures to `null` which
+ * threw away the failure cause.
  */
 export function solveCase(
   model: StructureModel,
   caseId: LoadCaseId,
-): AnalysisResult | null {
+): SolverResult {
   if (caseId === "selfweight") {
     // Synthesize a global-Y distributed load on every member from its section's
     // unit weight γ (kN/m³) and cross-sectional area A (mm²). Gravity acts in −Y.
@@ -79,8 +81,7 @@ export function solveCase(
       }
     }
     const slice: StructureModel = { ...model, loads: selfweightLoads }
-    const r = analyze(slice)
-    return r.ok ? r : null
+    return analyze(slice)
   }
 
   const filteredLoads: StructureModel["loads"] = {}
@@ -89,19 +90,19 @@ export function solveCase(
   }
 
   const slice: StructureModel = { ...model, loads: filteredLoads }
-  const r = analyze(slice)
-  return r.ok ? r : null
+  return analyze(slice)
 }
 
 /**
  * Solve every enabled case. Disabled cases are omitted from the result map.
- * Failed cases get `null` entries (per-case isolation).
+ * Failed cases retain their `{ ok: false, reason, singularDof? }` envelope so
+ * the diagnostics layer can report which case failed and why.
  */
 export function solveAllCases(
   model: StructureModel,
   loadCases: Record<LoadCaseId, LoadCase>,
-): Record<LoadCaseId, AnalysisResult | null> {
-  const results: Record<LoadCaseId, AnalysisResult | null> = {}
+): Record<LoadCaseId, SolverResult> {
+  const results: Record<LoadCaseId, SolverResult> = {}
   for (const [id, c] of Object.entries(loadCases)) {
     if (!c.enabled) continue
     results[id] = solveCase(model, id)
@@ -124,16 +125,17 @@ export function solveAllCases(
  * matches the inline warning shown in the Load Combination flyout.
  */
 export function combineResults(
-  caseResults: Record<LoadCaseId, AnalysisResult | null>,
+  caseResults: Record<LoadCaseId, SolverResult>,
   combo: LoadCombination,
 ): AnalysisResult | null {
   if (combo.terms.length === 0) return null
 
-  // Topology comes from the first available case result. All case results from
-  // the same model share the same node/member/support keys.
+  // Topology comes from the first *successful* case result. Failed cases (ok:
+  // false) are skipped here; if all referenced cases failed, the combo result
+  // is null and the UI handles it like any other missing result.
   const first = combo.terms
     .map((t) => caseResults[t.caseId])
-    .find((r): r is AnalysisResult => r != null)
+    .find((r): r is AnalysisResult => r != null && r.ok === true)
   if (!first) return null
 
   const out: AnalysisResult = {
@@ -158,7 +160,7 @@ export function combineResults(
 
   for (const term of combo.terms) {
     const r = caseResults[term.caseId]
-    if (!r) continue
+    if (!r || !r.ok) continue
     const k = term.factor
 
     for (const id of Object.keys(out.nodeDisplacements)) {
@@ -312,15 +314,17 @@ export function envelopeResults(
  */
 export function pickDisplayedResult(
   mode: AnalyzeViewMode,
-  caseResults: Record<LoadCaseId, AnalysisResult | null>,
+  caseResults: Record<LoadCaseId, SolverResult>,
   comboResults: Record<LoadComboId, AnalysisResult | null>,
   envelopeResult: AnalysisResult | null,
   selectedCaseId: LoadCaseId,
   selectedCombinationId: LoadComboId | null,
 ): AnalysisResult | null {
   switch (mode) {
-    case "case":
-      return caseResults[selectedCaseId] ?? null
+    case "case": {
+      const r = caseResults[selectedCaseId]
+      return r && r.ok ? r : null
+    }
     case "combination":
       return selectedCombinationId ? comboResults[selectedCombinationId] ?? null : null
     case "envelope":

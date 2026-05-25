@@ -190,11 +190,14 @@ function buildRoofHoweTrussModel(
   // Verticals (inner panel points only)
   for (let i = 1; i < numDiv; i++) addM(topAt(i), botAt(i))
 
-  // Howe diagonals: left half slopes toward ridge, right half mirrors
+  // Howe diagonals — inner panels only. The corner panels (i=0 and
+  // i=numDiv-1) would produce diagonals that coincide with the outermost
+  // top-chord segments (endLeft↔topInner[0], topInner[N-2]↔endRight), so we
+  // skip them. The remaining diagonals brace the inner panels symmetrically.
   const half = numDiv / 2
-  for (let i = 0; i < numDiv; i++) {
+  for (let i = 1; i < numDiv - 1; i++) {
     if (i < half) addM(botAt(i),     topAt(i + 1))
-    else          addM(topAt(i), botAt(i + 1))
+    else          addM(topAt(i),     botAt(i + 1))
   }
 
   supports[endLeft]  = { nodeId: endLeft,  type: "pin" }
@@ -462,12 +465,13 @@ function RoofHowePreview({ numDivisions }: { numDivisions: number }) {
       {Array.from({ length: n - 1 }, (_, i) => (
         <line key={`v${i}`} x1={xs[i + 1]} y1={topYAt(i + 1)} x2={xs[i + 1]} y2={BOT_Y} stroke={NAVY} strokeWidth={1.5} />
       ))}
-      {/* Howe diagonals */}
-      {Array.from({ length: n }, (_, i) =>
-        i < half
-          ? <line key={`d${i}`} x1={xs[i]}     y1={BOT_Y}        x2={xs[i + 1]} y2={topYAt(i + 1)} stroke={NAVY} strokeWidth={1.5} />
-          : <line key={`d${i}`} x1={xs[i]}     y1={topYAt(i)}    x2={xs[i + 1]} y2={BOT_Y}         stroke={NAVY} strokeWidth={1.5} />
-      )}
+      {/* Howe diagonals — inner panels only (matches buildRoofHoweTrussModel) */}
+      {Array.from({ length: Math.max(0, n - 2) }, (_, k) => {
+        const i = k + 1
+        return i < half
+          ? <line key={`d${i}`} x1={xs[i]} y1={BOT_Y}     x2={xs[i + 1]} y2={topYAt(i + 1)} stroke={NAVY} strokeWidth={1.5} />
+          : <line key={`d${i}`} x1={xs[i]} y1={topYAt(i)} x2={xs[i + 1]} y2={BOT_Y}         stroke={NAVY} strokeWidth={1.5} />
+      })}
       {/* Nodes */}
       {xs.map((x, i) => (
         <g key={i}>

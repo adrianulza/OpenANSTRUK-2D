@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.6] — 2026-05-25
+
+**Analysis diagnostics, lazy solver, and a per-issue warning dialog.** The solver now runs only when the user is on the Analyze tab, and structural-validity issues surface as a focused dialog instead of being silently swallowed.
+
+### Added
+- **`src/lib/analysis-diagnostics.ts`** — new pure module performing cheap structural pre-flight checks: empty model, reaction count, connectivity (union-find over members), and γ=0 sections. Returns a typed `DiagnosticsReport` consumed by the status bar and the new dialog.
+- **Analysis Issues dialog** (`src/components/analysis-issues-dialog.tsx`). Auto-opens on Analyze-tab entry when there is at least one error-severity issue. Closable via the `×` button, backdrop click, or `Esc`. Manually re-openable by clicking the status-bar STATUS label. Lists issues sorted errors-first with dedicated messages per issue kind.
+- **Pivot tracking in `gaussSolve`.** The solver now identifies *which* DOF is singular and surfaces it via `SolverResult.singularDof`. The diagnostics layer translates it to a node + direction message in the dialog.
+- **Selfweight γ=0 inline warning.** A second amber warning is rendered in both the Load Case and Load Combination flyout tools when Selfweight is enabled but some referenced sections have γ ≤ 0. Sibling to the existing "Selfweight is deactivated" warning.
+- **Duplicate-member detection** in `runDiagnostics`. Surfaces an amber warning in the Analysis Issues dialog when any two members share the same endpoint pair — defensive guard for templates, future imports, and scripting paths that bypass the user-facing MEMBER tool's existing duplicate check.
+
+### Fixed
+- **Roof Howe truss template generated 2 duplicate members per build.** The diagonal loop emitted "diagonals" at the corner panels (i=0 and i=numDiv−1) whose endpoints coincided with the outermost top-chord segments, doubling their stiffness in K and mislabeling a textbook-determinate truss as `INDETERMINATE`. Diagonal loop now spans inner panels only (`i = 1` to `numDiv − 2`); preview renderer mirrors the fix. After: the template ships as `DETERMINATE` for every supported `numDiv` (4, 6, 8, 10, 12) with `m + r = 2j` by construction.
+- **`gaussSolve` per-DOF singularity tolerance.** The previous tolerance `1e-12 · max|diag(K)|` scaled to the *largest* diagonal entry of the entire matrix. With wildly inconsistent section properties (e.g. user authors `A = 100 m²` paired with `I = 1e-12 m⁴`), the axial diagonals dominate `maxDiag` and the bending diagonals fall below the threshold even though they're physically nonzero — the solver reported a false instability. The tolerance is now scaled per-DOF against that DOF's own original diagonal magnitude. Real mechanisms still trigger; pure ill-conditioning no longer does.
+- **Radius-of-gyration warning in the MATERIAL manual form.** When the user authors `√(I33 / A)` outside the physically reasonable range `0.1 mm – 10 m`, an amber warning surfaces inline: *"A and I33 give an unrealistic radius of gyration √(I/A). The solver may flag false instabilities."* Soft check — does not block save. Catches the authoring error early instead of letting it propagate as a confusing "Instability detected" later.
+
+### Changed
+- **Lazy solver execution.** `solveAllCases` is now gated on `activeTab === "Analyze"` in `App.tsx`. Editing in Model/Load tabs no longer triggers solves whose results would never be drawn — entering the Analyze tab functions as the implicit "Analyze" trigger. Edits while on Analyze still re-solve live, preserving the no-button UX inside the tab.
+- **Status-bar relabel: `STABILITY` → `STATUS`.** Three states replace the binary STABLE/UNSTABLE: `DETERMINATE` (green), `INDETERMINATE` (amber), `UNSTABLE` (red). The status pill is now a clickable button that opens the issues dialog. Driven by the diagnostics module — accounts for connectivity and solver singularities, not just the `3m + r vs 3j` count formula.
+- **Solver failure reasons no longer discarded.** `solveCase` returns the full `SolverResult` (including `reason` and `singularDof` on failure) instead of collapsing failures to `null`. `combineResults` and `pickDisplayedResult` narrow on `.ok` accordingly.
+- **`gaussSolve` tolerance.** Replaced the absolute `< 1e-30` pivot threshold with `1e-12 · max|diag(K)|`, catching near-mechanisms that previously slipped through as garbage solutions.
+- **`stabilityOf` removed from `model.ts`.** The `3m + r vs 3j` logic now lives inside `runDiagnostics` and is used only to distinguish determinate from indeterminate once error checks have passed.
+
+### Notes
+- Core solver math (`localStiffness`, `transformMatrix`, `fixedEndForces`, `condensedTrussElement`, end-force extraction) is unchanged. The only `solver.ts` change is `gaussSolve` itself and the new `singularDof` plumbing.
+- The connectivity check uses union-find — O((j + m) · α(j)), microseconds even on large models. The full diagnostics pass is ~1000× cheaper than a single solve.
+- **Diagnostic solve in non-Analyze tabs.** Pure-topology diagnostics can't catch every geometric mechanism (isolated nodes whose support doesn't constrain θ, collinear pins, parallel rollers). To keep the STATUS pill honest in every tab, the app runs one solve per edit on a loadless slice of the model. The result is discarded; only the `singularDof` from a failed solve upgrades the diagnostics report. Roughly N× cheaper than the Analyze-tab pipeline (N = enabled cases).
+
+### Documentation
+- `docs/USER_GUIDE.md`: Self-Weight section updated to mention the γ=0 inline warning; new "Analysis Status" section explaining the three states + dialog + lazy-solve behavior.
+- `docs/ARCHITECTURE.md`: new "Analysis Diagnostics & Lazy Solve" subsection.
+- `CLAUDE.md`: status bumped to v1.0.6 with the new diagnostics module under the solver area.
+
+---
+
 ## [1.0.5] — 2026-05-24
 
 **Analyze tab UX polish — auto-fit diagrams & deformation with intuitive sliders.**
