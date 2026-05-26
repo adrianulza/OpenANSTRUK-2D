@@ -150,9 +150,10 @@ interface StructuralCanvasProps {
   invertSFD?: boolean
   invertBMD?: boolean
   deformationScale?: number
-  showDeformNodeLabels?: boolean
-  showReactionNodeLabels?: boolean
-  showDiagramMemberLabels?: boolean
+  showSectionLabels?: boolean
+  showNodeIds?: boolean
+  showMemberIds?: boolean
+  showLocalAxes?: boolean
   hoveredNodeId?: NodeId | null
   hoveredMemberId?: string | null
   hoveredLoadId?: LoadId | null
@@ -197,9 +198,10 @@ export function StructuralCanvas({
   invertSFD = false,
   invertBMD = false,
   deformationScale = 1,
-  showDeformNodeLabels = true,
-  showReactionNodeLabels = true,
-  showDiagramMemberLabels = true,
+  showSectionLabels = true,
+  showNodeIds = false,
+  showMemberIds = false,
+  showLocalAxes = false,
   hoveredNodeId,
   hoveredMemberId,
   hoveredLoadId,
@@ -394,7 +396,7 @@ export function StructuralCanvas({
         }
 
         const section = model.sections[m.section]
-        if (section && activeTab === "Model") {
+        if (section && showSectionLabels) {
           const midX = (pa.sx + pb.sx) / 2
           const midY = (pa.sy + pb.sy) / 2
           let angle = Math.atan2(pb.sy - pa.sy, pb.sx - pa.sx)
@@ -413,7 +415,7 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom]
   )
 
   const drawNodes = useCallback(
@@ -1254,7 +1256,6 @@ export function StructuralCanvas({
         const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
         const spx = l2x, spy = -l2y
 
-        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
         // Sample N(x) at N_PTS+1 points. Mirrored about the member axis (no side-bias).
         const pts: Array<{ mx: number; my: number; dpx: number; dpy: number; N: number }> = []
@@ -1422,7 +1423,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, showDiagramMemberLabels, adaptiveView, zoom]
+    [model, analysisResult, diagramScale, adaptiveView, zoom]
   )
 
   const drawShearDiagram = useCallback(
@@ -1458,7 +1459,6 @@ export function StructuralCanvas({
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
 
-        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
         const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
         // screen local-2: l2x unchanged, l2y flipped (world Y-up → screen Y-down)
@@ -1559,7 +1559,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, invertSFD, showDiagramMemberLabels, adaptiveView, zoom]
+    [model, analysisResult, diagramScale, invertSFD, adaptiveView, zoom]
   )
 
   const drawMomentDiagram = useCallback(
@@ -1595,7 +1595,6 @@ export function StructuralCanvas({
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
 
-        if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
         const { l2x, l2y } = local2World(nA.x, nA.y, nB.x, nB.y)
         let spx = l2x, spy = -l2y
@@ -1684,7 +1683,7 @@ export function StructuralCanvas({
         ctx.restore()
       }
     },
-    [model, analysisResult, diagramScale, invertBMD, showDiagramMemberLabels, adaptiveView, zoom]
+    [model, analysisResult, diagramScale, invertBMD, adaptiveView, zoom]
   )
 
   const drawDeformedShape = useCallback(
@@ -1779,20 +1778,8 @@ export function StructuralCanvas({
         drawSupportGlyph(ctx, sx, sy, "roller", false, COLOR, s)
       }
 
-      // Pass 3: node labels (node ID at each deformed node position)
-      if (showDeformNodeLabels) {
-        for (const [nodeId, node] of Object.entries(model.nodes)) {
-          const d = analysisResult.nodeDisplacements[nodeId]
-          if (!d) continue
-          const wx = node.x + k * d.u
-          const wy = node.y + k * d.v
-          const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-          drawNodeIdTag(ctx, sx, sy, nodeId)
-        }
-      }
-
     },
-    [model, analysisResult, deformationScale, showDeformNodeLabels, adaptiveView, zoom]
+    [model, analysisResult, deformationScale, adaptiveView, zoom]
   )
 
   const drawDeformHover = useCallback(
@@ -1998,10 +1985,140 @@ export function StructuralCanvas({
         }
 
         ctx.restore()
-        if (showReactionNodeLabels) drawNodeIdTag(ctx, sx, sy, nodeId)
       }
     },
-    [model, analysisResult, showReactionNodeLabels, adaptiveView, zoom]
+    [model, analysisResult, adaptiveView, zoom]
+  )
+
+  const drawIdPills = useCallback(
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      const s = adaptiveView ? 1 / zoom : 1
+      if (showNodeIds) {
+        for (const node of Object.values(model.nodes)) {
+          const { sx, sy } = worldToScreen(node, rect)
+          drawNodeIdTag(ctx, sx, sy - 20 * s, node.id, s)
+        }
+      }
+      if (showMemberIds) {
+        for (const member of Object.values(model.members)) {
+          const nA = model.nodes[member.a]
+          const nB = model.nodes[member.b]
+          if (!nA || !nB) continue
+          const PA = worldToScreen(nA, rect)
+          const PB = worldToScreen(nB, rect)
+          const mx = (PA.sx + PB.sx) / 2
+          const my = (PA.sy + PB.sy) / 2
+          let angle = Math.atan2(PB.sy - PA.sy, PB.sx - PA.sx)
+          if (angle >  Math.PI / 2) angle -= Math.PI
+          if (angle < -Math.PI / 2) angle += Math.PI
+          const off = 16 * s
+          const px = -Math.sin(angle) * off
+          const py =  Math.cos(angle) * off
+          drawMemberIdTag(ctx, mx + px, my + py, member.id, angle, s)
+        }
+      }
+    },
+    [model, showNodeIds, showMemberIds, adaptiveView, zoom]
+  )
+
+  const drawLocalAxes = useCallback(
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      if (!showLocalAxes) return
+      const s = adaptiveView ? 1 / zoom : 1
+      const ARROW_LEN = 35 * s     // px, screen-space length of each axis arrow
+      const HEAD = 12 * s
+      const LABEL_OFF = 10 * s
+      const LINE_WIDTH = 3 * s   // stroke weight for axis arrows
+      const MID_OFFSET = 10 * s     // perpendicular offset from member midpoint (along +local-2; negative = opposite side)
+      const FONT = `bold ${10 * s}px 'JetBrains Mono', monospace`
+      const COLOR_1 = "#dc2626"   // red — local-1 (axial)
+      const COLOR_2 = "#16a34a"   // green — local-2 (transverse)
+      const COLOR_3 = "#1d4ed8"   // blue — local-3 (out of screen)
+
+      const drawArrow = (x0: number, y0: number, dx: number, dy: number, color: string) => {
+        ctx.save()
+        ctx.strokeStyle = color
+        ctx.fillStyle = color
+        ctx.lineWidth = LINE_WIDTH
+        ctx.lineCap = "round"
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        ctx.lineTo(x0 + dx, y0 + dy)
+        ctx.stroke()
+        // arrowhead
+        const len = Math.hypot(dx, dy)
+        const ux = dx / len, uy = dy / len
+        const nx = -uy, ny = ux
+        const tipX = x0 + dx, tipY = y0 + dy
+        ctx.beginPath()
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - ux * HEAD - nx * (HEAD * 0.55), tipY - uy * HEAD - ny * (HEAD * 0.55))
+        ctx.lineTo(tipX - ux * HEAD + nx * (HEAD * 0.55), tipY - uy * HEAD + ny * (HEAD * 0.55))
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+
+      ctx.save()
+      ctx.font = FONT
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
+
+      for (const member of Object.values(model.members)) {
+        const nA = model.nodes[member.a]
+        const nB = model.nodes[member.b]
+        if (!nA || !nB) continue
+        const PA = worldToScreen(nA, rect)
+        const PB = worldToScreen(nB, rect)
+        const dx = PB.sx - PA.sx
+        const dy = PB.sy - PA.sy
+        const L = Math.hypot(dx, dy)
+        if (L < 1e-6) continue
+
+        // Local-1 in screen space: unit vector i→j
+        const u1x = dx / L, u1y = dy / L
+        // Local-2 in screen space: world +90° CCW becomes screen −90° CW (Y-flip)
+        //   world (l2x, l2y) = (-dy_world/L, dx_world/L)
+        //   screen mapping flips Y → (l2x, -l2y) → in screen-pixel terms: (u1y, -u1x)
+        const u2x = u1y, u2y = -u1x
+
+        // Member midpoint, shifted along +local-2 by MID_OFFSET
+        const mx = (PA.sx + PB.sx) / 2 + u2x * MID_OFFSET
+        const my = (PA.sy + PB.sy) / 2 + u2y * MID_OFFSET
+
+        // Local-1 arrow (red)
+        drawArrow(mx, my, u1x * ARROW_LEN, u1y * ARROW_LEN, COLOR_1)
+        // Local-2 arrow (green)
+        drawArrow(mx, my, u2x * ARROW_LEN, u2y * ARROW_LEN, COLOR_2)
+
+        // Labels at arrow tips, nudged outward
+        ctx.fillStyle = COLOR_1
+        ctx.fillText("1",
+          mx + u1x * (ARROW_LEN + LABEL_OFF),
+          my + u1y * (ARROW_LEN + LABEL_OFF))
+        ctx.fillStyle = COLOR_2
+        ctx.fillText("2",
+          mx + u2x * (ARROW_LEN + LABEL_OFF),
+          my + u2y * (ARROW_LEN + LABEL_OFF))
+
+        // Local-3 (out of screen): small ⊙ glyph at the origin
+        const R3 = 4 * s
+        ctx.save()
+        ctx.strokeStyle = COLOR_3
+        ctx.fillStyle = COLOR_3
+        ctx.lineWidth = 1.2 * s
+        ctx.beginPath()
+        ctx.arc(mx, my, R3, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(mx, my, 1.2 * s, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      ctx.restore()
+    },
+    [model, showLocalAxes, adaptiveView, zoom]
   )
 
   const draw = useCallback(() => {
@@ -2037,6 +2154,8 @@ export function StructuralCanvas({
     drawGizmo(ctx, rect)
 
     if (showDimensions) drawDimensions(ctx, rect)
+    drawIdPills(ctx, rect)
+    drawLocalAxes(ctx, rect)
     if (activeTab === "Model") drawPreview(ctx, rect)
     if (activeTab === "Load") drawLoads(ctx, rect)
     if (activeTab === "Analyze" && analysisResult) {
@@ -2081,6 +2200,8 @@ export function StructuralCanvas({
     drawSupports,
     drawGizmo,
     drawDimensions,
+    drawIdPills,
+    drawLocalAxes,
     drawPreview,
     drawLoads,
     drawAxialDiagram,

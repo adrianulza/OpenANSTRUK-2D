@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { StructureModel } from "@/lib/model"
-import { newNodeId, newMemberId, defaultSections } from "@/lib/model"
+import { newNodeId, newMemberId, defaultSections, resetIdCounter } from "@/lib/model"
 import { ToggleButton } from "@/components/flyout-shared"
 
 type FrameType =
@@ -29,6 +29,7 @@ function buildFrameModel(
   supportType: "fixed" | "pin",
   frameType: FrameType
 ): StructureModel {
+  resetIdCounter()
   const startX = -(numBays * bayWidth) / 2
   const startY = -(numStories * storyHeight) / 2
 

@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.8] — 2026-05-26
+
+**Visibility settings.** A consolidated set of overlay toggles in the status-bar Settings panel: node IDs, member IDs, local axes, and section labels. The Analyze-tab flyouts no longer carry per-tool "show label" switches — the new global toggles cover all three tabs. IDs reflect the model's actual stored identifiers, and a fresh canvas / template / example restarts numbering at `n1` / `m1`.
+
+### Added
+- **Show Node IDs / Show Member IDs toggles** in the Settings popover (status bar → Settings), defaulting off. Render small pill labels at each node (bumped above) and each member midpoint (bumped opposite of the section label, rotated to follow diagonals). Pills scale with `s = adaptiveView ? 1/zoom : 1`, matching the existing label adaptive-size convention.
+- **Show Local Axes toggle**. Renders a per-member 1-2 axis gizmo at each member midpoint: red `1` arrow along local-1 (i→j), green `2` arrow along local-2 (in-plane perpendicular), and a small blue ⊙ glyph for local-3 (out of screen). Adaptive-sized; tunable `ARROW_LEN`, `HEAD`, `LABEL_OFF`, `LINE_WIDTH`, `MID_OFFSET` constants live at the top of `drawLocalAxes`.
+- **Show Section Labels toggle**, defaulting on. Section names on members now render across Model / Load / Analyze tabs instead of being hard-gated to Model.
+- **Pill rotation parameter** on `drawMemberIdTag(ctx, sx, sy, memberId, angle?, s?)` — pill text follows the member's screen-space angle (normalized to `[-π/2, π/2]` to keep text upright), so diagonal members get diagonal pills aligned with the member axis.
+- **`resetIdCounter()`** is now part of the public model API (was previously test-only). Called at the start of `handleNewFile`, `handleTemplateLoad`, each template modal's build function (`buildBeamModel`, `buildFrameModel`, `buildTrussModel`, `buildRoofHoweTrussModel`, `buildRoofFinkTrussModel`), and the Examples-modal confirm path. Result: a fresh canvas or template load restarts node/member IDs at `n1` / `m1`.
+
+### Changed
+- **Section-label gate.** `drawMembers` no longer hardcodes `activeTab === "Model"` for the section name; it reads the new `showSectionLabels` flag, threaded through `App.tsx → StatusBar → GridUnitsPanel → StructuralCanvas`. Visible in all three tabs by default.
+- **ID-pill helpers (`drawNodeIdTag`, `drawMemberIdTag`) gained an `s` scale parameter** — font size, padding, border width, corner radius all multiply by `s` so pills stay visually consistent with the section label and dimension labels at any zoom.
+- **Display format for IDs.** Pills render the raw internal ID verbatim (`n3`, `m5`) instead of the previous `"N" + nodeId.replace(/^\D+/, "")` and `memberId.toUpperCase()` transforms. The Analyze-tab summary lists (reaction, diagram, deformation) match. Storage IDs remain lowercase as before.
+- **JSDoc on `resetIdCounter`** relaxed from "test setup / teardown only" to "call before building a fresh model".
+
+### Removed
+- **Per-tool label toggles in the Analyze flyouts** (`Show Node Labels` on reaction-tool, `Show Member Labels` on diagram-tool, `Show Node Labels` on deformation-tool). Their state (`showReactionNodeLabels`, `showDiagramMemberLabels`, `showDeformNodeLabels`), corresponding props through `flyout-panel.tsx`, and the canvas branches that consumed them are deleted. The new global `Show Node IDs` / `Show Member IDs` toggles cover the same need across all tabs. Value labels (Rx/Ry/Mz, V/M/N, Δ) are always rendered when the analyze tool is active.
+
+### Fixed
+- **Member-ID pill orientation on diagonal members.** Previously horizontal, now rotates to follow the member axis with text kept upright via the same `[-π/2, π/2]` normalization the section label uses. Pill sits perpendicular to the member on the opposite side from the section label, so the two never overlap.
+
+### Notes
+- Solver, reactions, displacements, AFD/SFD/BMD values are byte-identical to v1.0.7. This release is overlay-only.
+- The internal ID *is* the identity used by the solver — there is no separate "label vs ID" layer. Resetting the counter on model swaps lets the user-facing IDs restart cleanly without any change to how members reference nodes.
+
+### Documentation
+- `CLAUDE.md`: "Sign Conventions" section gained an explicit **Global frame** block (+X, +Y, +Z) and a **Local ↔ global mapping** table for horizontal / vertical / diagonal members + a note on the screen-space Y-flip rule.
+- `docs/ARCHITECTURE.md`: matching updates — global frame statement, mapping table, and a one-line mention of the new Show Local Axes setting.
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.7] — 2026-05-26
 
 **Adaptive selfweight on member.** The AFD now reflects the linear axial variation caused by gravity components along inclined members. Frame columns and truss diagonals carrying self-weight along their local-1 axis previously rendered as a constant axial band; they now show the true linear ramp. Reaction values, SFD, and BMD are byte-identical to v1.0.6.

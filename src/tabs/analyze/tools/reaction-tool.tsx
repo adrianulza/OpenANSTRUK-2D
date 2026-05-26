@@ -13,13 +13,9 @@ import {
 
 export function ReactionToolContent({
   analysisResult,
-  showNodeLabels = true,
-  onShowNodeLabelsChange,
   unitSettings = DEFAULT_UNIT_SETTINGS,
 }: {
   analysisResult: AnalysisResult | null
-  showNodeLabels?: boolean
-  onShowNodeLabelsChange?: (v: boolean) => void
   unitSettings?: UnitSettings
 }) {
   const [showReport, setShowReport] = React.useState(false)
@@ -34,16 +30,6 @@ export function ReactionToolContent({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-gray-600">Node Labels</Label>
-        <ToggleButton
-          active={showNodeLabels}
-          onClick={() => onShowNodeLabelsChange?.(!showNodeLabels)}
-          className="!flex-none h-6 text-xs px-3"
-        >
-          {showNodeLabels ? "On" : "Off"}
-        </ToggleButton>
-      </div>
       <div className="flex items-center justify-between">
         <Label className="text-xs text-gray-600">Summary</Label>
         <ToggleButton
@@ -61,7 +47,7 @@ export function ReactionToolContent({
           <div className="space-y-2">
             {entries.map(([nodeId, r]) => (
               <div key={nodeId} className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 space-y-1">
-                <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
+                <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 tracking-wide">{nodeId}</span>
                 <div className="grid grid-cols-2 gap-x-2">
                   <span className="text-[10px] text-gray-500">Rx</span>
                   <span className="text-[10px] font-mono text-right" style={{ color: valColor(r.Rx) }}>{fmtForce(r.Rx)}</span>

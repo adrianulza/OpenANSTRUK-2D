@@ -14,16 +14,12 @@ import {
 export function DeformationToolContent({
   scale,
   onScaleChange,
-  showNodeLabels = true,
-  onShowNodeLabelsChange,
   analysisResult,
   model,
   unitSettings = DEFAULT_UNIT_SETTINGS,
 }: {
   scale?: number
   onScaleChange?: (v: number) => void
-  showNodeLabels?: boolean
-  onShowNodeLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   model?: StructureModel
   unitSettings?: UnitSettings
@@ -132,17 +128,6 @@ export function DeformationToolContent({
 
       <div className="border-t" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }} />
 
-      <div className="flex items-center justify-between select-none">
-        <span className="text-xs text-gray-600">Node Labels</span>
-        <ToggleButton
-          active={showNodeLabels}
-          onClick={() => onShowNodeLabelsChange?.(!showNodeLabels)}
-          className="!flex-none h-6 text-xs px-3"
-        >
-          {showNodeLabels ? "On" : "Off"}
-        </ToggleButton>
-      </div>
-
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <Label className="text-xs text-gray-600">Summary</Label>
@@ -161,7 +146,7 @@ export function DeformationToolContent({
             <div className="space-y-2">
               {nodeEntries.map(([nodeId, d]) => (
                 <div key={nodeId} className="rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5 space-y-1">
-                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase tracking-wide">{"N" + nodeId.replace(/^\D+/, "")}</span>
+                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 tracking-wide">{nodeId}</span>
                   <div className="grid grid-cols-2 gap-x-2">
                     <span className="text-[10px] text-gray-500">x</span>
                     <span className="text-[10px] font-mono text-right text-[#1e293b]">{displayDisplacement(d.u, unitSettings).toFixed(3)} {dispUnit}</span>

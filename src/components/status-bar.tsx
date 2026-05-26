@@ -23,6 +23,14 @@ interface StatusBarProps {
   onAdaptiveViewChange: (v: boolean) => void
   onUnitSettingsChange: (next: UnitSettings) => void
   onToggleDimensions: () => void
+  showSectionLabels: boolean
+  onToggleSectionLabels: () => void
+  showNodeIds: boolean
+  onToggleNodeIds: () => void
+  showMemberIds: boolean
+  onToggleMemberIds: () => void
+  showLocalAxes: boolean
+  onToggleLocalAxes: () => void
 }
 
 const STATUS_STYLE: Record<AnalysisStatus, { text: string; bg: string; label: string }> = {
@@ -48,6 +56,14 @@ export function StatusBar({
   onAdaptiveViewChange,
   onUnitSettingsChange,
   onToggleDimensions,
+  showSectionLabels,
+  onToggleSectionLabels,
+  showNodeIds,
+  onToggleNodeIds,
+  showMemberIds,
+  onToggleMemberIds,
+  showLocalAxes,
+  onToggleLocalAxes,
 }: StatusBarProps) {
   const lenUnit = unitSettings.length
   const coordScale = lenUnit === "mm" ? 1000 : 1
@@ -113,6 +129,14 @@ export function StatusBar({
               onUnitSettingsChange={onUnitSettingsChange}
               showDimensions={showDimensions}
               onToggleDimensions={onToggleDimensions}
+              showSectionLabels={showSectionLabels}
+              onToggleSectionLabels={onToggleSectionLabels}
+              showNodeIds={showNodeIds}
+              onToggleNodeIds={onToggleNodeIds}
+              showMemberIds={showMemberIds}
+              onToggleMemberIds={onToggleMemberIds}
+              showLocalAxes={showLocalAxes}
+              onToggleLocalAxes={onToggleLocalAxes}
               snapToGrid={snapToGrid}
               onSnapToGridChange={onSnapToGridChange}
               snapToNode={snapToNode}

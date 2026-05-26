@@ -17,6 +17,14 @@ interface GridUnitsPanelProps {
   onUnitSettingsChange: (next: UnitSettings) => void
   showDimensions: boolean
   onToggleDimensions: () => void
+  showSectionLabels: boolean
+  onToggleSectionLabels: () => void
+  showNodeIds: boolean
+  onToggleNodeIds: () => void
+  showMemberIds: boolean
+  onToggleMemberIds: () => void
+  showLocalAxes: boolean
+  onToggleLocalAxes: () => void
   snapToGrid: boolean
   onSnapToGridChange: (v: boolean) => void
   snapToNode: boolean
@@ -27,7 +35,7 @@ interface GridUnitsPanelProps {
 
 const PRESET_SPACINGS_M = [0.25, 0.5, 1.0]
 
-export function GridUnitsPanel({ unitSettings, onUnitSettingsChange, showDimensions, onToggleDimensions, snapToGrid, onSnapToGridChange, snapToNode, onSnapToNodeChange, adaptiveView, onAdaptiveViewChange }: GridUnitsPanelProps) {
+export function GridUnitsPanel({ unitSettings, onUnitSettingsChange, showDimensions, onToggleDimensions, showSectionLabels, onToggleSectionLabels, showNodeIds, onToggleNodeIds, showMemberIds, onToggleMemberIds, showLocalAxes, onToggleLocalAxes, snapToGrid, onSnapToGridChange, snapToNode, onSnapToNodeChange, adaptiveView, onAdaptiveViewChange }: GridUnitsPanelProps) {
   const [spacingInput, setSpacingInput] = useState(
     displayGridSpacing(unitSettings.gridSpacing, unitSettings).toString()
   )
@@ -116,7 +124,11 @@ export function GridUnitsPanel({ unitSettings, onUnitSettingsChange, showDimensi
       {/* Toggle rows: label on left, checkbox on right */}
       {([
         { label: "Adaptive View",   icon: <Scaling className="w-3.5 h-3.5 shrink-0" />, value: adaptiveView,   onToggle: () => onAdaptiveViewChange(!adaptiveView) },
-        { label: "Show Dimensions", icon: <Ruler className="w-3.5 h-3.5 shrink-0" />,   value: showDimensions, onToggle: onToggleDimensions },
+        { label: "Show Dimensions",     icon: <Ruler className="w-3.5 h-3.5 shrink-0" />, value: showDimensions,    onToggle: onToggleDimensions },
+        { label: "Show Section Labels", icon: <span className="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-[10px] font-mono font-bold leading-none">s</span>, value: showSectionLabels, onToggle: onToggleSectionLabels },
+        { label: "Show Node IDs",   icon: <span className="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-[10px] font-mono font-bold leading-none">n</span>, value: showNodeIds,    onToggle: onToggleNodeIds },
+        { label: "Show Member IDs", icon: <span className="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-[10px] font-mono font-bold leading-none">m</span>, value: showMemberIds,  onToggle: onToggleMemberIds },
+        { label: "Show Local Axes", icon: <span className="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-[9px] font-mono font-bold leading-none">1,2</span>, value: showLocalAxes,  onToggle: onToggleLocalAxes },
         { label: "Snap to Node",    icon: <Crosshair className="w-3.5 h-3.5 shrink-0" />, value: snapToNode,  onToggle: () => onSnapToNodeChange(!snapToNode) },
         { label: "Snap to Grid",    icon: <Magnet className="w-3.5 h-3.5 shrink-0" />,    value: snapToGrid,  onToggle: () => onSnapToGridChange(!snapToGrid) },
       ] as const).map(({ label, icon, value, onToggle }) => (

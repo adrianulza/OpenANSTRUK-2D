@@ -69,7 +69,7 @@ import {
   splitMember,
   SCALE,
 } from "@/lib/geometry"
-import { newMemberId } from "@/lib/model"
+import { newMemberId, resetIdCounter } from "@/lib/model"
 import { HIT_TOL_NODE, HIT_TOL_MEMBER, LOAD_PT_ARROW_LEN_PX, LOAD_DIST_MAX_ARROW_PX } from "@/lib/constants"
 import {
   type LoadCase,
@@ -93,6 +93,10 @@ export default function App() {
   const [snapToNode, setSnapToNode] = useState(true)
   const [adaptiveView, setAdaptiveView] = useState(true)
   const [showDimensions, setShowDimensions] = useState(true)
+  const [showSectionLabels, setShowSectionLabels] = useState(true)
+  const [showNodeIds, setShowNodeIds] = useState(false)
+  const [showMemberIds, setShowMemberIds] = useState(false)
+  const [showLocalAxes, setShowLocalAxes] = useState(false)
   const [cursorX, setCursorX] = useState(0)
   const [cursorY, setCursorY] = useState(0)
   const [model, setModel] = useState<StructureModel>(template1SimpleBeam)
@@ -107,9 +111,6 @@ export default function App() {
   const [invertSFD, setInvertSFD] = useState(true)
   const [invertBMD, setInvertBMD] = useState(false)
   const [deformationScale, setDeformationScale] = useState(1)
-  const [showDeformNodeLabels, setShowDeformNodeLabels] = useState(false)
-  const [showReactionNodeLabels, setShowReactionNodeLabels] = useState(false)
-  const [showDiagramMemberLabels, setShowDiagramMemberLabels] = useState(false)
   const [templateModal, setTemplateModal] = useState<"beam" | "frame" | "truss" | null>(null)
   const [showExamplesModal, setShowExamplesModal] = useState(false)
 
@@ -468,6 +469,7 @@ export default function App() {
     Object.keys(m.sections)[0] ?? "iwf150"
 
   const handleNewFile = useCallback(() => {
+    resetIdCounter()
     const m = createEmptyModel()
     setModel(m)
     setActiveSection(firstSectionId(m))
@@ -486,6 +488,7 @@ export default function App() {
       4: template4PortalLateral,
       5: template5AsymmetricRafter,
     }
+    resetIdCounter()
     const m = builders[template]()
     setModel(m)
     setActiveSection(firstSectionId(m))
@@ -1213,12 +1216,6 @@ export default function App() {
             onInvertBMDChange={setInvertBMD}
             deformationScale={deformationScale}
             onDeformationScaleChange={setDeformationScale}
-            showDeformNodeLabels={showDeformNodeLabels}
-            onShowDeformNodeLabelsChange={setShowDeformNodeLabels}
-            showReactionNodeLabels={showReactionNodeLabels}
-            onShowReactionNodeLabelsChange={setShowReactionNodeLabels}
-            showDiagramMemberLabels={showDiagramMemberLabels}
-            onShowDiagramMemberLabelsChange={setShowDiagramMemberLabels}
             analysisResult={displayedResult}
             moveNodeMode={moveNodeMode}
             onMoveNodeModeChange={handleMoveNodeModeChange}
@@ -1276,9 +1273,10 @@ export default function App() {
             invertSFD={invertSFD}
             invertBMD={invertBMD}
             deformationScale={deformationScale}
-            showDeformNodeLabels={showDeformNodeLabels}
-            showReactionNodeLabels={showReactionNodeLabels}
-            showDiagramMemberLabels={showDiagramMemberLabels}
+            showSectionLabels={showSectionLabels}
+            showNodeIds={showNodeIds}
+            showMemberIds={showMemberIds}
+            showLocalAxes={showLocalAxes}
             hoveredNodeId={hoveredNodeId}
             hoveredMemberId={hoveredMemberId}
             hoveredLoadId={hoveredLoadId}
@@ -1341,6 +1339,14 @@ export default function App() {
         onAdaptiveViewChange={setAdaptiveView}
         onUnitSettingsChange={setUnitSettings}
         onToggleDimensions={() => setShowDimensions(!showDimensions)}
+        showSectionLabels={showSectionLabels}
+        onToggleSectionLabels={() => setShowSectionLabels(!showSectionLabels)}
+        showNodeIds={showNodeIds}
+        onToggleNodeIds={() => setShowNodeIds(!showNodeIds)}
+        showMemberIds={showMemberIds}
+        onToggleMemberIds={() => setShowMemberIds(!showMemberIds)}
+        showLocalAxes={showLocalAxes}
+        onToggleLocalAxes={() => setShowLocalAxes(!showLocalAxes)}
       />
 
       <AnalysisIssuesDialog

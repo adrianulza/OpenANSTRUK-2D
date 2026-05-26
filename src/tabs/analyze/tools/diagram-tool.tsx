@@ -21,8 +21,6 @@ export function DiagramToolContent({
   onScaleChange,
   invert = false,
   onInvertChange,
-  showMemberLabels = true,
-  onShowMemberLabelsChange,
   analysisResult,
   model,
   unitSettings = DEFAULT_UNIT_SETTINGS,
@@ -32,8 +30,6 @@ export function DiagramToolContent({
   onScaleChange?: (v: number) => void
   invert?: boolean
   onInvertChange?: (v: boolean) => void
-  showMemberLabels?: boolean
-  onShowMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   model?: StructureModel
   unitSettings?: UnitSettings
@@ -137,17 +133,6 @@ export function DiagramToolContent({
 
       <div className="border-t" style={{ borderTopColor: FLYOUT_PANEL_COLORS.contentSeparator }} />
 
-      <div className="flex items-center justify-between select-none">
-        <span className="text-xs text-gray-600">Member Labels</span>
-        <ToggleButton
-          active={showMemberLabels}
-          onClick={() => onShowMemberLabelsChange?.(!showMemberLabels)}
-          className="!flex-none h-6 text-xs px-3"
-        >
-          {showMemberLabels ? "On" : "Off"}
-        </ToggleButton>
-      </div>
-
       {onInvertChange !== undefined && (
         <div className="flex items-center justify-between select-none">
           <span className="text-xs text-gray-600">Invert Diagram</span>
@@ -179,7 +164,7 @@ export function DiagramToolContent({
             <div className="space-y-1">
               {memberRows.map(({ id, peak }) => (
                 <div key={id} className="flex items-baseline justify-between rounded-md border border-gray-100 bg-gray-50 px-2.5 py-1.5">
-                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5 uppercase">{id.toUpperCase()}</span>
+                  <span className="inline-block text-[10px] font-mono font-bold text-[#475569] bg-white border border-[#94a3b8] rounded px-1.5 py-0.5">{id}</span>
                   <span className="text-[11px] font-mono" style={{ color: peakColor(peak) }}>
                     {fmt(peak)} {unit}
                   </span>

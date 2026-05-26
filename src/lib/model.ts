@@ -207,7 +207,7 @@ export const newMemberId  = prefixed("m")
 export const newSectionId = prefixed("s")
 export const newLoadId    = prefixed("l")
 
-/** Resets the ID counter to zero. Use only in test setup / teardown. */
+/** Resets the ID counter to zero. Call before building a fresh model (New, templates, examples) so IDs restart at 1. */
 export function resetIdCounter(): void {
   idCounter = 0
 }

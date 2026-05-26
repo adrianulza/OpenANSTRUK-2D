@@ -208,7 +208,21 @@ The solver implements the **Direct Stiffness Method (DSM)** for 2D frame/truss e
 
 ### Sign Conventions (Theory-Pure)
 
-One rule for every member: local-1 = i→j unit vector `(c, s) = (dx/L, dy/L)`; local-2 = local-1 rotated **+90° CCW** = `(-s, c)`. No normalization, no quadrant flips, no special cases for vertical members.
+**Global frame:** +X rightward, +Y upward (structural Y-up; canvas flips to screen Y-down at render time), +Z out of the screen (right-hand rule). Stored coordinates are world metres.
+
+One rule for every member: local-1 = i→j unit vector `(c, s) = (dx/L, dy/L)`; local-2 = local-1 rotated **+90° CCW** = `(-s, c)`; local-3 = +Z (always coincides with global +Z in 2D). No normalization, no quadrant flips, no special cases for vertical members.
+
+**Local ↔ global mapping** (member ordering matters — swapping a/b rotates the 1-2 frame by 180°):
+
+| Member ordering | Local-1 | Local-2 | Local-3 |
+|-----------------|---------|---------|---------|
+| Horizontal, a left → b right | +X | +Y | +Z |
+| Horizontal, a right → b left | −X | −Y | +Z |
+| Vertical,   a bottom → b top | +Y | −X | +Z |
+| Vertical,   a top → b bottom | −Y | +X | +Z |
+| Diagonal up-right (45°)      | (+X+Y)/√2 | (−X+Y)/√2 | +Z |
+
+The settings panel exposes a **Show Local Axes** toggle that draws a per-member 1-2 gizmo (red `1` along the member, green `2` perpendicular, blue ⊙ for the out-of-screen local-3) at each member midpoint.
 
 | Quantity | Positive direction |
 |----------|--------------------|

@@ -93,12 +93,6 @@ interface FlyoutPanelProps {
   onInvertBMDChange?: (v: boolean) => void
   deformationScale?: number
   onDeformationScaleChange?: (v: number) => void
-  showDeformNodeLabels?: boolean
-  onShowDeformNodeLabelsChange?: (v: boolean) => void
-  showReactionNodeLabels?: boolean
-  onShowReactionNodeLabelsChange?: (v: boolean) => void
-  showDiagramMemberLabels?: boolean
-  onShowDiagramMemberLabelsChange?: (v: boolean) => void
   analysisResult?: AnalysisResult | null
   onToolSelect?: (tool: ToolType) => void
   hoveredNodeId?: string | null
@@ -194,12 +188,6 @@ export function FlyoutPanel({
   onInvertBMDChange,
   deformationScale = 1,
   onDeformationScaleChange,
-  showDeformNodeLabels = true,
-  onShowDeformNodeLabelsChange,
-  showReactionNodeLabels = true,
-  onShowReactionNodeLabelsChange,
-  showDiagramMemberLabels = true,
-  onShowDiagramMemberLabelsChange,
   analysisResult,
   onToolSelect,
   hoveredNodeId,
@@ -316,12 +304,6 @@ export function FlyoutPanel({
           onInvertBMDChange={onInvertBMDChange}
           deformationScale={deformationScale}
           onDeformationScaleChange={onDeformationScaleChange}
-          showDeformNodeLabels={showDeformNodeLabels}
-          onShowDeformNodeLabelsChange={onShowDeformNodeLabelsChange}
-          showReactionNodeLabels={showReactionNodeLabels}
-          onShowReactionNodeLabelsChange={onShowReactionNodeLabelsChange}
-          showDiagramMemberLabels={showDiagramMemberLabels}
-          onShowDiagramMemberLabelsChange={onShowDiagramMemberLabelsChange}
           analysisResult={analysisResult}
           moveNodeMode={moveNodeMode}
           onMoveNodeModeChange={onMoveNodeModeChange}
@@ -427,12 +409,6 @@ function FlyoutContent({
   onInvertBMDChange,
   deformationScale = 1,
   onDeformationScaleChange,
-  showDeformNodeLabels = true,
-  onShowDeformNodeLabelsChange,
-  showReactionNodeLabels = true,
-  onShowReactionNodeLabelsChange,
-  showDiagramMemberLabels = true,
-  onShowDiagramMemberLabelsChange,
   analysisResult,
   moveNodeMode = "coordinates",
   onMoveNodeModeChange,
@@ -645,15 +621,15 @@ function FlyoutContent({
       case "SELECT":
         return <AnalyzeSelectContent analysisResult={analysisResult ?? null} unitSettings={unitSettings} />
       case "REACTION":
-        return <ReactionToolContent analysisResult={analysisResult ?? null} showNodeLabels={showReactionNodeLabels} onShowNodeLabelsChange={onShowReactionNodeLabelsChange} unitSettings={unitSettings} />
+        return <ReactionToolContent analysisResult={analysisResult ?? null} unitSettings={unitSettings} />
       case "AXIAL":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "SHEAR":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertSFD} onInvertChange={onInvertSFDChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertSFD} onInvertChange={onInvertSFDChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "MOMENT":
-        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} showMemberLabels={showDiagramMemberLabels} onShowMemberLabelsChange={onShowDiagramMemberLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "DEFORMATION":
-        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} showNodeLabels={showDeformNodeLabels} onShowNodeLabelsChange={onShowDeformNodeLabelsChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       default:
         return null
     }

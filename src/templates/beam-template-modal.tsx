@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import type { StructureModel } from "@/lib/model"
-import { newNodeId, newMemberId, defaultSections } from "@/lib/model"
+import { newNodeId, newMemberId, defaultSections, resetIdCounter } from "@/lib/model"
 
 interface Props {
   onConfirm: (model: StructureModel) => void
@@ -11,6 +11,7 @@ interface Props {
 // ─── model builder ────────────────────────────────────────────────────────────
 
 function buildBeamModel(numSpans: number, spanLength: number, section: string): StructureModel {
+  resetIdCounter()
   const totalLength = numSpans * spanLength
   const startX = -totalLength / 2
 

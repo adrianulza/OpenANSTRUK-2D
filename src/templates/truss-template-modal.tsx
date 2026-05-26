@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Minus, Plus } from "lucide-react"
 import type { StructureModel } from "@/lib/model"
-import { newNodeId, newMemberId, newLoadId, defaultSections } from "@/lib/model"
+import { newNodeId, newMemberId, newLoadId, defaultSections, resetIdCounter } from "@/lib/model"
 
 interface Props {
   onConfirm: (model: StructureModel) => void
@@ -30,6 +30,7 @@ function buildTrussModel(
   topLoadMag: number,
   botLoadMag: number,
 ): StructureModel {
+  resetIdCounter()
   const startX = -(numDiv * divLength) / 2
   const topY   =  height / 2
   const botY   = -height / 2
@@ -138,6 +139,7 @@ function buildRoofHoweTrussModel(
   topLoadMag: number,
   botLoadMag: number,
 ): StructureModel {
+  resetIdCounter()
   const startX = -(numDiv * divLength) / 2
   const baseY  = -height / 2
 
@@ -219,6 +221,7 @@ function buildRoofFinkTrussModel(
   topLoadMag: number,
   botLoadMag: number,
 ): StructureModel {
+  resetIdCounter()
   const N      = (numDiv - 1) / 2          // Fink level (1..5)
   const startX = -(numDiv * divLength) / 2
   const baseY  = -height / 2

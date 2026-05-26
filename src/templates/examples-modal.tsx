@@ -1,5 +1,5 @@
 import { useState } from "react"
-import type { StructureModel, Section } from "@/lib/model"
+import { resetIdCounter, type StructureModel, type Section } from "@/lib/model"
 import {
   type UnitSettings,
   DEFAULT_UNIT_SETTINGS,
@@ -50,6 +50,7 @@ export function ExamplesModal({ onConfirm, onClose, unitSettings }: Props) {
     const I33_val = parseI(parseFloat(I) || 1, u)
     const A_val   = parseA(parseFloat(A) || 1, u)
 
+    resetIdCounter()
     const model = example.templateFn()
 
     const sectionId = "section"
