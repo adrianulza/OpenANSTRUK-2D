@@ -3,7 +3,8 @@ import type { StructureModel } from "@/lib/model"
 export interface MemberEndForces {
   N1: number; V1: number; M1: number   // at node-A end, kN / kN·m
   N2: number; V2: number; M2: number   // at node-B end
-  q1: number; q2: number               // local-y distributed load kN/m
+  q1: number; q2: number               // local-2 (transverse) distributed load kN/m
+  qx1: number; qx2: number             // local-1 (axial) distributed load kN/m
 }
 
 export interface NodeDisplacement { u: number; v: number; theta: number }
@@ -119,9 +120,10 @@ function localStiffness(EA: number, EI: number, L: number): number[][] {
 // Requires EI > 0 (Step 1 input guard enforces this at the section layer).
 function condensedTrussElement(
   EA: number, EI: number, L: number, q1: number, q2: number,
+  qx1 = 0, qx2 = 0,
 ): { K_loc: number[][]; FEF_loc: number[] } | null {
   const Kf  = localStiffness(EA, EI, L)
-  const Ff  = fixedEndForces(q1, q2, L)
+  const Ff  = fixedEndForces(q1, q2, L, qx1, qx2)
   const r   = [0, 1, 3, 4]
   const s   = [2, 5]
 
@@ -178,13 +180,23 @@ function transformMatrix(c: number, s: number): number[][] {
   ]
 }
 
-// Fixed-end force vector (local frame) for trapezoidal load q1→q2 (kN/m, local-y positive).
-function fixedEndForces(q1: number, q2: number, L: number): number[] {
+// Fixed-end force vector (local frame) for trapezoidal load.
+//   q1, q2  — transverse load (local-2 / local-y), kN/m
+//   qx1, qx2 — axial load (local-1 / local-x), kN/m
+// Axial entries use the consistent trapezoidal FEF:
+//   Fx_i = L·(2·qx1 + qx2)/6,  Fx_j = L·(qx1 + 2·qx2)/6
+// For uniform qx (qx1=qx2=q), both reduce to qL/2 (the 50/50 lumping).
+// Putting axial into the local FEF (rather than lumping straight into global F)
+// ensures `f = K·d_loc − FEF` reproduces the full element-level reaction at each
+// end — the same mechanism that makes the transverse N1/N2 read the full clamped
+// reaction (not half). Without this, N1 at a fixed column base reads as half the
+// integrated self-weight instead of the full weight.
+function fixedEndForces(q1: number, q2: number, L: number, qx1 = 0, qx2 = 0): number[] {
   return [
-    0,
+    L * (2*qx1 + qx2) / 6,
     L * (7*q1 + 3*q2) / 20,
     L*L * (3*q1 + 2*q2) / 60,
-    0,
+    L * (qx1 + 2*qx2) / 6,
     L * (3*q1 + 7*q2) / 20,
     -L*L * (2*q1 + 3*q2) / 60,
   ]
@@ -273,13 +285,13 @@ export function analyze(model: StructureModel): SolverResult {
     let k: number[][]
     let FEF: number[]
     if (isTruss) {
-      const cond = condensedTrussElement(EA, EI, L, q1, q2)
+      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2)
       if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
       k = cond.K_loc
       FEF = cond.FEF_loc
     } else {
       k = localStiffness(EA, EI, L)
-      FEF = fixedEndForces(q1, q2, L)
+      FEF = fixedEndForces(q1, q2, L, qx1, qx2)
     }
     const T = transformMatrix(c, s)
     const Tt = transpose(T)
@@ -294,20 +306,10 @@ export function analyze(model: StructureModel): SolverResult {
 
     const FEF_global = matVec(Tt, FEF)
     for (let i = 0; i < 6; i++) F[dofs[i]] += FEF_global[i]
-
-    // Add axial distributed load as equivalent point loads at nodes (frames and trusses both).
-    if (Math.abs(qx1) > 1e-12 || Math.abs(qx2) > 1e-12) {
-      // For uniform/linear distributed axial load, apply equivalent loads at nodes
-      // For simplicity: half of total axial load goes to each node
-      const avgQx = (qx1 + qx2) / 2
-      const totalAxialLoad = avgQx * L
-      const axialAtA = totalAxialLoad / 2
-      const axialAtB = totalAxialLoad / 2
-      F[3*ia] += axialAtA * c        // x-component (in global coords)
-      F[3*ia + 1] += axialAtA * s    // y-component
-      F[3*ib] += axialAtB * c
-      F[3*ib + 1] += axialAtB * s
-    }
+    // (Axial distributed load is now carried in the local FEF entries [0] and [3]
+    // and assembled into global F by the Tᵀ transform above — same code path as
+    // transverse load. This makes element-level recovery `f − FEF` produce the
+    // correct N1/N2 instead of half the integrated value.)
   }
 
   // Point loads — global axis components
@@ -396,6 +398,7 @@ export function analyze(model: StructureModel): SolverResult {
     // Now applies to trusses too (released-end frame element carries transverse load
     // simply-supported between its end nodes).
     let q1 = 0, q2 = 0
+    let qx1 = 0, qx2 = 0
     for (const load of loads) {
       if (load.type === "distributed" && load.memberId === member.id) {
         const mode = load.mode ?? "local-axis"
@@ -404,8 +407,10 @@ export function analyze(model: StructureModel): SolverResult {
         } else {
           const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
           const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
-          q1 = -qxStart * s + qyStart * c
-          q2 = -qxEnd * s + qyEnd * c
+          qx1 = qxStart * c + qyStart * s
+          qx2 = qxEnd   * c + qyEnd   * s
+          q1  = -qxStart * s + qyStart * c
+          q2  = -qxEnd   * s + qyEnd   * c
         }
         break
       }
@@ -415,7 +420,7 @@ export function analyze(model: StructureModel): SolverResult {
     // Pairing K and FEF consistently is critical: f_raw = K · d_loc, then f = f_raw − FEF.
     let k: number[][]
     if (isTruss) {
-      const cond = condensedTrussElement(EA, EI, L, q1, q2)
+      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2)
       if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
       k = cond.K_loc
     } else {
@@ -437,6 +442,7 @@ export function analyze(model: StructureModel): SolverResult {
       V2:  f[4],
       M2:  f[5],   // ~0 for truss by construction
       q1, q2,
+      qx1, qx2,
     }
   }
 
@@ -467,10 +473,12 @@ export function memberInternalForces(
   x: number,
   L: number
 ): { N: number; V: number; M: number } {
-  const { q1, q2 } = ef
+  const { q1, q2, qx1, qx2 } = ef
+  // Axial: dN/dx = -qx  →  N(x) = N1 - qx1·x - (qx2-qx1)·x²/(2L)
   // reference software convention: dV_ref/dx = -q  →  V(x) = V1 - q1·x - (q2-q1)·x²/(2L)
   // Moment unchanged (sagging +): dM/dx = -V_ref  →  M(x) = M1 - V1·x + q1·x²/2 + …
+  const N = ef.N1 - qx1 * x - (qx2 - qx1) * x * x / (2 * L)
   const V = ef.V1 - q1 * x - (q2 - q1) * x * x / (2 * L)
   const M = ef.M1 - ef.V1 * x + q1 * x * x / 2 + (q2 - q1) * x * x * x / (6 * L)
-  return { N: ef.N1, V, M }
+  return { N, V, M }
 }

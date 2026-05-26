@@ -1222,20 +1222,32 @@ export function StructuralCanvas({
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
-      // Auto-fit: peak |N| renders at TARGET_PX (1 grid cell) at scale 1.0×
+      const N_PTS = 60
+      // Auto-fit: peak |N| sampled across all members at TARGET_PX (1 grid cell) at scale 1.0×.
       const TARGET_PX = 80
       let peakN = 0
       for (const m of Object.values(model.members)) {
         const ef = analysisResult.memberEndForces[m.id]
-        if (ef && Math.abs(ef.N1) > peakN) peakN = Math.abs(ef.N1)
+        const nA = model.nodes[m.a], nB = model.nodes[m.b]
+        if (!ef || !nA || !nB) continue
+        const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
+        if (L < 1e-9) continue
+        for (let i = 0; i <= N_PTS; i++) {
+          const { N } = memberInternalForces(ef, (i / N_PTS) * L, L)
+          if (Math.abs(N) > peakN) peakN = Math.abs(N)
+        }
       }
-      const BASE = peakN > 1e-9 ? (TARGET_PX / peakN) * diagramScale : 0
+      // Use HALF of the conventional BASE so the mirrored (±) band reaches TARGET_PX overall.
+      const BASE = peakN > 1e-9 ? (TARGET_PX / peakN) * diagramScale * 0.5 : 0
 
       for (const member of Object.values(model.members)) {
         const ef = analysisResult.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
+
+        const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
+        if (L < 1e-9) continue
 
         const PA = worldToScreen(nA, rect)
         const PB = worldToScreen(nB, rect)
@@ -1244,59 +1256,168 @@ export function StructuralCanvas({
 
         if (showDiagramMemberLabels) drawMemberIdTag(ctx, (PA.sx + PB.sx) / 2, (PA.sy + PB.sy) / 2, member.id)
 
-        // Axial force is constant along member; use N1 (tension positive)
-        const N = ef.N1
-        if (Math.abs(N) < 0.01) continue
+        // Sample N(x) at N_PTS+1 points. Mirrored about the member axis (no side-bias).
+        const pts: Array<{ mx: number; my: number; dpx: number; dpy: number; N: number }> = []
+        for (let i = 0; i <= N_PTS; i++) {
+          const t = i / N_PTS
+          const x = t * L
+          const { N } = memberInternalForces(ef, x, L)
+          const mx = PA.sx + t * (PB.sx - PA.sx)
+          const my = PA.sy + t * (PB.sy - PA.sy)
+          pts.push({ mx, my, dpx: N * BASE * spx, dpy: N * BASE * spy, N })
+        }
 
-        // Draw axial diagram centered on the member axis so it doesn't bleed
-        // into adjacent members (avoids left-column axial overlapping the beam).
-        const half = (N * BASE) / 2
-        const hpx = half * spx
-        const hpy = half * spy
-
-        const color = N >= 0 ? COLOR_SFD_POS : COLOR_SFD_NEG
+        // Find peak |N| for interior label
+        let maxN = 0, maxIdx = 0
+        pts.forEach((p, i) => { if (Math.abs(p.N) > Math.abs(maxN)) { maxN = p.N; maxIdx = i } })
 
         ctx.save()
 
-        // Filled rectangle centered on member axis
-        ctx.beginPath()
-        ctx.moveTo(PA.sx - hpx, PA.sy - hpy)
-        ctx.lineTo(PB.sx - hpx, PB.sy - hpy)
-        ctx.lineTo(PB.sx + hpx, PB.sy + hpy)
-        ctx.lineTo(PA.sx + hpx, PA.sy + hpy)
-        ctx.closePath()
-        ctx.globalAlpha = 0.45
-        ctx.fillStyle = color
-        ctx.fill()
+        const segments = splitByZeroCrossings(pts, (p) => p.N)
 
-        // Outlines on both sides
-        ctx.globalAlpha = 1
-        ctx.strokeStyle = color
-        ctx.lineWidth = DIAGRAM_LINE_WIDTH
-        ctx.beginPath()
-        ctx.moveTo(PA.sx + hpx, PA.sy + hpy)
-        ctx.lineTo(PB.sx + hpx, PB.sy + hpy)
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.moveTo(PA.sx - hpx, PA.sy - hpy)
-        ctx.lineTo(PB.sx - hpx, PB.sy - hpy)
-        ctx.stroke()
+        // Fill each segment on BOTH sides of the member axis (mirrored).
+        for (const seg of segments) {
+          if (seg.member.length < 2) continue
+          const color = seg.positive ? COLOR_SFD_POS : COLOR_SFD_NEG
 
-        // Label at midpoint, parallel to member, always offset to the +perp side
-        const absHalf = Math.abs(half)
-        const mx = (PA.sx + PB.sx) / 2 + absHalf * spx + spx * 18 * s
-        const my = (PA.sy + PB.sy) / 2 + absHalf * spy + spy * 18 * s
-        const angle = Math.atan2(PB.sy - PA.sy, PB.sx - PA.sx)
-        ctx.save()
-        ctx.translate(mx, my)
-        ctx.rotate(angle)
+          // +side polygon: member edge → +diagram edge
+          ctx.beginPath()
+          ctx.moveTo(seg.member[0][0], seg.member[0][1])
+          for (let i = 1; i < seg.member.length; i++) ctx.lineTo(seg.member[i][0], seg.member[i][1])
+          for (let i = seg.diagram.length - 1; i >= 0; i--) ctx.lineTo(seg.diagram[i][0], seg.diagram[i][1])
+          ctx.closePath()
+          ctx.globalAlpha = 0.35
+          ctx.fillStyle = color
+          ctx.fill()
+
+          // −side polygon: member edge → mirrored diagram edge (reflected across the axis)
+          ctx.beginPath()
+          ctx.moveTo(seg.member[0][0], seg.member[0][1])
+          for (let i = 1; i < seg.member.length; i++) ctx.lineTo(seg.member[i][0], seg.member[i][1])
+          for (let i = seg.diagram.length - 1; i >= 0; i--) {
+            const [dx, dy] = seg.diagram[i]
+            const [mx, my] = seg.member[i]
+            ctx.lineTo(2 * mx - dx, 2 * my - dy)
+          }
+          ctx.closePath()
+          ctx.globalAlpha = 0.35
+          ctx.fillStyle = color
+          ctx.fill()
+
+          // Outlines on both edges
+          ctx.globalAlpha = 1
+          ctx.strokeStyle = color
+          ctx.lineWidth = DIAGRAM_LINE_WIDTH
+          ctx.beginPath()
+          ctx.moveTo(seg.diagram[0][0], seg.diagram[0][1])
+          for (let i = 1; i < seg.diagram.length; i++) ctx.lineTo(seg.diagram[i][0], seg.diagram[i][1])
+          ctx.stroke()
+          ctx.beginPath()
+          for (let i = 0; i < seg.diagram.length; i++) {
+            const [dx, dy] = seg.diagram[i]
+            const [mx, my] = seg.member[i]
+            const x = 2 * mx - dx, y = 2 * my - dy
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+          }
+          ctx.stroke()
+        }
+
+        // Labels — anchored to the outer edge of the diagram tip on the +side.
         ctx.font = adaptiveView ? `500 ${11 * s}px 'JetBrains Mono', monospace` : DIAGRAM_LABEL_FONT
         ctx.fillStyle = COLOR_DIAGRAM_STROKE
-        ctx.textAlign = "center"
-        ctx.textBaseline = "middle"
-        const prefix = N >= 0 ? "+" : ""
-        ctx.fillText(`${prefix}${formatValue(N * forceScale)} ${forceLabel}`, 0, 0)
-        ctx.restore()
+        ctx.globalAlpha = 1
+
+        const Lscr = Math.hypot(PB.sx - PA.sx, PB.sy - PA.sy)
+        const alx = Lscr > 0.5 ? (PB.sx - PA.sx) / Lscr : 0
+        const aly = Lscr > 0.5 ? (PB.sy - PA.sy) / Lscr : 0
+
+        const labelPt = (p: typeof pts[0], val: number, alongSign = 0) => {
+          const PERP_GAP = 5 * s, ALONG_GAP = 16 * s
+          const dlen = Math.hypot(p.dpx, p.dpy)
+          const ux = dlen > 0.5 ? p.dpx / dlen : spx * (val >= 0 ? 1 : -1)
+          const uy = dlen > 0.5 ? p.dpy / dlen : spy * (val >= 0 ? 1 : -1)
+          const ox = ux * PERP_GAP + alx * alongSign * ALONG_GAP
+          const oy = uy * PERP_GAP + aly * alongSign * ALONG_GAP
+          const lx = p.mx + p.dpx + ox
+          const ly = p.my + p.dpy + oy
+          if (Math.abs(ox) >= Math.abs(oy)) {
+            ctx.textAlign = ox > 0 ? "left" : "right"
+            ctx.textBaseline = "middle"
+          } else {
+            ctx.textAlign = "center"
+            ctx.textBaseline = oy > 0 ? "top" : "bottom"
+          }
+          const prefix = val >= 0 ? "+" : ""
+          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
+        }
+
+        const p0 = pts[0], pN = pts[pts.length - 1]
+        const n1 = ef.N1
+        const n2 = ef.N2
+
+        if (member.memberType === "truss") {
+          // Truss: N is constant along the member only for purely-joint-loaded
+          // cases. Under axial distributed load (e.g. gravity component along a
+          // diagonal under selfweight) N varies linearly. When |N1 − N2| is
+          // appreciable, render two stacked lines "i = ... kN" / "j = ... kN";
+          // otherwise keep the single centered label.
+          const VARY_TOL = 0.01  // kN
+          const varies = Math.abs(n2 - n1) > VARY_TOL
+          const Nref = Math.abs(n1) >= Math.abs(n2) ? n1 : n2  // larger |N| for offset
+
+          if (varies) {
+            // Two-line label: anchored at member midpoint, rotated parallel to
+            // the member, on the +local-2 side past the (widest) diagram edge.
+            const edge = Math.abs(Nref * BASE)
+            const PERP_GAP = 10 * s
+            const LINE_HEIGHT = 13 * s
+            const mxC = (PA.sx + PB.sx) / 2
+            const myC = (PA.sy + PB.sy) / 2
+            const dist = edge + PERP_GAP
+            const lx = mxC + spx * dist
+            const ly = myC + spy * dist
+            const angle = Math.atan2(PB.sy - PA.sy, PB.sx - PA.sx)
+            ctx.save()
+            ctx.translate(lx, ly)
+            ctx.rotate(angle)
+            ctx.textAlign = "center"
+            ctx.textBaseline = "middle"
+            const fmt = (v: number) =>
+              `${v >= 0 ? "+" : ""}${formatValue(v * forceScale)} ${forceLabel}`
+            // Stack perpendicular to the (now-rotated) member axis. After
+            // ctx.rotate(angle), the member runs along local +x; "above" the
+            // diagram is local −y, so first line goes slightly more negative
+            // than the second.
+            ctx.fillText(`i = ${fmt(n1)}`, 0, -LINE_HEIGHT / 2)
+            ctx.fillText(`j = ${fmt(n2)}`,  0, +LINE_HEIGHT / 2)
+            ctx.restore()
+          } else if (Math.abs(n1) > 0.01) {
+            const edge = Math.abs(n1 * BASE)
+            const PERP_GAP = 10 * s
+            const mxC = (PA.sx + PB.sx) / 2
+            const myC = (PA.sy + PB.sy) / 2
+            const dist = edge + PERP_GAP
+            const lx = mxC + spx * dist
+            const ly = myC + spy * dist
+            const angle = Math.atan2(PB.sy - PA.sy, PB.sx - PA.sx)
+            ctx.save()
+            ctx.translate(lx, ly)
+            ctx.rotate(angle)
+            ctx.textAlign = "center"
+            ctx.textBaseline = "middle"
+            const prefix = n1 >= 0 ? "+" : ""
+            ctx.fillText(`${prefix}${formatValue(n1 * forceScale)} ${forceLabel}`, 0, 0)
+            ctx.restore()
+          }
+        } else {
+          // Frame: keep the existing end-label scheme (varying N along the member).
+          if (Math.abs(n1) > 0.01) labelPt(p0, n1, -1)
+          if (Math.abs(n2) > 0.01 && Math.abs(n2 - n1) > 0.01) labelPt(pN, n2, +1)
+          if (maxIdx > 0 && maxIdx < N_PTS && Math.abs(maxN) > 0.01 &&
+              Math.abs(maxN - n1) > 0.01 && Math.abs(maxN - n2) > 0.01) {
+            labelPt(pts[maxIdx], maxN, 0)
+          }
+        }
 
         ctx.restore()
       }

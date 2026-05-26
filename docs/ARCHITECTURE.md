@@ -223,6 +223,23 @@ One rule for every member: local-1 = i→j unit vector `(c, s) = (dx/L, dy/L)`; 
 
 `wStart`/`wEnd` are taken as the perpendicular component along **+local-2**, with no quadrant flip. The same `q1, q2` values are used by both the fixed-end-force formula (assembly) and the internal-force interpolation (recovery), so end values and the curve between them stay consistent.
 
+### Distributed Load — axial component (v1.0.7+)
+
+For distributed loads authored in **global-axis** mode, the projection onto each member's local-1 axis produces an axial intensity `qx1, qx2` (kN/m). This is the channel through which self-weight gravity reaches inclined members and the axial direction of vertical columns. The axial entries enter the local FEF vector at indices `[0]` (i-end) and `[3]` (j-end):
+
+```
+Fx_i = L · (2·qx1 + qx2) / 6
+Fx_j = L · (qx1 + 2·qx2) / 6
+```
+
+For uniform `qx` this reduces to `qx·L/2` per end — the standard consistent-FEF lumping for a 2-node axial bar. By keeping the axial term in the local FEF (rather than lumping straight into global F), element-level recovery `f = K·d_loc − FEF` reproduces the full axial reaction at each end, and `memberInternalForces` integrates the continuous distribution:
+
+```
+N(x) = N1 − qx1·x − (qx2 − qx1)·x²/(2L)
+```
+
+So a vertical column under self-weight shows the correct linear AFD (full integrated weight at the fixed base, tapering to the small joint-transfer value at the top) rather than a constant band at the half-weight value.
+
 ### Truss Element (v1.0.4+)
 
 `memberType: "truss"` is implemented as a **frame element with M3 releases at both ends**, not the older axial-only formulation. The released-rotational DOFs θᵢ, θⱼ are removed by static condensation from the full 6×6 frame stiffness (`condensedTrussElement` in `solver.ts`):
@@ -250,8 +267,9 @@ A consequence of this pure convention: the physical direction of a `local-axis` 
 ### Internal Force Interpolation
 
 ```
-V(x) = V1 − q1·x − (q2−q1)·x²/(2L)
-M(x) = M1 − V1·x + q1·x²/2 + (q2−q1)·x³/(6L)
+N(x) = N1 − qx1·x − (qx2−qx1)·x²/(2L)        (v1.0.7+)
+V(x) = V1 − q1·x  − (q2−q1)·x²/(2L)
+M(x) = M1 − V1·x  + q1·x²/2 + (q2−q1)·x³/(6L)
 ```
 
 where `x` is distance from the i-end along the member.
@@ -315,6 +333,16 @@ Each diagram (shear, moment, axial) samples 60 points per member, then uses `spl
 The moment diagram is **negated before offsetting** so that positive (sagging) moments draw on the −local-2 side (the tension fiber).
 
 `invertSFD` and `invertBMD` flags are pure user preferences: they flip the display side, swap colors, and negate label signs without changing the underlying solver values. Both default to **off**.
+
+### AFD — mirrored band + i/j labels (v1.0.7+)
+
+Unlike SFD/BMD, the AFD fills **both** sides of the member centerline symmetrically (a mirrored trapezoidal band). This removes the left/right side ambiguity that reference-style one-sided AFDs introduce — the same fill reads the same regardless of member i→j ordering. The colors (blue = tension, red = compression) carry the sign.
+
+Labels:
+
+- **Frame members** — end labels at i and j (using `N1, N2`) plus an interior peak label when the peak differs from both ends. Lets readers see the linear ramp under axial distributed load (e.g. column self-weight).
+- **Truss members, constant N** (`|N1 − N2| ≤ 0.01 kN`) — one centered label parallel to the member, offset past the mirrored band's edge.
+- **Truss members, varying N** (`|N1 − N2| > 0.01 kN`) — two stacked lines (`i = …` / `j = …`) at the midpoint, parallel to the member. Surfaces the linear axial variation in inclined truss members under gravity components.
 
 ### Diagram Utilities (`src/lib/diagram-utils.ts`)
 

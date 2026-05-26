@@ -36,6 +36,7 @@ export interface EnvelopeAnalysisResult extends AnalysisResult {
       N1: LoadComboId; V1: LoadComboId; M1: LoadComboId
       N2: LoadComboId; V2: LoadComboId; M2: LoadComboId
       q1: LoadComboId; q2: LoadComboId
+      qx1: LoadComboId; qx2: LoadComboId
     }>
   }
 }
@@ -152,6 +153,7 @@ export function combineResults(
       N1: 0, V1: 0, M1: 0,
       N2: 0, V2: 0, M2: 0,
       q1: 0, q2: 0,
+      qx1: 0, qx2: 0,
     }
   }
   for (const id of Object.keys(first.reactions)) {
@@ -181,6 +183,8 @@ export function combineResults(
       out.memberEndForces[id].M2 += k * f.M2
       out.memberEndForces[id].q1 += k * f.q1
       out.memberEndForces[id].q2 += k * f.q2
+      out.memberEndForces[id].qx1 += k * f.qx1
+      out.memberEndForces[id].qx2 += k * f.qx2
     }
     for (const id of Object.keys(out.reactions)) {
       const re = r.reactions[id]
@@ -246,6 +250,7 @@ export function envelopeResults(
       N1: firstId, V1: firstId, M1: firstId,
       N2: firstId, V2: firstId, M2: firstId,
       q1: firstId, q2: firstId,
+      qx1: firstId, qx2: firstId,
     }
   }
   for (const [id, re] of Object.entries(first.reactions)) {

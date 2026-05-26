@@ -6,6 +6,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.7] — 2026-05-26
+
+**Adaptive selfweight on member.** The AFD now reflects the linear axial variation caused by gravity components along inclined members. Frame columns and truss diagonals carrying self-weight along their local-1 axis previously rendered as a constant axial band; they now show the true linear ramp. Reaction values, SFD, and BMD are byte-identical to v1.0.6.
+
+### Added
+- **Axial distributed-load channel in `MemberEndForces`** — `qx1, qx2: number` alongside the existing transverse `q1, q2`. Carries the local-1 (axial) component of any distributed load through assembly, recovery, combination, and envelope paths.
+- **Axial term in `memberInternalForces`** — `N(x) = N1 − qx1·x − (qx2 − qx1)·x²/(2L)`. AFD interior values are no longer assumed constant.
+- **Mirrored trapezoidal AFD rendering.** `drawAxialDiagram` now samples N(x) at 60 points per member and fills a symmetric band on both sides of the member centerline. Avoids the reference software-style left/right side ambiguity — the same diagram reads the same regardless of member i→j ordering. Auto-fit normalization uses the per-member peak |N| across all samples, not just `N1`.
+- **i/j stacked label for varying-N truss members.** When `|N1 − N2| > 0.01 kN`, truss-member AFD labels render as two stacked lines (`i = …` / `j = …`) parallel to the member, offset past the diagram edge. Constant-N truss members keep the single centered label. Frame-member labels unchanged (end labels + interior peak).
+
+### Changed
+- **Axial fixed-end forces in `fixedEndForces`.** Indices `[0]` and `[3]` of the local FEF vector now carry the consistent trapezoidal axial entries `L·(2·qx1 + qx2)/6` and `L·(qx1 + 2·qx2)/6`. For uniform `qx` (the selfweight case), both reduce to `qx·L/2` — the same total as the prior 50/50 lumping, but now expressed in the local FEF so `f = K·d_loc − FEF` reproduces the full element-level reaction at each end instead of half of it.
+- **`condensedTrussElement` signature.** Forwards `qx1, qx2` to `fixedEndForces`. Static condensation acts only on moment rows (s = [2, 5]); axial entries (r = [0, 3]) pass through unchanged.
+- **Assembly and recovery call sites.** Both the assembly loop and the recovery loop pass `qx1, qx2` into `fixedEndForces` / `condensedTrussElement` so FEF pairing on recovery (`f − FEF`) is consistent.
+- **AFD label placement.** Single-label truss case now offsets by `|N · BASE| + 10 px` (was `|N · BASE / 2| + 14 px`) so the label clears the actual mirrored-fill edge at any `diagramScale` instead of drifting into the fill as scale increases.
+
+### Removed
+- **Global axial-load lumping block in assembly.** The prior `F[3*ia] += axialAtA*c; F[3*ia+1] += axialAtA*s …` path (which lumped axial distributed loads directly into global F at the nodes) is deleted. The new axial-FEF entries assembled via `F += Tᵀ · FEF_local` deliver the same total nodal force globally (the 50/50 split for uniform `qx` matches the prior lumping numerically) and additionally make element-level recovery produce the correct continuous `N(x)`.
+
+### Fixed
+- **Frame member under axial body force showed constant N at half the true magnitude.** Template3 portal columns under selfweight previously rendered the AFD as a constant band at half the true integrated column weight. With the axial FEF properly routed through `f = K·d − FEF`, the base value now reads the full integrated weight (column own weight + transferred reaction from the beam above), tapering linearly to the small joint-transfer value at the top — matching the textbook fixed-base column-under-self-weight result. The fix is the same mechanism that already produced correct transverse end forces; we extended the local FEF coverage to include the axial entry that was previously zero.
+
+### Notes
+- Reactions, displacements, shear forces, and bending moments are byte-identical to v1.0.6 for every load configuration. The change is scoped to the axial channel.
+- For Warren-class truss members carrying axial self-weight (inclined members under gravity), member-end values vary linearly; small residuals against reference software remain under investigation. Reactions and global equilibrium match reference exactly. Investigation context is preserved locally — not committed.
+- `solveCase("selfweight")` synthesis (`gamma · A` → global-Y distributed load) is unchanged; the fix is downstream in solver assembly/recovery.
+
+### Documentation
+- `docs/ARCHITECTURE.md`: solver section updated to describe the new axial-FEF entries and `N(x)` interpolation; AFD-rendering section updated to mention the mirrored band and i/j stacked labels.
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.6] — 2026-05-25
 
 **Analysis diagnostics, lazy solver, and a per-issue warning dialog.** The solver now runs only when the user is on the Analyze tab, and structural-validity issues surface as a focused dialog instead of being silently swallowed.
