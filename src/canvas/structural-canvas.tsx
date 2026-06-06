@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react"
+import { useEffect, useMemo, useRef, useCallback, useState } from "react"
 import { ZoomIn, ZoomOut } from "lucide-react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { NodeId, MultiSelection, StructureModel, LoadId } from "@/lib/model"
@@ -24,6 +24,9 @@ import {
   computeBoxSelectionWithNodes,
   computeBoxSelectionLoads,
   computeBoxSelectionSupportTool,
+  computeBoxSelectionNodesOnly,
+  directionFromBox,
+  type BoxDirection,
 } from "@/canvas/box-selection"
 import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
 import {
@@ -230,6 +233,7 @@ export function StructuralCanvas({
   const [deformHoverNodeId, setDeformHoverNodeId] = useState<string | null>(null)
   const boxStartRef = useRef<ScreenPoint | null>(null)
   const hasDraggedRef = useRef(false)
+  const boxPointerIdRef = useRef<number | null>(null)
   const [boxRect, setBoxRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
 
   // Viewport: pan in CSS pixels, zoom multiplier
@@ -268,6 +272,75 @@ export function StructuralCanvas({
   useEffect(() => { panXRef.current = panX }, [panX])
   useEffect(() => { panYRef.current = panY }, [panY])
   useEffect(() => { zoomRef.current = zoom  }, [zoom])
+
+  // Convert a screen pixel position to virtual canvas space (undoes pan+zoom)
+  const toVirtual = useCallback((mx: number, my: number) => ({
+    vmx: (mx - panX) / zoom,
+    vmy: (my - panY) / zoom,
+  }), [panX, panY, zoom])
+
+  // Whether the current tool participates in rectangular box-selection.
+  const boxSelectionEnabled = useMemo(() => {
+    if (activeTool === "SELECT" || activeTool === "DELETE") return true
+    if (activeTab === "Model" && (activeTool === "SUPPORT" || activeTool === "MOVE_NODE")) return true
+    if (activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD")) return true
+    return false
+  }, [activeTab, activeTool])
+
+  // Live-preview sets: while dragging the box, every component that would be
+  // selected on release is tinted with the tool's hover color. Direction is
+  // derived from the box rectangle (world-space sign of x2-x1).
+  const boxPreview = useMemo(() => {
+    const empty = {
+      direction: "window" as BoxDirection,
+      nodeIds: new Set<string>(),
+      memberIds: new Set<string>(),
+      supportNodeIds: new Set<string>(),
+      loadIds: new Set<string>(),
+    }
+    if (!boxRect || !boxSelectionEnabled) return empty
+    const container = containerRef.current
+    if (!container) return empty
+    const rect = container.getBoundingClientRect()
+    const dims = { width: rect.width, height: rect.height }
+    const { vmx: vx1, vmy: vy1 } = toVirtual(boxRect.x1, boxRect.y1)
+    const { vmx: vx2, vmy: vy2 } = toVirtual(boxRect.x2, boxRect.y2)
+    const w1 = screenToWorld({ sx: vx1, sy: vy1 }, dims)
+    const w2 = screenToWorld({ sx: vx2, sy: vy2 }, dims)
+    const direction = directionFromBox(w1.x, w2.x)
+
+    let items: { nodeIds: string[]; memberIds: string[]; supportNodeIds: string[] } = {
+      nodeIds: [], memberIds: [], supportNodeIds: [],
+    }
+    const loadIds: string[] = []
+
+    if (activeTool === "SELECT") {
+      items = computeBoxSelection(model, w1.x, w1.y, w2.x, w2.y, direction)
+    } else if (activeTool === "DELETE" && activeTab === "Model") {
+      items = computeBoxSelectionWithNodes(model, w1.x, w1.y, w2.x, w2.y, direction)
+    } else if (activeTool === "SUPPORT" && activeTab === "Model") {
+      items = computeBoxSelectionSupportTool(model, w1.x, w1.y, w2.x, w2.y)
+    } else if (activeTool === "MOVE_NODE" && activeTab === "Model") {
+      items.nodeIds = computeBoxSelectionNodesOnly(model, w1.x, w1.y, w2.x, w2.y)
+    } else if (activeTab === "Load") {
+      const filter =
+        activeTool === "POINT_LOAD" ? { type: "point" as const } :
+        activeTool === "DISTRIBUTED_LOAD" ? { type: "distributed" as const } :
+        {}
+      const raw = computeBoxSelectionLoads(model, w1.x, w1.y, w2.x, w2.y, direction, filter)
+      for (const id of raw) {
+        if (loadViewFilter && model.loads[id]?.loadCaseId !== loadViewFilter) continue
+        loadIds.push(id)
+      }
+    }
+    return {
+      direction,
+      nodeIds: new Set(items.nodeIds),
+      memberIds: new Set(items.memberIds),
+      supportNodeIds: new Set(items.supportNodeIds),
+      loadIds: new Set(loadIds),
+    }
+  }, [boxRect, boxSelectionEnabled, activeTab, activeTool, model, loadViewFilter, toVirtual])
 
   const drawGrid = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const pixelGrid = gridSpacing * SCALE
@@ -356,7 +429,11 @@ export function StructuralCanvas({
         const selectionEligible = activeTab === "Model" && (activeTool === "SELECT" || activeTool === "DELETE")
         const hoverEligible = selectionEligible || activeTool === "DISTRIBUTED_LOAD"
         const selected = selectionEligible && selection.memberIds.includes(m.id)
-        const isHovered = hoverEligible && m.id === hoveredMemberId && !selected
+        const inBoxPreview = boxPreview.memberIds.has(m.id)
+        const isHovered = !selected && (
+          (hoverEligible && m.id === hoveredMemberId) ||
+          (inBoxPreview && (selectionEligible || activeTool === "DISTRIBUTED_LOAD"))
+        )
         const isTruss = m.memberType === "truss"
         const state: DrawState = selected ? "selected" : isHovered ? "hover" : "normal"
         ctx.strokeStyle = strokeFor(kind, state, COLOR_BRAND)
@@ -415,7 +492,7 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview]
   )
 
   const drawNodes = useCallback(
@@ -440,9 +517,10 @@ export function StructuralCanvas({
         const isMoveHover  = isMove && !isMoveTarget && n.id === hoveredNodeId
         const isDelHover   = isDelete && !selected && n.id === hoveredNodeId
         const isPlacementHover = (isSupport || isPointLoad) && !selected && n.id === hoveredNodeId
+        const inBoxPreview = boxPreview.nodeIds.has(n.id) && (isDelete || isMove || isSupport)
         let state: DrawState = "normal"
         if (selected || isMoveTarget) state = "selected"
-        else if (isMoveHover || isDelHover || isPlacementHover) state = "hover"
+        else if (isMoveHover || isDelHover || isPlacementHover || inBoxPreview) state = "hover"
         ctx.beginPath()
         ctx.arc(p.sx, p.sy, NODE_RADIUS * s, 0, Math.PI * 2)
         ctx.fillStyle = fillFor(kind, state, "#ffffff")
@@ -452,7 +530,7 @@ export function StructuralCanvas({
         ctx.stroke()
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, draggingNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom]
+    [model, selection, activeTab, activeTool, hoveredNodeId, draggingNodeId, moveNodeMode, moveNodeSelectedId, adaptiveView, zoom, boxPreview]
   )
 
   const drawSupports = useCallback(
@@ -475,9 +553,13 @@ export function StructuralCanvas({
         const isSelected = selectionTouched || moveSelected
         const moveHover   = isMoveTool && !moveSelected && s.nodeId === hoveredNodeId
         const otherHover  = (isSupportTool || isDeleteTool) && !isSelected && s.nodeId === hoveredNodeId
+        const inBoxPreview = (
+          ((isSupportTool || isDeleteTool) && boxPreview.supportNodeIds.has(s.nodeId)) ||
+          (isMoveTool && boxPreview.nodeIds.has(s.nodeId))
+        )
         let state: DrawState = "normal"
         if (isSelected) state = "selected"
-        else if (moveHover || otherHover) state = "hover"
+        else if (moveHover || otherHover || inBoxPreview) state = "hover"
         const overrideColor = state === "normal" ? undefined : strokeFor(kind, state, COLOR_BRAND)
         // Pass `selected = false` so the glyph helper does not paint its built-in red;
         // we drive the body color via `overrideColor` for both hover and selected states.
@@ -504,7 +586,7 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, draggingNodeId, adaptiveView, zoom, activeSupportType]
+    [model, selection, activeTab, activeTool, hoveredNodeId, moveNodeMode, moveNodeSelectedId, draggingNodeId, adaptiveView, zoom, activeSupportType, boxPreview]
   )
 
   const drawPreview = useCallback(
@@ -813,6 +895,11 @@ export function StructuralCanvas({
       const loadKind = interactionKind(activeTab, activeTool)
       // Loads are eligible for hover/selection only under Load MODIFY_LOAD and Load DELETE.
       const loadEligible = activeTab === "Load" && (activeTool === "MODIFY_LOAD" || activeTool === "DELETE")
+      // Box-select previews loads under MODIFY_LOAD/DELETE/POINT_LOAD/DISTRIBUTED_LOAD.
+      const loadBoxEligible = activeTab === "Load" && (
+        activeTool === "MODIFY_LOAD" || activeTool === "DELETE" ||
+        activeTool === "POINT_LOAD" || activeTool === "DISTRIBUTED_LOAD"
+      )
 
       // ── Coincidence pre-pass ───────────────────────────────────────────────
       // Group visible loads by anchor so we can detect when two or more cases
@@ -900,7 +987,8 @@ export function StructuralCanvas({
         const isStackWinner = stackWinner.has(load.id)
         const stackLabelText = isStackWinner ? stackLabel.get(load.id) ?? null : null
         const isSelected = loadEligible && (load.id === selectedLoadId || selectedLoadIds.includes(load.id))
-        const isHovered  = loadEligible && !isSelected && load.id === hoveredLoadId
+        const inBoxPreview = loadBoxEligible && boxPreview.loadIds.has(load.id)
+        const isHovered  = !isSelected && ((loadEligible && load.id === hoveredLoadId) || inBoxPreview)
         const state: DrawState = isSelected ? "selected" : isHovered ? "hover" : "normal"
         const baseStroke = isStackWinner ? COLOR_LOAD_STACK_STROKE : COLOR_LOAD_STROKE
         const strokeColor = strokeFor(loadKind, state, baseStroke)
@@ -2219,11 +2307,6 @@ export function StructuralCanvas({
     return () => window.removeEventListener("resize", handleResize)
   }, [draw])
 
-  // Convert a screen pixel position to virtual canvas space (undoes pan+zoom)
-  const toVirtual = useCallback((mx: number, my: number) => ({
-    vmx: (mx - panX) / zoom,
-    vmy: (my - panY) / zoom,
-  }), [panX, panY, zoom])
 
   const toWorldCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const container = containerRef.current
