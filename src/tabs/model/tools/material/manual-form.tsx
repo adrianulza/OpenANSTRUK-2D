@@ -10,6 +10,7 @@ import {
   displayA, parseA, labelA,
 } from "@/lib/units"
 import { fmt } from "./section-select"
+import { shearModulus } from "@/lib/sections/materials"
 
 export interface ManualFields {
   E:     string
@@ -112,6 +113,14 @@ export function ManualForm({ fields, onChange, validation, u, disabled }: Props)
     ? isSectionPhysicallyReasonable(fields, u)
     : true
 
+  // Read-only shear modulus G = E / (2(1+ν)), derived live from the E and ν fields.
+  // Display-only: not stored or parsed — the solver derives G the same way when
+  // shear deformation is enabled. Mirrors the advanced-panel G fallback.
+  const E_MPa = parseE(parseFloat(fields.E), u)
+  const nuVal = parseFloat(fields.nu)
+  const G_MPa = shearModulus(E_MPa, nuVal)
+  const G_display = Number.isFinite(G_MPa) && G_MPa > 0 ? `${fmt(G_MPa)} MPa` : "—"
+
   const field = (
     label: string,
     key: keyof ManualFields,
@@ -141,6 +150,22 @@ export function ManualForm({ fields, onChange, validation, u, disabled }: Props)
       {field("Moment of Inertia, I33",      "I33", labelI(u), validation.invalidI33)}
       {field("Section Area, A",             "A",   labelA(u), validation.invalidA)}
       {field("Poisson Ratio, ν",            "nu",  "",        validation.invalidNu,       "0 < ν < 0.5")}
+
+      {/* Read-only: shear modulus derived from E and ν. Used by the solver when
+          shear deformation is enabled; shown here for reference, never edited. */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Shear Modulus, G</Label>
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            value={G_display}
+            readOnly
+            disabled
+            className="h-7 text-xs font-mono flex-1 bg-gray-50 text-gray-500"
+          />
+        </div>
+      </div>
+
       {field("Shear Area, Aκ2",             "Aκ2", labelA(u), validation["invalidAκ2"],   "If set, must be > 0")}
       {field("Unit Weight, γ",             "gamma", "kN/m³",   validation.invalidGamma,     "Must be ≥ 0")}
 

@@ -12,7 +12,7 @@
  * case slice and never persisted in `model.loads`.
  */
 
-import { analyze, type AnalysisResult, type SolverResult } from "./solver"
+import { analyze, type AnalysisResult, type AnalyzeOptions, type SolverResult } from "./solver"
 import type { StructureModel } from "./model"
 import type {
   LoadCase,
@@ -55,6 +55,7 @@ export interface EnvelopeAnalysisResult extends AnalysisResult {
 export function solveCase(
   model: StructureModel,
   caseId: LoadCaseId,
+  opts?: AnalyzeOptions,
 ): SolverResult {
   if (caseId === "selfweight") {
     // Synthesize a global-Y distributed load on every member from its section's
@@ -82,7 +83,7 @@ export function solveCase(
       }
     }
     const slice: StructureModel = { ...model, loads: selfweightLoads }
-    return analyze(slice)
+    return analyze(slice, opts)
   }
 
   const filteredLoads: StructureModel["loads"] = {}
@@ -91,7 +92,7 @@ export function solveCase(
   }
 
   const slice: StructureModel = { ...model, loads: filteredLoads }
-  return analyze(slice)
+  return analyze(slice, opts)
 }
 
 /**
@@ -102,11 +103,12 @@ export function solveCase(
 export function solveAllCases(
   model: StructureModel,
   loadCases: Record<LoadCaseId, LoadCase>,
+  opts?: AnalyzeOptions,
 ): Record<LoadCaseId, SolverResult> {
   const results: Record<LoadCaseId, SolverResult> = {}
   for (const [id, c] of Object.entries(loadCases)) {
     if (!c.enabled) continue
-    results[id] = solveCase(model, id)
+    results[id] = solveCase(model, id, opts)
   }
   return results
 }

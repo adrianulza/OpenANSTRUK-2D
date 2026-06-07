@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.9] — 2026-06-07
+
+**Shear deformation (Timoshenko beam).** An opt-in toggle adds shear flexibility to every element's bending stiffness. Off by default and byte-identical to v1.0.8 when off; when on, deep/short members and shear-dominated frames deflect more (and, for indeterminate structures, internal forces redistribute) per Timoshenko theory. Applies to both frame and truss members. Verified against reference software on Example 5 (asymmetric rafter frame, 300×500 fc25 section) — reactions, axial, and moment all match to displayed precision.
+
+### Added
+- **"Enable Shear Deformation" toggle** in the status-bar Settings panel, directly above "Adaptive View", defaulting **off**. Threaded `App.tsx → StatusBar → SettingsPanel`; flipping it live re-solves all load cases.
+- **Read-only "Shear Modulus, G" row** in the manual section form, directly below Poisson's ratio. Computed live as `G = E / (2(1+ν))` from the current E and ν fields and displayed in MPa. Display-only — not stored, validated, or parsed; the solver derives G the same way. The editable `Aκ2` (shear area) input is unchanged.
+- **`validation/shear_deformation_example5.md`** + **`shear_deformation_example5_verify.mjs`** — the reference software cross-check case and its standalone regeneration script.
+
+### Changed
+- **`localStiffness(EA, EI, L, GAs = 0)`** now applies the Timoshenko shear-flexibility factor `Φ = 12·EI/(GAs·L²)`: the transverse/rotational bending block is scaled by `1/(1+Φ)`, with rotational diagonal `(4+Φ)·EI/(L(1+Φ))` and carry-over `(2−Φ)·EI/(L(1+Φ))`. Axial terms unchanged. `GAs = 0 ⇒ Φ = 0`, which reduces algebraically to the prior Euler–Bernoulli matrix — so the shear-off path is byte-stable.
+- **`condensedTrussElement(..., GAs = 0)`** forwards `GAs` to its internal `localStiffness`. Static condensation of θᵢ, θⱼ is unchanged, so trusses honor the toggle while still transmitting only axial at the joints.
+- **`analyze(model, opts?: { shearDeformation?: boolean })`** gained a per-member `GAs` resolver, applied identically at the assembly and force-recovery sites (the same K must be used for both). `As = Aκ2 · 1e-6` (mm²→m²); `G = (sec.derived?.G ?? shearModulus(E, ν ?? 0.3)) · 1000` (MPa→kN/m²); `GAs = G · As` (kN). A missing or ≤ 0 `Aκ2` yields `GAs = 0` — that member silently falls back to Euler, mirroring the existing `γ ≤ 0` self-weight skip.
+- **`solveCase` / `solveAllCases`** thread an `opts` argument down into every `analyze` call (both the self-weight and normal branches). Self-weight synthesis itself is unchanged.
+
+### Notes
+- `fixedEndForces`, `transformMatrix`, end-force sign extraction, `memberInternalForces`, and reaction recovery are untouched. Diagrams remain equilibrium-based, so SFD/BMD/AFD shapes stay correct; only the displacement field (and, for indeterminate models, the force distribution) responds to the toggle.
+- For determinate structures, enabling shear changes displacement magnitudes only — reactions and diagrams are unchanged.
+
+### Documentation
+- `CLAUDE.md`: new "Shear Deformation (v1.0.9)" section; solver "Sign Conventions" / stiffness notes mention the optional `GAs` parameter and the Euler-reduction guarantee.
+- `docs/ARCHITECTURE.md`: matching note on the toggle and the Timoshenko stiffness path.
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.8] — 2026-05-26
 
 **Visibility settings.** A consolidated set of overlay toggles in the status-bar Settings panel: node IDs, member IDs, local axes, and section labels. The Analyze-tab flyouts no longer carry per-tool "show label" switches — the new global toggles cover all three tabs. IDs reflect the model's actual stored identifiers, and a fresh canvas / template / example restarts numbering at `n1` / `m1`.

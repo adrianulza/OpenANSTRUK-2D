@@ -92,6 +92,7 @@ export default function App() {
   const [snapToGrid, setSnapToGrid] = useState(true)
   const [snapToNode, setSnapToNode] = useState(true)
   const [adaptiveView, setAdaptiveView] = useState(true)
+  const [shearDeformation, setShearDeformation] = useState(false)
   const [showDimensions, setShowDimensions] = useState(true)
   const [showSectionLabels, setShowSectionLabels] = useState(true)
   const [showNodeIds, setShowNodeIds] = useState(false)
@@ -348,8 +349,8 @@ export default function App() {
   // trigger. Edits while on Analyze still re-solve live (memo dep includes
   // model/loadCases), preserving the no-button UX inside the tab.
   const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
-    () => activeTab === "Analyze" ? solveAllCases(model, loadCases) : {},
-    [activeTab, model, loadCases],
+    () => activeTab === "Analyze" ? solveAllCases(model, loadCases, { shearDeformation }) : {},
+    [activeTab, model, loadCases, shearDeformation],
   )
 
   const comboResults = useMemo(() => {
@@ -1337,6 +1338,8 @@ export default function App() {
         onSnapToNodeChange={setSnapToNode}
         adaptiveView={adaptiveView}
         onAdaptiveViewChange={setAdaptiveView}
+        shearDeformation={shearDeformation}
+        onShearDeformationChange={setShearDeformation}
         onUnitSettingsChange={setUnitSettings}
         onToggleDimensions={() => setShowDimensions(!showDimensions)}
         showSectionLabels={showSectionLabels}

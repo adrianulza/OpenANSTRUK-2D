@@ -1,4 +1,5 @@
-import type { StructureModel } from "@/lib/model"
+import type { StructureModel, Section } from "@/lib/model"
+import { shearModulus } from "@/lib/sections/materials"
 
 export interface MemberEndForces {
   N1: number; V1: number; M1: number   // at node-A end, kN / kN·m
@@ -95,14 +96,26 @@ function gaussSolve(K: number[][], F: number[]): GaussResult {
 
 // ── Local stiffness and transformation ───────────────────────────────────────
 
-function localStiffness(EA: number, EI: number, L: number): number[][] {
+// 2D frame element stiffness. `GAs` is the shear rigidity G·A_s (kN); pass 0 for the
+// pure Euler–Bernoulli element. When GAs > 0 the Timoshenko shear-flexibility factor
+//   Φ = 12·EI / (GAs·L²)
+// scales the bending block by 1/(1+Φ), with the rotational diagonal/off-diagonal terms
+// becoming (4+Φ) and (2−Φ). As Φ→0 this reduces algebraically to the Euler matrix, so the
+// GAs=0 path is byte-identical to the original formulation. Axial terms are unaffected.
+function localStiffness(EA: number, EI: number, L: number, GAs = 0): number[][] {
+  const phi = GAs > 0 ? 12 * EI / (GAs * L * L) : 0
+  const d   = 1 + phi
+  const kv  = 12 * EI / (L**3 * d)        // shear (v–v) term
+  const kvt = 6 * EI / (L**2 * d)         // shear–rotation coupling
+  const ktt = (4 + phi) * EI / (L * d)    // rotation diagonal
+  const ktc = (2 - phi) * EI / (L * d)    // rotation off-diagonal (carry-over)
   return [
-    [ EA/L,        0,            0,       -EA/L,       0,            0          ],
-    [ 0,           12*EI/L**3,   6*EI/L**2, 0,        -12*EI/L**3,  6*EI/L**2  ],
-    [ 0,           6*EI/L**2,    4*EI/L,    0,         -6*EI/L**2,  2*EI/L     ],
-    [-EA/L,        0,            0,        EA/L,        0,            0          ],
-    [ 0,          -12*EI/L**3,  -6*EI/L**2, 0,         12*EI/L**3, -6*EI/L**2  ],
-    [ 0,           6*EI/L**2,    2*EI/L,    0,         -6*EI/L**2,  4*EI/L     ],
+    [ EA/L,   0,     0,    -EA/L,   0,     0   ],
+    [ 0,      kv,    kvt,   0,     -kv,    kvt  ],
+    [ 0,      kvt,   ktt,   0,     -kvt,   ktc  ],
+    [-EA/L,   0,     0,     EA/L,   0,     0   ],
+    [ 0,     -kv,   -kvt,   0,      kv,   -kvt  ],
+    [ 0,      kvt,   ktc,   0,     -kvt,   ktt  ],
   ]
 }
 
@@ -120,9 +133,9 @@ function localStiffness(EA: number, EI: number, L: number): number[][] {
 // Requires EI > 0 (Step 1 input guard enforces this at the section layer).
 function condensedTrussElement(
   EA: number, EI: number, L: number, q1: number, q2: number,
-  qx1 = 0, qx2 = 0,
+  qx1 = 0, qx2 = 0, GAs = 0,
 ): { K_loc: number[][]; FEF_loc: number[] } | null {
-  const Kf  = localStiffness(EA, EI, L)
+  const Kf  = localStiffness(EA, EI, L, GAs)
   const Ff  = fixedEndForces(q1, q2, L, qx1, qx2)
   const r   = [0, 1, 3, 4]
   const s   = [2, 5]
@@ -204,7 +217,25 @@ function fixedEndForces(q1: number, q2: number, L: number, qx1 = 0, qx2 = 0): nu
 
 // ── Main solver ───────────────────────────────────────────────────────────────
 
-export function analyze(model: StructureModel): SolverResult {
+export interface AnalyzeOptions {
+  /** Timoshenko shear deformation (default off → pure Euler–Bernoulli). */
+  shearDeformation?: boolean
+}
+
+export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverResult {
+  // Per-member shear rigidity G·A_s (kN) used to build the Timoshenko element.
+  // Returns 0 — the Euler element — when shear deformation is off, or when the
+  // section has no positive shear area A_s (legacy/manual sections that left it
+  // blank). The latter mirrors the γ≤0 self-weight skip: silent Euler fallback,
+  // no crash, no invented data.
+  const memberGAs = (sec: Section): number => {
+    if (!opts?.shearDeformation) return 0
+    const As = (sec["Aκ2"] ?? 0) * 1e-6                          // mm² → m²
+    if (As <= 0) return 0
+    const G = (sec.derived?.G ?? shearModulus(sec.E, sec.nu ?? 0.3)) * 1000  // MPa → kN/m²
+    return G * As                                               // kN
+  }
+
   const nodes   = Object.values(model.nodes)
   const members = Object.values(model.members)
   const supports = Object.values(model.supports)
@@ -284,13 +315,14 @@ export function analyze(model: StructureModel): SolverResult {
     // Build local stiffness and FEF. For trusses, condense out the released θᵢ, θⱼ.
     let k: number[][]
     let FEF: number[]
+    const GAs = memberGAs(sec)
     if (isTruss) {
-      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2)
+      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2, GAs)
       if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
       k = cond.K_loc
       FEF = cond.FEF_loc
     } else {
-      k = localStiffness(EA, EI, L)
+      k = localStiffness(EA, EI, L, GAs)
       FEF = fixedEndForces(q1, q2, L, qx1, qx2)
     }
     const T = transformMatrix(c, s)
@@ -419,12 +451,13 @@ export function analyze(model: StructureModel): SolverResult {
     // Use the SAME stiffness used in assembly (condensed for trusses, full for frames).
     // Pairing K and FEF consistently is critical: f_raw = K · d_loc, then f = f_raw − FEF.
     let k: number[][]
+    const GAs = memberGAs(sec)
     if (isTruss) {
-      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2)
+      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2, GAs)
       if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
       k = cond.K_loc
     } else {
-      k = localStiffness(EA, EI, L)
+      k = localStiffness(EA, EI, L, GAs)
     }
     const T  = transformMatrix(c, s)
 

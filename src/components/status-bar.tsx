@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Grid3X3 } from "lucide-react"
 import type { UnitSettings } from "@/lib/units"
-import { GridUnitsPanel } from "@/components/grid-units-panel"
+import { SettingsPanel } from "@/components/settings-panel"
 import type { AnalysisStatus } from "@/lib/analysis-diagnostics"
 
 interface StatusBarProps {
@@ -21,6 +21,8 @@ interface StatusBarProps {
   onSnapToNodeChange: (v: boolean) => void
   adaptiveView: boolean
   onAdaptiveViewChange: (v: boolean) => void
+  shearDeformation: boolean
+  onShearDeformationChange: (v: boolean) => void
   onUnitSettingsChange: (next: UnitSettings) => void
   onToggleDimensions: () => void
   showSectionLabels: boolean
@@ -54,6 +56,8 @@ export function StatusBar({
   onSnapToNodeChange,
   adaptiveView,
   onAdaptiveViewChange,
+  shearDeformation,
+  onShearDeformationChange,
   onUnitSettingsChange,
   onToggleDimensions,
   showSectionLabels,
@@ -124,7 +128,7 @@ export function StatusBar({
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" collisionPadding={8} className="w-56 p-0 max-h-[80dvh] overflow-y-auto">
-            <GridUnitsPanel
+            <SettingsPanel
               unitSettings={unitSettings}
               onUnitSettingsChange={onUnitSettingsChange}
               showDimensions={showDimensions}
@@ -143,6 +147,8 @@ export function StatusBar({
               onSnapToNodeChange={onSnapToNodeChange}
               adaptiveView={adaptiveView}
               onAdaptiveViewChange={onAdaptiveViewChange}
+              shearDeformation={shearDeformation}
+              onShearDeformationChange={onShearDeformationChange}
             />
           </PopoverContent>
         </Popover>

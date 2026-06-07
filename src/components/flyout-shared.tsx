@@ -154,7 +154,7 @@ export function DeleteButton({
   )
 }
 
-// Square checkmark checkbox matching the GridUnitsPanel style. Filled blue when
+// Square checkmark checkbox matching the SettingsPanel style. Filled blue when
 // checked, white with gray border when unchecked. Use for include/exclude row toggles.
 export function Checkbox({
   checked,
