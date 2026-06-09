@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.11] — 2026-06-09
+
+**Undo / Redo.** A single history stack lets users reverse and replay edits to the model — nodes, members, supports, sections, and loads (loads live inside `model`, so one stack covers everything). Two buttons sit directly below the zoom slider, and Ctrl+Z / Ctrl+Y work globally. History is reference-based: snapshots are pointers to past immutable `model` objects, not clones, so the memory cost is negligible even at the 20-deep cap.
+
+### Added
+- **`useModelHistory` hook** (`src/hooks/use-model-history.ts`) — observes `model` via an effect and pushes the previous state onto an undo stack on each change (capped at 20). Exposes `{ undo, redo, canUndo, canRedo, resetHistory }`. Two cases are guarded: changes caused by undo/redo itself (identity check), and the rapid intermediate updates of an on-screen node drag (coalesced into one entry via `draggingNodeId`, so a whole drag is a single undo).
+- **Undo / Redo buttons** in `structural-canvas.tsx`, in a card directly below the zoom overlay. Navy accent, hover scale-up + bg tint, active press; greyed and unclickable when the corresponding stack is empty. Hover tooltips read "Undo (Ctrl+Z)" / "Redo (Ctrl+Y)" — no on-screen legend.
+- **Keyboard shortcuts** (`App.tsx`) — Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo. The listener ignores form fields (`input`/`textarea`/`contentEditable`) so native text-undo still works while typing.
+
+### Changed
+- **`StructuralCanvas`** gained `onUndo` / `onRedo` / `canUndo` / `canRedo` props.
+- The five whole-model swap handlers (`handleNewFile`, `handleLoadFile`, `handleTemplateLoad`, `handleExampleConfirm`, `handleTemplateConfirm`) call `resetHistory()` after swapping, so undo never crosses a document boundary.
+
+### Notes
+- The solver and all model math are untouched — this is a state/UI layer only. `analysisResult` is not snapshotted; it recomputes lazily on the Analyze tab after an undo.
+- History does not persist across reload, and the on-screen shortcut legend is intentionally out of scope.
+
+### Documentation
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.10] — 2026-06-09
 
 **File I/O — JSON save & load.** The File menu can now persist a model to disk and read it back, so work survives closing the tab. JSON is the native, lossless format for `StructureModel` (no CSV — it can't round-trip nested section/derived data). "New Canvas" is renamed "New File" for menu consistency. Undo/redo is a separate follow-up.

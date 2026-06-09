@@ -21,6 +21,8 @@ A 2D structural analysis web application for modeling, loading, and analyzing fr
 - Direct stiffness method (DSM) solver — runs entirely in the browser
 - Shear force, bending moment, axial force, and deformation diagrams
 - Parametric template builder for beams, frames, and trusses
+- Undo / redo (buttons + Ctrl+Z / Ctrl+Y) covering all model and load edits
+- Save / load models as JSON from the File menu
 - Mobile-responsive landing page; touch panning on the app canvas
 - No installation — works offline after first load
 

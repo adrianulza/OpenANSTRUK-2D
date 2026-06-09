@@ -153,8 +153,14 @@ Grid spacing and unit system can be adjusted via the settings panel accessible f
 
 | Key | Action |
 |-----|--------|
+| Ctrl/⌘ + Z | Undo last edit |
+| Ctrl/⌘ + Y *(or Ctrl/⌘ + Shift + Z)* | Redo |
 | Escape | Cancel current action / deselect |
 | Arrow keys | Navigate slides in Examples modal |
+
+### Undo / Redo
+
+The **Undo** and **Redo** buttons sit just below the zoom slider in the top-right of the canvas. They cover all model and load edits — adding/deleting nodes, members, supports, sections, and any load change — keeping up to the last 20 steps. Dragging a node counts as a single undo step. History is cleared when you start a new file, load a file, or load a template/example. The keyboard shortcuts above do the same thing (they don't fire while you're typing in an input field, so text editing keeps its own undo).
 
 ---
 

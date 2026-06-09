@@ -77,7 +77,8 @@ OpenAnstruk-2D/
 │   │
 │   ├── hooks/
 │   │   ├── use-toast.ts
-│   │   └── use-mobile.ts
+│   │   ├── use-mobile.ts
+│   │   └── use-model-history.ts          # Undo/redo: single reference-based model stack
 │   └── templates/
 │       ├── examples.ts                # 5 static example builders (template1–5)
 │       ├── examples-data.ts           # Metadata + SVG illustrations
@@ -289,6 +290,23 @@ M(x) = M1 − V1·x  + q1·x²/2 + (q2−q1)·x³/(6L)
 where `x` is distance from the i-end along the member.
 
 > **Note:** `solver.ts` numerical math (`transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. `localStiffness` gained an optional `GAs` parameter in v1.0.9 (Timoshenko, below) — with `GAs=0` it reduces algebraically to the original Euler matrix. Only `gaussSolve` (singular-pivot tracking + tightened tolerance, v1.0.6) and the `SolverResult` failure branch have otherwise changed. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
+
+### File I/O — JSON Save / Load (v1.0.10)
+
+The File menu persists a model to disk and reads it back. JSON is the only format — it round-trips the full `StructureModel` (including nested section `derived` caches) losslessly; CSV was rejected because it cannot represent that nested data.
+
+- **Save** — `handleSaveFile` (`App.tsx`): `JSON.stringify(model, null, 2)` → `Blob` → temporary `<a download>` named `openanstruk-structure-<YYYYMMDD-HHMM>.json`. Works on an empty canvas.
+- **Load** — `handleLoadFile`: hidden `<input type="file" accept=".json">` → `FileReader` → `JSON.parse` (try/catch) → `isStructureModel` shape guard → standard model-swap reset, but seeded via `seedIdCounter(parsed)` rather than `resetIdCounter()`. A parse error or failed guard shows a `window.alert` and leaves state untouched.
+- **`seedIdCounter(model)`** (`lib/model.ts`) seeds the single shared `idCounter` (used by all `n`/`m`/`l`/`s` prefixes) to the max numeric suffix found across loaded keys, so entities created after a load never collide with loaded ones. **`isStructureModel(x)`** is a lightweight runtime guard requiring the five entity records plus a non-empty `sections` map.
+- `NavBar` gained `onSave` / `onLoad`; "New Canvas" was renamed "New File". Solver and model math are untouched.
+
+### Undo / Redo (v1.0.11)
+
+`src/hooks/use-model-history.ts` provides `useModelHistory({ model, setModel, draggingNodeId })` → `{ undo, redo, canUndo, canRedo, resetHistory }`. Because every mutation replaces `model` with a new immutable object, the hook keeps a **single stack of references** to past models (no clones, no JSON) — covering node/member/support/section *and* load edits, since loads live inside `model`. Capacity is capped at 20 (`.slice(-20)`).
+
+Capture is observational: a `[model]` effect pushes the previous model onto the undo stack on every change, with two guards — (1) changes caused by undo/redo themselves are skipped (the apply path sets `prevModelRef = target` so the effect's identity check short-circuits), and (2) on-screen node drags are coalesced. The drag is bracketed by `draggingNodeId`; the hook records the pre-drag model at drag start and pushes it once on drag end **only if the model actually changed**, so a whole drag is a single undo and a click-without-move adds nothing. `resetHistory()` clears both stacks (called by the five whole-model swap handlers so undo never crosses a New/Load/template/example boundary). `analysisResult` is *not* snapshotted — it recomputes lazily on the Analyze tab.
+
+**UI.** Two icon buttons (`Undo2`/`Redo2`) sit in an overlay card directly below the zoom slider in `structural-canvas.tsx` (props `onUndo`/`onRedo`/`canUndo`/`canRedo`); greyed when their stack is empty, with hover/active scale animation and `title` tooltips naming the shortcut. Global keyboard shortcuts (Ctrl/Cmd+Z undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redo) are registered in `App.tsx` and ignore form-field focus so native text-undo still works while typing.
 
 ### Shear Deformation (Timoshenko, v1.0.9)
 

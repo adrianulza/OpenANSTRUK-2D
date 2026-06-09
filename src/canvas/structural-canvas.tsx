@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from "react"
-import { ZoomIn, ZoomOut } from "lucide-react"
+import { ZoomIn, ZoomOut, Undo2, Redo2 } from "lucide-react"
 import type { TabType, ToolType } from "@/components/tool-sidebar"
 import type { NodeId, MultiSelection, StructureModel, LoadId } from "@/lib/model"
 import { caseShortLabel, compareKindPriority, type LoadCaseKind } from "@/lib/load-cases"
@@ -171,6 +171,10 @@ interface StructuralCanvasProps {
   onMoveNode?: (nodeId: NodeId, x: number, y: number) => void
   onDragNodeStart?: (nodeId: NodeId) => void
   onDragNodeEnd?: () => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
 export function StructuralCanvas({
@@ -217,6 +221,10 @@ export function StructuralCanvas({
   onMoveNode,
   onDragNodeStart,
   onDragNodeEnd,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }: StructuralCanvasProps) {
   // Display scale for force / moment labels drawn on canvas. Solver stores kN,
   // moment in kN·m; multiply by 1000 when displaying in N or N·m.
@@ -2960,6 +2968,40 @@ export function StructuralCanvas({
             {zoom === 1 ? "1x" : `${zoom.toFixed(2)}x`}
           </span>
         </div>
+      </div>
+
+      {/* Undo / Redo overlay — directly below the zoom card */}
+      <div className="absolute top-14 right-3 z-10 flex items-center gap-1 border rounded-lg px-1.5 py-1 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
+        <button
+          type="button"
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo"
+          onClick={() => onUndo?.()}
+          disabled={!canUndo}
+          className={
+            "flex items-center justify-center w-7 h-7 rounded-md transition-all duration-150 " +
+            (canUndo
+              ? "text-[#1a2f5e] hover:bg-muted hover:scale-105 active:scale-95"
+              : "opacity-40 pointer-events-none text-muted-foreground")
+          }
+        >
+          <Undo2 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          title="Redo (Ctrl+Y)"
+          aria-label="Redo"
+          onClick={() => onRedo?.()}
+          disabled={!canRedo}
+          className={
+            "flex items-center justify-center w-7 h-7 rounded-md transition-all duration-150 " +
+            (canRedo
+              ? "text-[#1a2f5e] hover:bg-muted hover:scale-105 active:scale-95"
+              : "opacity-40 pointer-events-none text-muted-foreground")
+          }
+        >
+          <Redo2 className="w-4 h-4" />
+        </button>
       </div>
     </div>
   )

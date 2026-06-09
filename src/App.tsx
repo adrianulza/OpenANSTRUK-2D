@@ -83,6 +83,7 @@ import {
 } from "@/lib/load-cases"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
+import { useModelHistory } from "@/hooks/use-model-history"
 
 export default function App() {
   const isMobile = useIsMobile()
@@ -330,6 +331,35 @@ export default function App() {
   const [moveNodeSelectedId, setMoveNodeSelectedId] = useState<NodeId | null>(null)
   const [draggingNodeId, setDraggingNodeId] = useState<NodeId | null>(null)
 
+  // Undo/redo over the whole model (covers node/member/support/section/load
+  // edits, since loads live inside `model`). See use-model-history.ts.
+  const { undo, redo, canUndo, canRedo, resetHistory } = useModelHistory({
+    model,
+    setModel,
+    draggingNodeId,
+  })
+
+  // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo. Ignore when the
+  // focus is in a form field so native text-undo keeps working there.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if (key === "y" || (key === "z" && e.shiftKey)) {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [undo, redo])
+
   const [hoveredNodeId, setHoveredNodeId] = useState<NodeId | null>(null)
   const [hoveredMemberId, setHoveredMemberId] = useState<string | null>(null)
   const [hoveredLoadId, setHoveredLoadId] = useState<LoadId | null>(null)
@@ -473,13 +503,14 @@ export default function App() {
     resetIdCounter()
     const m = createEmptyModel()
     setModel(m)
+    resetHistory()
     setActiveSection(firstSectionId(m))
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
-  }, [])
+  }, [resetHistory])
 
   // Save the current model as a downloadable JSON file. JSON round-trips the
   // full StructureModel losslessly (see CLAUDE.md File I/O brainstorm).
@@ -520,6 +551,7 @@ export default function App() {
           }
           seedIdCounter(parsed)
           setModel(parsed)
+          resetHistory()
           setActiveSection(firstSectionId(parsed))
           setActiveTab("Model")
           setActiveTool(null)
@@ -533,7 +565,7 @@ export default function App() {
       reader.readAsText(file)
     }
     input.click()
-  }, [])
+  }, [resetHistory])
 
   const handleTemplateLoad = useCallback((template: 1 | 2 | 3 | 4 | 5) => {
     const builders = {
@@ -546,13 +578,14 @@ export default function App() {
     resetIdCounter()
     const m = builders[template]()
     setModel(m)
+    resetHistory()
     setActiveSection(firstSectionId(m))
     setActiveTab("Model")
     setActiveTool(null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
-  }, [])
+  }, [resetHistory])
 
   const handleExampleConfirm = useCallback((model: StructureModel, section: Section) => {
     const merged: StructureModel = {
@@ -560,6 +593,7 @@ export default function App() {
       sections: { ...model.sections, [section.id]: section },
     }
     setModel(merged)
+    resetHistory()
     setActiveSection(section.id)
     setActiveTab("Model")
     setActiveTool(null)
@@ -567,7 +601,7 @@ export default function App() {
     setSelection(emptySelection())
     setSelectedLoadId(null)
     setShowExamplesModal(false)
-  }, [])
+  }, [resetHistory])
 
   const handleToolSelect = useCallback((tool: ToolType) => {
     setActiveTool(tool)
@@ -598,6 +632,7 @@ export default function App() {
   // merges the example's section into the model.
   const handleTemplateConfirm = useCallback((m: StructureModel) => {
     setModel(m)
+    resetHistory()
     setActiveSection(firstSectionId(m))
     setActiveTab("Model")
     setActiveTool(null)
@@ -605,7 +640,7 @@ export default function App() {
     setSelection(emptySelection())
     setSelectedLoadId(null)
     setTemplateModal(null)
-  }, [])
+  }, [resetHistory])
 
   const handleMouseMove = useCallback((x: number, y: number) => {
     setCursorX(x)
@@ -1346,6 +1381,10 @@ export default function App() {
             onMoveNode={handleMoveNode}
             onDragNodeStart={handleDragNodeStart}
             onDragNodeEnd={handleDragNodeEnd}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
           />
         </main>
       </div>
