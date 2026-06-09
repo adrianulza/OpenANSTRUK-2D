@@ -69,7 +69,7 @@ import {
   splitMember,
   SCALE,
 } from "@/lib/geometry"
-import { newMemberId, resetIdCounter } from "@/lib/model"
+import { newMemberId, resetIdCounter, seedIdCounter, isStructureModel } from "@/lib/model"
 import { HIT_TOL_NODE, HIT_TOL_MEMBER, LOAD_PT_ARROW_LEN_PX, LOAD_DIST_MAX_ARROW_PX } from "@/lib/constants"
 import {
   type LoadCase,
@@ -479,6 +479,60 @@ export default function App() {
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
+  }, [])
+
+  // Save the current model as a downloadable JSON file. JSON round-trips the
+  // full StructureModel losslessly (see CLAUDE.md File I/O brainstorm).
+  const handleSaveFile = useCallback(() => {
+    const json = JSON.stringify(model, null, 2)
+    const blob = new Blob([json], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const stamp =
+      `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+      `-${pad(now.getHours())}${pad(now.getMinutes())}`
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `openanstruk-structure-${stamp}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [model])
+
+  // Load a model from a user-selected JSON file. Untrusted contents are parsed
+  // and shape-guarded before swapping. On success, the same reset pattern as
+  // New File runs, but the ID counter is seeded (not reset) so newly-created
+  // entities don't collide with the loaded ones.
+  const handleLoadFile = useCallback(() => {
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = ".json,application/json"
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result as string)
+          if (!isStructureModel(parsed)) {
+            window.alert("Could not load file: not a valid OpenAnstruk model.")
+            return
+          }
+          seedIdCounter(parsed)
+          setModel(parsed)
+          setActiveSection(firstSectionId(parsed))
+          setActiveTab("Model")
+          setActiveTool(null)
+          setPendingFrameStart(null)
+          setSelection(emptySelection())
+          setSelectedLoadId(null)
+        } catch {
+          window.alert("Could not load file: invalid or corrupted JSON.")
+        }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
   }, [])
 
   const handleTemplateLoad = useCallback((template: 1 | 2 | 3 | 4 | 5) => {
@@ -1118,6 +1172,8 @@ export default function App() {
         onTabChange={handleTabChange}
         onTemplateLoad={handleTemplateLoad}
         onNewFile={handleNewFile}
+        onSave={handleSaveFile}
+        onLoad={handleLoadFile}
         onOpenBeamTemplate={() => setTemplateModal("beam")}
         onOpenFrameTemplate={() => setTemplateModal("frame")}
         onOpenTrussTemplate={() => setTemplateModal("truss")}

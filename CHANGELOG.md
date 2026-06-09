@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.10] — 2026-06-09
+
+**File I/O — JSON save & load.** The File menu can now persist a model to disk and read it back, so work survives closing the tab. JSON is the native, lossless format for `StructureModel` (no CSV — it can't round-trip nested section/derived data). "New Canvas" is renamed "New File" for menu consistency. Undo/redo is a separate follow-up.
+
+### Added
+- **Save File** in the File menu — serializes the current `StructureModel` to pretty-printed JSON and downloads it as `openanstruk-structure-<YYYYMMDD-HHMM>.json` via a `Blob` + temporary anchor. Works on an empty canvas.
+- **Load File** in the File menu — opens a `.json` picker, reads the file, parses and shape-guards it, then swaps it into the app using the same reset path as New File. On a parse error or invalid/foreign file, an alert is shown and app state is left untouched.
+- **`seedIdCounter(model)`** in `lib/model.ts` — seeds the shared ID counter to the maximum numeric suffix across all loaded node/member/load/section keys, so entities created after a load never collide with loaded ones. Used by Load File instead of `resetIdCounter()`.
+- **`isStructureModel(x)`** in `lib/model.ts` — lightweight runtime shape guard for untrusted file contents; requires the five entity records and a non-empty `sections` map.
+
+### Changed
+- **"New Canvas" → "New File"** label in the File-menu dropdown (`nav-bar.tsx`). The handler (`onNewFile`) is unchanged.
+- **`NavBar`** gained `onSave` / `onLoad` props, wired in `App.tsx` to the new `handleSaveFile` / `handleLoadFile` callbacks.
+
+### Notes
+- The solver and all model math are untouched — this is purely a persistence/UI layer.
+- Load reuses the existing model-swap reset (clear selection/tool/frame-start, switch to Model tab, `setActiveSection(firstSectionId(...))`), matching the behavior of New File and the template/example paths.
+- CSV (any direction), keyboard shortcuts, File System Access API (save-in-place), and autosave are intentionally out of scope.
+
+### Documentation
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.9] — 2026-06-07
 
 **Shear deformation (Timoshenko beam).** An opt-in toggle adds shear flexibility to every element's bending stiffness. Off by default and byte-identical to v1.0.8 when off; when on, deep/short members and shear-dominated frames deflect more (and, for indeterminate structures, internal forces redistribute) per Timoshenko theory. Applies to both frame and truss members. Verified against reference software on Example 5 (asymmetric rafter frame, 300×500 fc25 section) — reactions, axial, and moment all match to displayed precision.

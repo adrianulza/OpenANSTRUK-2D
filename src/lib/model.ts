@@ -212,6 +212,39 @@ export function resetIdCounter(): void {
   idCounter = 0
 }
 
+/**
+ * Seed the shared ID counter from an existing model so newly-created entities
+ * never collide with loaded ones. Scans the numeric suffix of every node,
+ * member, load, and section key and sets the counter to the maximum found.
+ * Use this (instead of resetIdCounter) after loading a model from file.
+ */
+export function seedIdCounter(model: StructureModel): void {
+  let max = 0
+  const scan = (keys: string[]) => {
+    for (const k of keys) {
+      const n = parseInt(k.replace(/^\D+/, ""), 10)
+      if (Number.isFinite(n) && n > max) max = n
+    }
+  }
+  scan(Object.keys(model.nodes))
+  scan(Object.keys(model.members))
+  scan(Object.keys(model.loads))
+  scan(Object.keys(model.sections))
+  idCounter = max
+}
+
+/** Lightweight shape guard for untrusted file contents loaded as JSON. */
+export function isStructureModel(x: unknown): x is StructureModel {
+  if (!x || typeof x !== "object") return false
+  const m = x as Record<string, unknown>
+  const obj = (v: unknown) => !!v && typeof v === "object"
+  return (
+    obj(m.nodes) && obj(m.members) && obj(m.supports) &&
+    obj(m.sections) && obj(m.loads) &&
+    Object.keys(m.sections as object).length > 0
+  )
+}
+
 /** Remove a section and reassign any members using it to the first remaining section. */
 export function deleteSection(model: StructureModel, sectionId: SectionId): StructureModel {
   const sections = { ...model.sections }

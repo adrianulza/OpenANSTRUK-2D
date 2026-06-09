@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Upload } from "lucide-react"
 import type { TabType } from "./tool-sidebar"
 
 interface NavBarProps {
@@ -9,6 +9,8 @@ interface NavBarProps {
   onTabChange: (tab: TabType) => void
   onTemplateLoad: (template: 1 | 2 | 3 | 4 | 5) => void
   onNewFile: () => void
+  onSave: () => void
+  onLoad: () => void
   onOpenBeamTemplate: () => void
   onOpenFrameTemplate: () => void
   onOpenTrussTemplate: () => void
@@ -92,6 +94,8 @@ export function NavBar({
   activeTab,
   onTabChange,
   onNewFile,
+  onSave,
+  onLoad,
   onOpenBeamTemplate,
   onOpenFrameTemplate,
   onOpenTrussTemplate,
@@ -132,13 +136,31 @@ export function NavBar({
           style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
           className="w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
         >
-          {/* New Canvas */}
+          {/* New File */}
           <button
             onClick={() => { onNewFile(); close() }}
             className="w-full flex items-center gap-3 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             <span className="text-gray-500 shrink-0"><NewCanvasIcon /></span>
-            <span className="font-medium">New Canvas</span>
+            <span className="font-medium">New File</span>
+          </button>
+
+          {/* Save File */}
+          <button
+            onClick={() => { onSave(); close() }}
+            className="w-full flex items-center gap-3 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            <span className="text-gray-500 shrink-0"><Download size={14} strokeWidth={1.6} /></span>
+            <span className="font-medium">Save File</span>
+          </button>
+
+          {/* Load File */}
+          <button
+            onClick={() => { onLoad(); close() }}
+            className="w-full flex items-center gap-3 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            <span className="text-gray-500 shrink-0"><Upload size={14} strokeWidth={1.6} /></span>
+            <span className="font-medium">Load File</span>
           </button>
 
           {/* Templates section */}
