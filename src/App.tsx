@@ -339,9 +339,11 @@ export default function App() {
     draggingNodeId,
   })
 
-  // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo. Ignore when the
-  // focus is in a form field so native text-undo keeps working there.
+  // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo. Only on the Model
+  // and Load tabs (Analyze is read-only). Ignore when the focus is in a form
+  // field so native text-undo keeps working there.
   useEffect(() => {
+    if (activeTab !== "Model" && activeTab !== "Load") return
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
       const t = e.target as HTMLElement | null
@@ -358,7 +360,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, activeTab])
 
   const [hoveredNodeId, setHoveredNodeId] = useState<NodeId | null>(null)
   const [hoveredMemberId, setHoveredMemberId] = useState<string | null>(null)

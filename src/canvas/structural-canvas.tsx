@@ -2970,7 +2970,9 @@ export function StructuralCanvas({
         </div>
       </div>
 
-      {/* Undo / Redo overlay — directly below the zoom card */}
+      {/* Undo / Redo overlay — directly below the zoom card. Model/Load only;
+          the Analyze tab is read-only so editing history doesn't apply there. */}
+      {(activeTab === "Model" || activeTab === "Load") && (
       <div className="absolute top-14 right-3 z-10 flex items-center gap-1 border rounded-lg px-1.5 py-1 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
         <button
           type="button"
@@ -3003,6 +3005,7 @@ export function StructuralCanvas({
           <Redo2 className="w-4 h-4" />
         </button>
       </div>
+      )}
     </div>
   )
 }
