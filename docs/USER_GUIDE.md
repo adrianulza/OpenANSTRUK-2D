@@ -10,11 +10,12 @@ OpenAnstruk-2D is a browser-based 2D structural analysis tool. No installation r
 
 ## Quick Start
 
-The workflow is linear: **Model → Load → Analyze**. Use the tabs at the top to move between steps.
+The workflow is linear: **Model → Load → Analyze → Design**. Use the tabs at the top to move between steps.
 
 1. **Model tab** — build your structure
 2. **Load tab** — apply loads
 3. **Analyze tab** — view results
+4. **Design tab** — check RC beam sections (flexure + shear)
 
 ---
 
@@ -118,6 +119,23 @@ Displays the axial force diagram (AFD). Blue = tension, red = compression.
 
 ### DEFORMATION
 Displays the deformed shape. Use the scale slider to exaggerate deformations for visibility.
+
+---
+
+## Design Tab
+
+The Design tab checks **reinforced-concrete rectangular beams** for flexure and shear per **ACI 318-14 / SNI 2847:2019**, across Ordinary / Intermediate / Special moment frames (OMF / IMF / SMF). It applies to any member with a concrete rectangular section (f'c > 0), in any orientation.
+
+Two tools set it up:
+
+- **DESIGN CRITERIA** — the global code setup: framing type, steel strengths (fy, fyt, Es), strength-reduction factors (φ), lightweight factor (λ), and stirrup legs.
+- **SECTION DESIGN** — per concrete section: pick **As required** (the program computes the steel needed) or **As checked** (you define the bars and stirrups, and it reports capacity ratios). In checked mode you set cover, top/bottom/side bars, and the stirrup for two arrangements — **Support** (the 2h end/hinge zones) and **Midspan** — with a live cross-section preview and a running ACI detailing checklist (spacing, cover, layering, skin reinforcement, hoop spacing).
+
+Press **Run Design** (floating button, top of the canvas) to evaluate every beam. Members are coloured by their worst flexural capacity ratio (navy → green → orange → red), with a flexure and a shear label per member and a colour legend. Any run problems (no load combinations, unsolved cases, no designable section) appear in an amber card.
+
+> Design results are not saved in the JSON file (same as load cases and combinations) and clear automatically whenever you change the model, loads, combinations, or design inputs — re-run after edits.
+
+For the full engineering logic and the governing code clauses behind every check, see **[DESIGN_RULES.md](DESIGN_RULES.md)**.
 
 ---
 

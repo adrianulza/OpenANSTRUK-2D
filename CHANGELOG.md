@@ -6,6 +6,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] — 2026-06-12
+
+**Design tab — RC beam design checks (ACI 318-14 / SNI 2847:2019).** A fourth tab adds reinforced-concrete flexural + shear design for rectangular beams across Ordinary / Intermediate / Special moment frames (OMF / IMF / SMF). It applies to every member with a concrete rectangular section (f'c > 0) regardless of orientation — a 2D plane frame has no torsion DOF, so pure M + V design is exact. The full engineering narrative, with every governing clause, lives in the new **[docs/DESIGN_RULES.md](docs/DESIGN_RULES.md)**.
+
+### Added
+- **`src/lib/design/` pure-domain engine** (no React): `types`, `rebar` (D10–D32 catalogue), `flexure` (β₁, As,min, Whitney `requiredAs`, strain-compatibility `phiMnProvided`/`phiMnBars`, φ ramp), `shear` (Vc, φVmax, Av/s, spacing caps, stirrup suggestion), `demands` (analytic zone extremes, envelope, frame minimums, gravity combo), `bar-layout` (shared bar geometry + ACI detailing checks), and `run-design` (orchestrator).
+- **Two tools** (`src/tabs/design/tools/`): **DESIGN CRITERIA** (code, frame type, fy/fyt/Es, φt/φv/φc, λ, stirrup legs) and **SECTION DESIGN** (material class, section picker, As-required / As-checked mode, per-section rebar with Support/Midspan arrangements, and a live SVG cross-section preview).
+- **Two design modes.** *As required* computes required As (top/bottom, Whitney) and Av/s per zone; *As checked* evaluates the user's bars by **per-bar strain compatibility** — side/skin bars **included** (permitted by 9.7.2.3), displaced-concrete correction, εt at the extreme tension bar, φ ramped 0.65→0.9 (21.2.2).
+- **Demands** — exact analytic per-zone extremes (polynomial roots, no sampling) enveloped across enabled combinations, with SMF (18.6.3.2) / IMF (18.4.2.2) moment minimums and a synthesized 1.2D+1.0L gravity combo for capacity-design shear.
+- **Capacity-design shear** — OMF = envelope Vu; IMF = Ve from Mn + Vg; SMF = Ve from Mpr (1.25fy) + Vg with Vc = 0 in hinge zones.
+- **Bar layout & layering** (`bar-layout.ts`) — single source of truth shared by the preview and the flexural solver. Auto-overflow into a second layer at a hard-coded 50 mm clear (≥ 25 mm of 25.2.2, for 135°-hook clearance), vertically aligned (25.2.2), max 2 layers; a lone overflow bar is promoted to two at the outer positions. Side bars distributed evenly between the innermost top/bottom rows. Bar-count inputs clamp to the geometric maximum.
+- **Live ACI detailing checks** under the preview (As-checked): longitudinal (`checkArrangement`) — 25.2.1 fit/clear spacing, 24.3.2 crack-control spacing, 20.6.1.3.1 cover ≥ 40, 18.6.3.1 (SMF ≥ 2 bars), 9.7.2.3 skin reinforcement for h > 900; transverse (`checkTransverse`) — max spacing per frame/zone, Av/s ≥ Av,min/s (9.6.3.3), SMF hx ≤ 350 (18.6.4.2), stirrup ≥ D10 (25.7.1), first-hoop ≤ 50 mm advisory.
+- **Run-time spacing fixes** — `governingSpacingMax` unifies the spacing caps: SMF hinge (18.6.4.4), IMF hinge min(d/4, 8db, 24db_hoop, 300) (18.4.2.5), and the general 9.7.6.2.2 cap tightening from min(d/2, 600) to min(d/4, 300) when Vs = Vu/φ − Vc exceeds 0.33√f'c·bw·d.
+- **Canvas** — members recoloured by worst flexural D/C (5-band `designColorForDC`); two rotated pill labels per designed member (flexure +local-2, shear −local-2); a colour legend when results exist; a floating "Run Design" button (Design tab only).
+- **Validation** — `validation/rc_beam_verify.mjs` (25 SMF anchors: As = 2224 mm², Mpr = 552.9 kN·m, Ve = 234.03 kN, Av/s → D10@100) and `validation/strain_compat_check.mts` (16 strain-compat / layering / spacing assertions).
+- **`docs/DESIGN_RULES.md`** — authoritative design-logic reference, structured so steel members and new section shapes/columns slot in as material/shape strategies.
+
+### Changed
+- **`runDesign()` solves its own cases** (`solveAllCases` + `combineResults`) rather than reusing the Analyze tab's lazy memo, so design works from any tab. Results are cleared by an invalidation effect on any change to model / load cases / combinations / criteria / section inputs / shear-deformation.
+- **App state** gained `designCriteria`, `sectionDesignInputs`, `designSelectedSectionId`, `designResult` — App-state only, not part of `StructureModel`, not persisted by Save/Load (same boundary as load cases/combinations).
+
+### Notes
+- The DSM solver and all model math are untouched — the design engine is a pure consumer of analysis results.
+- Vc uses the code coefficient 0.17√f'c; the reference's worked example used 1/6 (~2 % difference).
+- OMF/IMF share the SMF-validated engine but are not separately anchored to a published example. Columns, steel members, and non-rectangular sections are deferred — the engine is structured for them (see `docs/DESIGN_RULES.md` §12).
+
+### Documentation
+- **`docs/DESIGN_RULES.md`**: new — full design logic + clause index + extension guide.
+- `CLAUDE.md`: "Design Tab — RC Beam Design Checks (v1.1.0)" section.
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.0.11] — 2026-06-09
 
 **Undo / Redo.** A single history stack lets users reverse and replay edits to the model — nodes, members, supports, sections, and loads (loads live inside `model`, so one stack covers everything). Two buttons sit directly below the zoom slider, with Ctrl+Z / Ctrl+Y shortcuts. Both are available only on the **Model and Load tabs** (the read-only Analyze tab has no editing history). History is reference-based: snapshots are pointers to past immutable `model` objects, not clones, so the memory cost is negligible even at the 20-deep cap.

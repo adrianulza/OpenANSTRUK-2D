@@ -20,6 +20,7 @@ A 2D structural analysis web application for modeling, loading, and analyzing fr
 - Point loads and distributed loads (local-axis and global-axis modes)
 - Direct stiffness method (DSM) solver — runs entirely in the browser
 - Shear force, bending moment, axial force, and deformation diagrams
+- RC beam design checks (flexure + shear, ACI 318-14 / SNI 2847:2019; OMF/IMF/SMF) — see [Design Rules](docs/DESIGN_RULES.md)
 - Parametric template builder for beams, frames, and trusses
 - Undo / redo (buttons + Ctrl+Z / Ctrl+Y) covering all model and load edits
 - Save / load models as JSON from the File menu
@@ -34,8 +35,9 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 | Doc | Description |
 |-----|-------------|
-| [User Guide](docs/USER_GUIDE.md) | How to model, load, and analyze structures in the app |
+| [User Guide](docs/USER_GUIDE.md) | How to model, load, analyze, and design structures in the app |
 | [Architecture](docs/ARCHITECTURE.md) | Codebase structure, solver internals, and design decisions |
+| [Design Rules](docs/DESIGN_RULES.md) | RC/steel member design logic + ACI 318-14 clause index + extension guide |
 | [Development](docs/DEVELOPMENT.md) | Roadmap, known issues, and planned phases |
 | [Contributing](docs/CONTRIBUTING.md) | How to report bugs, submit features, or get involved |
 

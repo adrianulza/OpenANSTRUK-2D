@@ -82,6 +82,16 @@ import {
   newLoadComboId,
 } from "@/lib/load-cases"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
+import {
+  defaultDesignCriteria,
+  defaultSectionDesignInput,
+  type DesignCriteria,
+  type DesignReport,
+  type DesignRunResult,
+  type SectionDesignInput,
+  type SectionDesignInputs,
+} from "@/lib/design/types"
+import { runDesign } from "@/lib/design/run-design"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 import { useModelHistory } from "@/hooks/use-model-history"
 
@@ -146,6 +156,50 @@ export default function App() {
   const [selectedCombinationId, setSelectedCombinationId] = useState<LoadComboId | null>(null)
   // Load tab: which case to show on canvas (or "all loads"). Default "all".
   const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
+
+  // ─── Design tab (v1.1) ─────────────────────────────────────────────────────
+  // Like loadCases/combinations, design state lives in App state only — it is
+  // not part of StructureModel and is not persisted by Save/Load.
+  const [designCriteria, setDesignCriteria] = useState<DesignCriteria>(defaultDesignCriteria)
+  const [sectionDesignInputs, setSectionDesignInputs] = useState<SectionDesignInputs>({})
+  const [designSelectedSectionId, setDesignSelectedSectionId] = useState<SectionId | null>(null)
+  const [designResult, setDesignResult] = useState<DesignRunResult | null>(null)
+  const [designReport, setDesignReport] = useState<DesignReport>("default")
+
+  const handleDesignCriteriaChange = useCallback((patch: Partial<DesignCriteria>) => {
+    setDesignCriteria((prev) => ({ ...prev, ...patch }))
+  }, [])
+
+  const handlePatchSectionDesignInput = useCallback(
+    (id: SectionId, patch: Partial<SectionDesignInput>) => {
+      setSectionDesignInputs((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] ?? defaultSectionDesignInput(id)), ...patch },
+      }))
+    },
+    [],
+  )
+
+  // Design is manually triggered (no auto-compute): solves all cases itself,
+  // independent of the Analyze tab's lazy memo.
+  const handleRunDesign = useCallback(() => {
+    setDesignResult(
+      runDesign({
+        model,
+        loadCases,
+        combinations,
+        criteria: designCriteria,
+        inputs: sectionDesignInputs,
+        shearDeformation,
+      }),
+    )
+  }, [model, loadCases, combinations, designCriteria, sectionDesignInputs, shearDeformation])
+
+  // Stale-result invalidation: any input change clears the run. The Run click
+  // itself only sets designResult (not a dep here), so it never self-clears.
+  useEffect(() => {
+    setDesignResult((r) => (r === null ? r : null))
+  }, [model, loadCases, combinations, designCriteria, sectionDesignInputs, shearDeformation])
 
   // While a placement tool is active, the flyout's active load case drives the
   // canvas "Show Load" filter so users never place into a hidden case. Off-case
@@ -485,7 +539,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
-    setActiveTool(tab === "Analyze" ? "REACTION" : null)
+    setActiveTool(tab === "Analyze" ? "REACTION" : tab === "Design" ? "SECTION_DESIGN" : null)
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
@@ -512,6 +566,11 @@ export default function App() {
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
+    // Design state is document-scoped: full reset on New File.
+    setDesignCriteria(defaultDesignCriteria())
+    setSectionDesignInputs({})
+    setDesignSelectedSectionId(null)
+    setDesignResult(null)
   }, [resetHistory])
 
   // Save the current model as a downloadable JSON file. JSON round-trips the
@@ -560,6 +619,9 @@ export default function App() {
           setPendingFrameStart(null)
           setSelection(emptySelection())
           setSelectedLoadId(null)
+          setSectionDesignInputs({})
+          setDesignSelectedSectionId(null)
+          setDesignResult(null)
         } catch {
           window.alert("Could not load file: invalid or corrupted JSON.")
         }
@@ -587,6 +649,9 @@ export default function App() {
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
+    setSectionDesignInputs({})
+    setDesignSelectedSectionId(null)
+    setDesignResult(null)
   }, [resetHistory])
 
   const handleExampleConfirm = useCallback((model: StructureModel, section: Section) => {
@@ -602,6 +667,9 @@ export default function App() {
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
+    setSectionDesignInputs({})
+    setDesignSelectedSectionId(null)
+    setDesignResult(null)
     setShowExamplesModal(false)
   }, [resetHistory])
 
@@ -641,6 +709,9 @@ export default function App() {
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
+    setSectionDesignInputs({})
+    setDesignSelectedSectionId(null)
+    setDesignResult(null)
     setTemplateModal(null)
   }, [resetHistory])
 
@@ -1168,6 +1239,14 @@ export default function App() {
       const fallback = Object.keys(model.sections).find((id) => id !== sectionId)!
       setModel((m) => deleteSection(m, sectionId))
       if (sectionId === activeSection) setActiveSection(fallback)
+      // Keep design state consistent: drop the deleted section's rebar input.
+      setSectionDesignInputs((prev) => {
+        if (!(sectionId in prev)) return prev
+        const next = { ...prev }
+        delete next[sectionId]
+        return next
+      })
+      setDesignSelectedSectionId((cur) => (cur === sectionId ? null : cur))
     },
     [model.sections, activeSection]
   )
@@ -1339,6 +1418,12 @@ export default function App() {
             editingCombinationId={editingCombinationId}
             onEditingCombinationIdChange={setEditingCombinationId}
             zeroGammaSectionIds={zeroGammaSectionIds}
+            designCriteria={designCriteria}
+            onDesignCriteriaChange={handleDesignCriteriaChange}
+            sectionDesignInputs={sectionDesignInputs}
+            onPatchSectionDesignInput={handlePatchSectionDesignInput}
+            designSelectedSectionId={designSelectedSectionId}
+            onDesignSelectedSectionChange={setDesignSelectedSectionId}
           />
 
           <StructuralCanvas
@@ -1387,6 +1472,10 @@ export default function App() {
             onRedo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
+            designResult={designResult}
+            onRunDesign={handleRunDesign}
+            designReport={designReport}
+            onDesignReportChange={setDesignReport}
           />
         </main>
       </div>

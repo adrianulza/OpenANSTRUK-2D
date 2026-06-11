@@ -6,13 +6,13 @@ OpenAnstruk-2D is a browser-based 2D structural analysis application. This docum
 
 The app is a single-page React application with no backend. Everything — modeling, loading, and analysis — runs entirely in the browser. There is no server, no database, and no build-time data fetching.
 
-The workflow follows three sequential steps:
+The workflow follows four sequential steps:
 
 ```
-Model  →  Load  →  Analyze
+Model  →  Load  →  Analyze  →  Design
 ```
 
-Each step maps to a tab in the UI. The user builds a structure, assigns loads, then runs analysis to view results.
+Each step maps to a tab in the UI. The user builds a structure, assigns loads, runs analysis to view results, then checks RC beam sections (flexure + shear) on the Design tab.
 
 ---
 
@@ -46,10 +46,15 @@ OpenAnstruk-2D/
 │   │   ├── flyout-panel-colors.ts     # FLYOUT_PANEL_COLORS palette
 │   │   ├── svg-renderer.ts            # renderModelToSVG() for example thumbnails
 │   │   ├── utils.ts                   # shadcn cn()
-│   │   └── sections/                  # Section/material domain (pure, no React)
-│   │       ├── compute.ts             # buildParametricSection, computeSectionFromParametric
-│   │       ├── materials/             # types, concrete, steel, index
-│   │       └── shapes/                # types + rect, circle, iwf, tee, angle, chs, rhs
+│   │   ├── sections/                  # Section/material domain (pure, no React)
+│   │   │   ├── compute.ts             # buildParametricSection, computeSectionFromParametric
+│   │   │   ├── materials/             # types, concrete, steel, index
+│   │   │   └── shapes/                # types + rect, circle, iwf, tee, angle, chs, rhs
+│   │   └── design/                    # RC beam design engine (pure) — see docs/DESIGN_RULES.md
+│   │       ├── flexure.ts, shear.ts   # capacity + detailing math (ACI 318-14)
+│   │       ├── bar-layout.ts          # shared bar geometry + live ACI checks
+│   │       ├── demands.ts             # analytic zone extremes, envelope, frame minimums
+│   │       └── run-design.ts          # orchestrator (solves cases itself)
 │   │
 │   ├── canvas/                        # Canvas shell + tab-agnostic draw primitives
 │   │   ├── structural-canvas.tsx      # Viewport, pan/zoom, event routing, draw() loop
@@ -60,7 +65,8 @@ OpenAnstruk-2D/
 │   ├── tabs/                          # Per-tab vertical slices
 │   │   ├── model/tools/               # select, delete, move-node, node, member, support + material/
 │   │   ├── load/tools/                # point-load, dist-load, modify-load, delete-load
-│   │   └── analyze/tools/             # select, reaction, diagram, deformation
+│   │   ├── analyze/tools/             # select, reaction, diagram, deformation
+│   │   └── design/tools/              # design-criteria, section-design (+ rc-section-preview)
 │   │
 │   ├── components/                    # Shared, tab-agnostic UI
 │   │   ├── nav-bar.tsx                # Tab switcher + file/template menus
@@ -93,6 +99,7 @@ OpenAnstruk-2D/
 │   └── tsconfig.json
 ├── docs/
 │   ├── ARCHITECTURE.md                # This file
+│   ├── DESIGN_RULES.md                # RC/steel design logic + ACI clause index + extension guide
 │   ├── CONTRIBUTING.md
 │   └── USER_GUIDE.md
 ├── tsconfig.json                      # Root tsconfig (references config/tsconfig.json)
@@ -396,10 +403,21 @@ tabs/
 ├── model/tools/        select, delete, move-node, node, member, support
 │   └── material/       material-tool (entry) + parametric/manual forms, shape-preview, …
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
-└── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
+├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
+└── design/tools/       design-criteria, section-design (+ rc-section-preview)
 ```
 
 **Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
+
+---
+
+## Design Engine (`src/lib/design/`)
+
+A pure-domain layer that consumes analysis results to perform **RC beam design checks** (flexure + shear, ACI 318-14 / SNI 2847:2019). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then runs flexure → shear → detailing per member. Capacity in "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
+
+The engine is structured so **steel members, new section shapes, and columns** slot in as material/shape strategies behind the same pipeline.
+
+> The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** — read it before touching `src/lib/design/`.
 
 ---
 
