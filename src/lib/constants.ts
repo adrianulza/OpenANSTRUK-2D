@@ -91,6 +91,31 @@ export const COLOR_BMD_FILL          = "#f97316"  // moment diagram fill (orange
 export const COLOR_DIAGRAM_STROKE    = "#1e293b"  // diagram outline and label
 export const DIAGRAM_LINE_WIDTH      = 1.5
 
+// ── Design tab (v1.1): D/C ratio colour bands ────────────────────────────────
+// SAP2000-style member colouring by worst flexural demand/capacity ratio.
+export const COLOR_DESIGN_LOW  = "#2563eb"  // blue   — D/C in [0, 0.25)
+export const COLOR_DESIGN_MID  = "#16a34a"  // green  — D/C in [0.25, 0.50)
+export const COLOR_DESIGN_WARN = "#eab308"  // yellow — D/C in [0.50, 0.75)
+export const COLOR_DESIGN_HIGH = "#f97316"  // orange — D/C in [0.75, 1.0)
+export const COLOR_DESIGN_FAIL = "#ef4444"  // red    — D/C ≥ 1.0 (or infeasible)
+export const COLOR_DESIGN_LABEL = "#0f172a" // near-black — design pill text (passing)
+
+export const DESIGN_DC_BANDS: { max: number; color: string; label: string }[] = [
+  { max: 0.25, color: COLOR_DESIGN_LOW,  label: "< 0.25" },
+  { max: 0.50, color: COLOR_DESIGN_MID,  label: "0.25 – 0.50" },
+  { max: 0.75, color: COLOR_DESIGN_WARN, label: "0.50 – 0.75" },
+  { max: 1.0,  color: COLOR_DESIGN_HIGH, label: "0.75 – 1.0" },
+  { max: Infinity, color: COLOR_DESIGN_FAIL, label: "≥ 1.0" },
+]
+
+/** Band colour for a flexural D/C ratio (Infinity ⇒ fail red). */
+export function designColorForDC(dc: number): string {
+  for (const b of DESIGN_DC_BANDS) {
+    if (dc < b.max) return b.color
+  }
+  return COLOR_DESIGN_FAIL
+}
+
 // ── Number formatting utility ───────────────────────────────────────────────────
 /**
  * Format a number for display:

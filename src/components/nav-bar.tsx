@@ -22,7 +22,7 @@ interface NavBarProps {
   subBar?: React.ReactNode
 }
 
-const tabs: TabType[] = ["Model", "Load", "Analyze"]
+const tabs: TabType[] = ["Model", "Load", "Analyze", "Design"]
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 

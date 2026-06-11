@@ -1,0 +1,135 @@
+import * as React from "react"
+import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
+import {
+  FRAME_TYPES,
+  type DesignCriteria,
+  type FrameType,
+} from "@/lib/design/types"
+
+interface DesignCriteriaToolProps {
+  criteria: DesignCriteria
+  onChange: (patch: Partial<DesignCriteria>) => void
+}
+
+/**
+ * DESIGN CRITERIA — global code-check setup (SAP2000 "Design Preferences"
+ * style). One column of labelled fields; values apply to every designed member.
+ */
+export function DesignCriteriaToolContent({ criteria, onChange }: DesignCriteriaToolProps) {
+  return (
+    <div className="space-y-3">
+      {/* Design code */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Design Code</Label>
+        <Select value={criteria.code} onValueChange={() => {}}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ACI318-14_SNI2847-2019">ACI 318-14 / SNI 2847:2019</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Frame type */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Framing Type</Label>
+        <Select
+          value={criteria.frameType}
+          onValueChange={(v) => onChange({ frameType: v as FrameType })}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {FRAME_TYPES.map((f) => (
+              <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {criteria.frameType !== "OMF" && (
+          <p className="text-[10px] text-gray-500 leading-snug">
+            {criteria.frameType === "SMF"
+              ? "SMF: shear designed for probable moments Mpr (1.25fy); Vc = 0 in hinge zones; hoop spacing limits apply."
+              : "IMF: shear designed for nominal end moments Mn plus gravity shear."}
+          </p>
+        )}
+      </div>
+
+      {/* Reinforcement material */}
+      <div className="space-y-1.5 pt-2 border-t border-gray-200">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Rebar Material</Label>
+        <CriteriaInput label="Main bar yield" symbol="fy" value={criteria.fy} unit="MPa" min={1} onCommit={(v) => onChange({ fy: v })} />
+        <CriteriaInput label="Stirrup yield" symbol="fyt" value={criteria.fyt} unit="MPa" min={1} onCommit={(v) => onChange({ fyt: v })} />
+        <CriteriaInput label="Elastic modulus" symbol="Es" value={criteria.Es} unit="MPa" min={1} onCommit={(v) => onChange({ Es: v })} />
+      </div>
+
+      {/* Strength reduction factors */}
+      <div className="space-y-1.5 pt-2 border-t border-gray-200">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Strength Reduction</Label>
+        <CriteriaInput label="Flexure (tension-ctrl.)" symbol="φt" value={criteria.phiTension} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiTension: v })} />
+        <CriteriaInput label="Shear" symbol="φv" value={criteria.phiShear} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiShear: v })} />
+        <CriteriaInput label="Compression-ctrl." symbol="φc" value={criteria.phiCompression} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiCompression: v })} />
+      </div>
+
+      {/* Other parameters */}
+      <div className="space-y-1.5 pt-2 border-t border-gray-200">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Parameters</Label>
+        <CriteriaInput label="Lightweight factor" symbol="λ" value={criteria.lambda} unit="" min={0.01} max={1} onCommit={(v) => onChange({ lambda: v })} />
+        <CriteriaInput label="Stirrup legs" symbol="n" value={criteria.stirrupLegs} unit="" min={1} integer onCommit={(v) => onChange({ stirrupLegs: v })} />
+      </div>
+    </div>
+  )
+}
+
+function CriteriaInput({
+  label, symbol, value, unit, min, max, integer, onCommit,
+}: {
+  label: string
+  symbol: string
+  value: number
+  unit: string
+  min?: number
+  max?: number
+  integer?: boolean
+  onCommit: (v: number) => void
+}) {
+  const [text, setText] = React.useState(String(value))
+  React.useEffect(() => setText(String(value)), [value])
+
+  const commit = () => {
+    let n = parseFloat(text)
+    if (!Number.isFinite(n)) {
+      setText(String(value))
+      return
+    }
+    if (integer) n = Math.round(n)
+    if (min !== undefined) n = Math.max(min, n)
+    if (max !== undefined) n = Math.min(max, n)
+    setText(String(n))
+    if (n !== value) onCommit(n)
+  }
+
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-gray-600">
+        {label}, <span className="font-medium text-[#1a2f5e]">{symbol}</span>
+      </Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          className={cn(
+            "h-7 text-xs font-mono flex-1 min-w-0",
+            !Number.isFinite(parseFloat(text)) && "border-red-400 focus-visible:ring-red-300",
+          )}
+        />
+        <span className="text-xs text-gray-500 w-8 shrink-0 text-right">{unit}</span>
+      </div>
+    </div>
+  )
+}

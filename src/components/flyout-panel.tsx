@@ -23,6 +23,9 @@ import { DiagramToolContent } from "@/tabs/analyze/tools/diagram-tool"
 import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
+import { DesignCriteriaToolContent } from "@/tabs/design/tools/design-criteria-tool"
+import { SectionDesignToolContent } from "@/tabs/design/tools/section-design-tool"
+import type { DesignCriteria, SectionDesignInput, SectionDesignInputs } from "@/lib/design/types"
 import type {
   LoadCase,
   LoadCaseId,
@@ -119,6 +122,13 @@ interface FlyoutPanelProps {
   onEditingCombinationIdChange?: (id: LoadComboId | null) => void
   /** Sections with γ ≤ 0 — drives the Selfweight γ=0 inline warning. */
   zeroGammaSectionIds?: string[]
+  // Design tab (v1.1)
+  designCriteria?: DesignCriteria
+  onDesignCriteriaChange?: (patch: Partial<DesignCriteria>) => void
+  sectionDesignInputs?: SectionDesignInputs
+  onPatchSectionDesignInput?: (id: SectionId, patch: Partial<SectionDesignInput>) => void
+  designSelectedSectionId?: SectionId | null
+  onDesignSelectedSectionChange?: (id: SectionId | null) => void
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -219,17 +229,24 @@ export function FlyoutPanel({
   editingCombinationId,
   onEditingCombinationIdChange,
   zeroGammaSectionIds,
+  designCriteria,
+  onDesignCriteriaChange,
+  sectionDesignInputs,
+  onPatchSectionDesignInput,
+  designSelectedSectionId,
+  onDesignSelectedSectionChange,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
   const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
+  const medium = activeTool === "SECTION_DESIGN"
 
   return (
     <div
       data-flyout-root
       className={cn(
         "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-20",
-        wide ? "md:right-auto md:w-[515px]" : "sm:right-auto sm:w-[215px]",
+        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[300px]" : "sm:right-auto sm:w-[215px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}
@@ -334,6 +351,12 @@ export function FlyoutPanel({
           editingCombinationId={editingCombinationId}
           onEditingCombinationIdChange={onEditingCombinationIdChange}
           zeroGammaSectionIds={zeroGammaSectionIds}
+          designCriteria={designCriteria}
+          onDesignCriteriaChange={onDesignCriteriaChange}
+          sectionDesignInputs={sectionDesignInputs}
+          onPatchSectionDesignInput={onPatchSectionDesignInput}
+          designSelectedSectionId={designSelectedSectionId}
+          onDesignSelectedSectionChange={onDesignSelectedSectionChange}
         />
       </div>
     </div>
@@ -438,7 +461,38 @@ function FlyoutContent({
   editingCombinationId,
   onEditingCombinationIdChange,
   zeroGammaSectionIds,
+  designCriteria,
+  onDesignCriteriaChange,
+  sectionDesignInputs,
+  onPatchSectionDesignInput,
+  designSelectedSectionId,
+  onDesignSelectedSectionChange,
 }: FlyoutContentProps) {
+  if (activeTab === "Design") {
+    switch (activeTool) {
+      case "DESIGN_CRITERIA":
+        return designCriteria && onDesignCriteriaChange ? (
+          <DesignCriteriaToolContent
+            criteria={designCriteria}
+            onChange={onDesignCriteriaChange}
+          />
+        ) : null
+      case "SECTION_DESIGN":
+        return designCriteria && onPatchSectionDesignInput && onDesignSelectedSectionChange ? (
+          <SectionDesignToolContent
+            model={model}
+            selectedSectionId={designSelectedSectionId ?? null}
+            onSelectSection={onDesignSelectedSectionChange}
+            inputs={sectionDesignInputs ?? {}}
+            onPatchInput={onPatchSectionDesignInput}
+            criteria={designCriteria}
+          />
+        ) : null
+      default:
+        return null
+    }
+  }
+
   if (activeTab === "Model") {
     switch (activeTool) {
       case "SELECT":

@@ -15,9 +15,10 @@ import {
   Move,
   ListChecks,
   Combine,
+  SlidersHorizontal,
 } from "lucide-react"
 
-export type TabType = "Model" | "Load" | "Analyze"
+export type TabType = "Model" | "Load" | "Analyze" | "Design"
 export type ToolType =
   | "SELECT"
   | "NODE"
@@ -36,6 +37,8 @@ export type ToolType =
   | "SHEAR"
   | "MOMENT"
   | "DEFORMATION"
+  | "DESIGN_CRITERIA"
+  | "SECTION_DESIGN"
   | null
 
 interface Tool {
@@ -71,12 +74,28 @@ const loadTools: Tool[] = [
   { id: "DELETE", label: "DELETE", icon: <Trash2 size={20} /> },
 ]
 
+// RC rectangular section with corner bars — Design tab "Section Design" icon
+const rcSectionIcon = (
+  <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5}>
+    <rect x="4.5" y="2.5" width="11" height="15" rx="1.5" />
+    <circle cx="7.5" cy="5.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="5.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="7.5" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 const analyzeTools: Tool[] = [
   { id: "REACTION", label: "REACTION", icon: <Anchor size={20} /> },
   { id: "AXIAL", label: "AXIAL\nDIAGRAM", icon: <Activity size={20} /> },
   { id: "SHEAR", label: "SHEAR\nDIAGRAM", icon: <BarChart3 size={20} /> },
   { id: "MOMENT", label: "MOMENT\nDIAGRAM", icon: <TrendingUp size={20} /> },
   { id: "DEFORMATION", label: "DEFORMATION", icon: <Waves size={20} /> },
+]
+
+const designTools: Tool[] = [
+  { id: "DESIGN_CRITERIA", label: "DESIGN\nCRITERIA", icon: <SlidersHorizontal size={20} /> },
+  { id: "SECTION_DESIGN", label: "SECTION\nDESIGN", icon: rcSectionIcon },
 ]
 
 interface ToolSidebarProps {
@@ -86,10 +105,12 @@ interface ToolSidebarProps {
 }
 
 export function ToolSidebar({ activeTab, activeTool, onToolSelect }: ToolSidebarProps) {
-  const tools = activeTab === "Model" 
-    ? modelTools 
-    : activeTab === "Load" 
-    ? loadTools 
+  const tools = activeTab === "Model"
+    ? modelTools
+    : activeTab === "Load"
+    ? loadTools
+    : activeTab === "Design"
+    ? designTools
     : analyzeTools
 
   const handleToolClick = (toolId: NonNullable<ToolType>) => {

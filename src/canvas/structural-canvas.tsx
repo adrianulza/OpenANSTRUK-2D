@@ -74,7 +74,14 @@ import {
   HIT_TOL_NODE,
   HIT_TOL_MEMBER,
   formatValue,
+  designColorForDC,
+  COLOR_DESIGN_LOW,
+  COLOR_DESIGN_FAIL,
+  COLOR_DESIGN_LABEL,
+  DESIGN_DC_BANDS,
 } from "@/lib/constants"
+import type { DesignReport, DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/types"
+import { DESIGN_REPORTS, ZONE_IDS } from "@/lib/design/types"
 
 // Resolves the hover/selection palette for the active tool.
 // - "generic" (yellow) for MODIFY/MOVE/MODIFY_LOAD style tools
@@ -175,6 +182,11 @@ interface StructuralCanvasProps {
   onRedo?: () => void
   canUndo?: boolean
   canRedo?: boolean
+  // Design tab (v1.1)
+  designResult?: DesignRunResult | null
+  onRunDesign?: () => void
+  designReport?: DesignReport
+  onDesignReportChange?: (r: DesignReport) => void
 }
 
 export function StructuralCanvas({
@@ -225,6 +237,10 @@ export function StructuralCanvas({
   onRedo,
   canUndo = false,
   canRedo = false,
+  designResult = null,
+  onRunDesign,
+  designReport = "default",
+  onDesignReportChange,
 }: StructuralCanvasProps) {
   // Display scale for force / moment labels drawn on canvas. Solver stores kN,
   // moment in kN·m; multiply by 1000 when displaying in N or N·m.
@@ -444,7 +460,22 @@ export function StructuralCanvas({
         )
         const isTruss = m.memberType === "truss"
         const state: DrawState = selected ? "selected" : isHovered ? "hover" : "normal"
-        ctx.strokeStyle = strokeFor(kind, state, COLOR_BRAND)
+        // Design tab: recolour by worst flexural D/C band (checked mode) or
+        // binary navy/red (required mode). Non-designed members keep the brand
+        // colour; shear pass/fail is conveyed by the label, not the stroke.
+        let base = COLOR_BRAND
+        if (activeTab === "Design" && designResult) {
+          const r = designResult.members[m.id]
+          if (r?.status === "designed") {
+            base =
+              r.mode === "checked"
+                ? designColorForDC(r.worstFlexureDC ?? 0)
+                : (r.worstFlexureDC ?? 0) > 0 || !r.worstShearPass
+                  ? COLOR_DESIGN_FAIL
+                  : COLOR_DESIGN_LOW
+          }
+        }
+        ctx.strokeStyle = strokeFor(kind, state, base)
         ctx.lineWidth = (selected ? 5 : 4) * s
         ctx.beginPath()
         ctx.moveTo(pa.sx, pa.sy)
@@ -500,7 +531,174 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview]
+    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview, designResult]
+  )
+
+  // Design tab: two pill labels per designed member — flexure on the +local-2
+  // side, shear on −local-2 (the same sides the SFD/BMD use). Members flagged
+  // "axial-exceeded" get a single N/A pill.
+  const drawDesignLabels = useCallback(
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      if (!designResult) return
+      const s = adaptiveView ? 1 / zoom : 1
+
+      const drawPill = (sx: number, sy: number, angle: number, text: string, color: string) => {
+        ctx.save()
+        ctx.translate(sx, sy)
+        ctx.rotate(angle)
+        ctx.font = `500 ${11 * s}px 'JetBrains Mono', monospace`
+        const tw = ctx.measureText(text).width
+        const bw = tw + 8 * s
+        const bh = 16 * s
+        ctx.fillStyle = "rgba(255,255,255,0.92)"
+        ctx.strokeStyle = "#e2e8f0"
+        ctx.lineWidth = 1 * s
+        ctx.beginPath()
+        ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 3 * s)
+        ctx.fill()
+        ctx.stroke()
+        ctx.fillStyle = color
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText(text, 0, 0.5 * s)
+        ctx.restore()
+      }
+
+      type Cell = { text: string; color: string }
+      type ZoneLabels = { top?: Cell; bottom?: Cell; center?: Cell }
+
+      const navy = COLOR_DESIGN_LABEL
+      const fail = COLOR_DESIGN_FAIL
+      const dcCell = (v: number | undefined, active: boolean): Cell => {
+        if (!active || v === undefined) return { text: "–", color: navy }
+        if (!Number.isFinite(v)) return { text: "O/S", color: fail }
+        return { text: v.toFixed(2), color: v > 1 ? fail : navy }
+      }
+      const rhoCell = (v: number | undefined): Cell =>
+        v === undefined ? { text: "–", color: navy } : { text: `${(v * 100).toFixed(2)}%`, color: navy }
+
+      // ── Default report: worst-zone F/V summary at midpoint (original behaviour). ──
+      const defaultLabels = (r: MemberDesignResult): { flex: Cell; shear: Cell } | null => {
+        if (r.status !== "designed" || !r.zones) return null
+        if (r.mode === "checked") {
+          const dc = r.worstFlexureDC ?? 0
+          const flex = Number.isFinite(dc) && dc < 1.0
+            ? { text: `F ${dc.toFixed(2)}`, color: navy }
+            : { text: Number.isFinite(dc) ? `F ${dc.toFixed(2)}` : "F O/S", color: fail }
+          let vdc = 0
+          for (const z of Object.values(r.zones)) vdc = Math.max(vdc, z.shear.dc ?? 0)
+          const shear = r.worstShearPass
+            ? { text: `V ${vdc.toFixed(2)}`, color: navy }
+            : { text: Number.isFinite(vdc) ? `V ${vdc.toFixed(2)}` : "V O/S", color: fail }
+          return { flex, shear }
+        }
+        let asTop = 0, asBot = 0, avS = 0
+        let suggested: { size: string; spacing: number } | undefined
+        for (const z of Object.values(r.zones)) {
+          asTop = Math.max(asTop, z.flexure.AsReqTop ?? 0)
+          asBot = Math.max(asBot, z.flexure.AsReqBottom ?? 0)
+          if ((z.shear.AvSReq ?? 0) >= avS) { avS = z.shear.AvSReq ?? 0; suggested = z.shear.suggested }
+        }
+        const flex = (r.worstFlexureDC ?? 0) <= 0
+          ? { text: `As ${Math.round(asTop)}/${Math.round(asBot)}`, color: navy }
+          : { text: "As O/S", color: fail }
+        const shear = r.worstShearPass
+          ? { text: suggested ? `${suggested.size}@${suggested.spacing}` : `Av/s ${Math.round(avS)}`, color: navy }
+          : { text: "V O/S", color: fail }
+        return { flex, shear }
+      }
+
+      // Reports are mode-scoped — req-* on "required" members, chk-* on "checked".
+      const reportMode: "required" | "checked" | null =
+        designReport.startsWith("req-") ? "required"
+        : designReport.startsWith("chk-") ? "checked"
+        : null
+
+      const zoneLabels = (r: MemberDesignResult, z: ZoneId): ZoneLabels | null => {
+        if (r.status !== "designed" || !r.zones) return null
+        if (reportMode && r.mode !== reportMode) return null
+        const zd = r.zones[z]
+        const fx = zd.flexure
+        const sh = zd.shear
+        switch (designReport) {
+          case "req-long": {
+            const col = fx.adequate ? navy : fail
+            return {
+              top: { text: `${Math.round(fx.AsReqTop ?? 0)}`, color: col },
+              bottom: { text: `${Math.round(fx.AsReqBottom ?? 0)}`, color: col },
+            }
+          }
+          case "req-rho":
+            return { top: rhoCell(fx.rhoTop), bottom: rhoCell(fx.rhoBottom) }
+          case "req-shear": {
+            const ok = sh.pass
+            const text = sh.suggested ? `${sh.suggested.size}@${sh.suggested.spacing}` : `${Math.round(sh.AvSReq ?? 0)}`
+            return { center: { text, color: ok ? navy : fail } }
+          }
+          case "chk-long-dc":
+            return { top: dcCell(fx.dcNeg, (fx.MuNeg ?? 0) < 0), bottom: dcCell(fx.dcPos, (fx.MuPos ?? 0) > 0) }
+          case "chk-rho":
+            return { top: rhoCell(fx.rhoTop), bottom: rhoCell(fx.rhoBottom) }
+          case "chk-shear-dc":
+            return { center: dcCell(sh.dc, true) }
+          default:
+            return null
+        }
+      }
+
+      // Label placement fraction along i→j for each zone (end-i / midspan / end-j).
+      const ZONE_FRAC: Record<ZoneId, number> = { "end-i": 0.18, midspan: 0.5, "end-j": 0.82 }
+
+      for (const m of Object.values(model.members)) {
+        const r = designResult.members[m.id]
+        if (!r) continue
+        const a = model.nodes[m.a]
+        const b = model.nodes[m.b]
+        if (!a || !b) continue
+        const pa = worldToScreen(a, rect)
+        const pb = worldToScreen(b, rect)
+        let angle = Math.atan2(pb.sy - pa.sy, pb.sx - pa.sx)
+        if (angle > Math.PI / 2) angle -= Math.PI
+        if (angle < -Math.PI / 2) angle += Math.PI
+
+        const midX = (pa.sx + pb.sx) / 2
+        const midY = (pa.sy + pb.sy) / 2
+        if (r.status === "axial-exceeded") {
+          drawPill(midX, midY - 14 * s, angle, "N/A — axial", "#92700c")
+          continue
+        }
+
+        // +local-2 in screen space = (l2x, -l2y); top labels on +local-2, bottom on −.
+        const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
+        const spx = l2x
+        const spy = -l2y
+
+        if (designReport === "default") {
+          const labels = defaultLabels(r)
+          if (!labels) continue
+          const off = 18 * s
+          drawPill(midX + spx * off, midY + spy * off, angle, labels.flex.text, labels.flex.color)
+          drawPill(midX - spx * off, midY - spy * off, angle, labels.shear.text, labels.shear.color)
+          continue
+        }
+
+        const off = 16 * s
+        for (const z of ZONE_IDS) {
+          const lbl = zoneLabels(r, z)
+          if (!lbl) continue
+          const t = ZONE_FRAC[z]
+          const zx = pa.sx + (pb.sx - pa.sx) * t
+          const zy = pa.sy + (pb.sy - pa.sy) * t
+          if (lbl.center) {
+            drawPill(zx - spx * off, zy - spy * off, angle, lbl.center.text, lbl.center.color)
+          } else {
+            if (lbl.top) drawPill(zx + spx * off, zy + spy * off, angle, lbl.top.text, lbl.top.color)
+            if (lbl.bottom) drawPill(zx - spx * off, zy - spy * off, angle, lbl.bottom.text, lbl.bottom.color)
+          }
+        }
+      }
+    },
+    [model, designResult, designReport, adaptiveView, zoom]
   )
 
   const drawNodes = useCallback(
@@ -2264,6 +2462,7 @@ export function StructuralCanvas({
         drawDeformHover(ctx, rect)
       }
     }
+    if (activeTab === "Design" && designResult) drawDesignLabels(ctx, rect)
 
     ctx.restore()
 
@@ -2306,6 +2505,8 @@ export function StructuralCanvas({
     drawDeformedShape,
     drawDeformHover,
     drawReactions,
+    designResult,
+    drawDesignLabels,
   ])
 
   useEffect(() => {
@@ -2922,6 +3123,41 @@ export function StructuralCanvas({
           </span>
         </div>
       )}
+      {/* Design tab: floating Run button — top-center of canvas */}
+      {activeTab === "Design" && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => onRunDesign?.()}
+            className="px-4 py-1.5 rounded-lg shadow-sm border border-border bg-[#2563eb] text-white text-xs font-medium hover:bg-[#1d4ed8] transition-all hover:scale-[1.02] active:scale-95 select-none"
+          >
+            Run Design
+          </button>
+          {designResult && designResult.issues.length > 0 && (
+            <div className="max-w-[340px] border rounded-lg px-2.5 py-1.5 shadow-sm bg-background/95 border-amber-300">
+              {designResult.issues.map((issue, i) => (
+                <p key={i} className="text-[10px] text-amber-700 leading-snug">{issue}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Design tab: D/C colour legend — bottom-right, shown once results exist */}
+      {activeTab === "Design" && designResult && designResult.ok && (
+        <div className="absolute bottom-3 right-3 z-10 border rounded-lg px-2.5 py-2 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
+          <p className="text-[10px] font-medium text-muted-foreground mb-1">Capacity Ratio</p>
+          <div className="flex flex-col gap-0.5">
+            {DESIGN_DC_BANDS.map((b) => (
+              <div key={b.label} className="flex items-center gap-1.5">
+                <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: b.color }} />
+                <span className="text-[10px] text-muted-foreground tabular-nums">{b.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Zoom slider + Adaptive View overlay — top-right of canvas */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5 border rounded-lg px-3 py-2 shadow-sm select-none pointer-events-auto opacity-100 bg-background/90 border-border">
         <div className="flex items-center gap-2">
@@ -2969,6 +3205,27 @@ export function StructuralCanvas({
           </span>
         </div>
       </div>
+
+      {/* Design tab: report selector — directly below the zoom card. Chooses which
+          per-member quantity is overlaid on the canvas (SAP2000/ETABS-style). */}
+      {activeTab === "Design" && designResult && designResult.ok && (
+        <div className="absolute top-14 right-3 z-10 flex flex-col gap-1 border rounded-lg px-2.5 py-1.5 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
+          <span className="text-[10px] font-medium text-muted-foreground">Display</span>
+          <select
+            value={designReport}
+            onChange={(e) => onDesignReportChange?.(e.target.value as DesignReport)}
+            className="text-[11px] bg-background border border-border rounded-md px-1.5 py-1 w-48 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#1a2f5e]"
+          >
+            {DESIGN_REPORTS.map((grp) => (
+              <optgroup key={grp.group} label={grp.group}>
+                {grp.items.map((it) => (
+                  <option key={it.id} value={it.id}>{it.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Undo / Redo overlay — directly below the zoom card. Model/Load only;
           the Analyze tab is read-only so editing history doesn't apply there. */}
