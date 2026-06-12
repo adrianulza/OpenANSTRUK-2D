@@ -25,9 +25,14 @@ import type { FrameType, RebarArrangement } from "./types"
 
 /** Hard-coded clear spacing between bar layers, mm (≥ 25 mm of 25.2.2). */
 export const LAYER_CLEAR_MM = 50
-/** Minimum clear spacing between bars in a layer (25.2.1): max(25, db). */
+/** Assumed nominal maximum aggregate size, mm (25.4 = 1 in). Feeds the 25.2.1
+ *  (4/3)·d_agg clear-spacing term. Not a tracked input — see the preview note. */
+export const AGG_SIZE_MM = 25.4
+
+/** Minimum clear spacing between bars in a layer (25.2.1): greatest of 25 mm,
+ *  db, and (4/3)·d_agg. */
 export function minClearSpacing(db: number): number {
-  return Math.max(25, db)
+  return Math.max(25, db, (4 / 3) * AGG_SIZE_MM)
 }
 
 /** Max bars that fit in a single layer of width b (25.2.1 clear spacing). */
@@ -266,7 +271,7 @@ export function checkArrangement(
       const sMin = minClearSpacing(g.db)
       checks.push({
         status: g.clearSpacing >= sMin - 1e-9 ? "pass" : "fail",
-        text: `${label} clear spacing ${f(g.clearSpacing)} mm ≥ ${f(sMin)} mm`,
+        text: `${label} bar min. (clear) spacing ${f(g.clearSpacing)} mm ≥ ${f(sMin)} mm`,
         clause: "25.2.1",
       })
     }
@@ -274,7 +279,7 @@ export function checkArrangement(
       const sMax = maxCrackSpacing(opts.fy, cover + dbS)
       checks.push({
         status: g.centerSpacing <= sMax + 1e-9 ? "pass" : "fail",
-        text: `${label} bar spacing ${f(g.centerSpacing)} mm ≤ ${f(sMax)} mm (crack control)`,
+        text: `${label} bar max. (c/c) spacing ${f(g.centerSpacing)} mm ≤ ${f(sMax)} mm`,
         clause: "24.3.2",
       })
     }
@@ -380,9 +385,7 @@ export function checkTransverse(
   }
   checks.push({
     status: s <= sMax + 1e-9 ? "pass" : "fail",
-    text: `Stirrup spacing ${f(s)} mm ≤ ${f(sMax)} mm${
-      frameType === "OMF" ? " (→ min(d/4, 300) when Vs is high)" : ""
-    }`,
+    text: `Stirrup spacing ${f(s)} mm ≤ ${f(sMax)} mm`,
     clause,
   })
 
@@ -391,7 +394,7 @@ export function checkTransverse(
   const avProv = avSProvided(legs, arr.stirrup.size, s)
   checks.push({
     status: avProv >= avMin - 1e-6 ? "pass" : "fail",
-    text: `Aᵥ/s ${f(avProv)} ≥ Aᵥ,min/s ${f(avMin)} mm²/m`,
+    text: `Aᵥ/s = ${f(avProv)} mm²/m ≥ Aᵥ,min/s = ${f(avMin)} mm²/m`,
     clause: "9.6.3.3",
   })
 
@@ -423,7 +426,6 @@ export function checkTransverse(
       }).`,
     )
   }
-  notes.push("d taken to the bottom tension-steel centroid (22.5).")
 
   return { checks, notes }
 }

@@ -8,6 +8,7 @@ import {
 import type { SectionId, StructureModel } from "@/lib/model"
 import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rebar"
 import {
+  AGG_SIZE_MM,
   checkArrangement,
   checkTransverse,
   maxBarsTwoLayers,
@@ -189,15 +190,12 @@ export function SectionDesignToolContent({
 
               <RcSectionPreview b={b} h={h} cover={input.cover} arrangement={input[zone]} />
 
-              <ArrangementChecks
-                checks={checkArrangement(b, h, input.cover, input[zone], {
+              <DetailingChecksCard
+                longitudinal={checkArrangement(b, h, input.cover, input[zone], {
                   fy: criteria.fy,
                   frameType: criteria.frameType,
                 })}
-              />
-
-              <TransverseChecksCard
-                result={checkTransverse(b, h, input.cover, input[zone], zone, {
+                transverse={checkTransverse(b, h, input.cover, input[zone], zone, {
                   frameType: criteria.frameType,
                   fyt: criteria.fyt,
                   fc: sec.strength?.fc ?? 0,
@@ -220,54 +218,42 @@ const CHECK_GLYPH: Record<ArrangementCheck["status"], { glyph: string; cls: stri
   fail: { glyph: "✗", cls: "text-red-500" },
 }
 
-/** ACI 318-14 detailing checks for the current arrangement (live, no Run needed). */
-function ArrangementChecks({ checks }: { checks: ArrangementCheck[] }) {
-  return (
-    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
-      {checks.map((c, i) => {
-        const g = CHECK_GLYPH[c.status]
-        return (
-          <div key={i} className="flex items-start gap-1.5">
-            <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>
-              {g.glyph}
-            </span>
-            <p className="text-[10px] text-gray-600 leading-snug flex-1">
-              {c.text}{" "}
-              <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
-            </p>
-          </div>
-        )
-      })}
-      <p className="text-[10px] text-gray-400 leading-snug pt-0.5">
-        Aggregate size and exposure class assumed; side bars included in capacity
-        (strain compatibility).
-      </p>
-    </div>
-  )
-}
-
-/** ACI 318-14 stirrup/hoop detailing checks for the current zone (live). */
-function TransverseChecksCard({ result }: { result: TransverseChecks }) {
+/**
+ * ACI 318-14 reinforcement detailing checks (longitudinal + transverse) in one
+ * card — live, no Run needed. Assumption/clarification notes are greyed at the
+ * bottom, below the stirrup rows.
+ */
+function DetailingChecksCard({
+  longitudinal,
+  transverse,
+}: {
+  longitudinal: ArrangementCheck[]
+  transverse: TransverseChecks
+}) {
+  const notes = [`Aggregate size assumed ${AGG_SIZE_MM} mm.`, ...transverse.notes]
+  const row = (c: ArrangementCheck, key: string) => {
+    const g = CHECK_GLYPH[c.status]
+    return (
+      <div key={key} className="flex items-start gap-1.5">
+        <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>
+          {g.glyph}
+        </span>
+        <p className="text-[10px] text-gray-600 leading-snug flex-1">
+          {c.text}{" "}
+          <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
       <p className="text-[10px] font-semibold text-[#1a2f5e] leading-snug">
-        Transverse reinforcement
+        Reinforcement Detailing Checks
       </p>
-      {result.checks.map((c, i) => {
-        const g = CHECK_GLYPH[c.status]
-        return (
-          <div key={i} className="flex items-start gap-1.5">
-            <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>
-              {g.glyph}
-            </span>
-            <p className="text-[10px] text-gray-600 leading-snug flex-1">
-              {c.text}{" "}
-              <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
-            </p>
-          </div>
-        )
-      })}
-      {result.notes.map((n, i) => (
+      {longitudinal.map((c, i) => row(c, `l${i}`))}
+      <div className="border-t border-gray-200 my-1" />
+      {transverse.checks.map((c, i) => row(c, `t${i}`))}
+      {notes.map((n, i) => (
         <p key={i} className="text-[10px] text-gray-400 leading-snug pt-0.5">
           {n}
         </p>
@@ -459,9 +445,8 @@ function StirrupRow({
         onChange={(e) => setSpacingText(e.target.value)}
         onBlur={commitSpacing}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-        className="h-7 text-xs font-mono w-14 text-center"
+        className="h-7 text-xs font-mono w-20 text-center"
       />
-      <span className="text-xs text-gray-500">mm</span>
     </div>
   )
 }
