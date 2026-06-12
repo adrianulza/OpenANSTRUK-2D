@@ -8,8 +8,8 @@
 
 import type { DesignCriteria } from "./types"
 
-const EPS_CU = 0.003 // concrete crushing strain (22.2.2.1)
-const EPS_T_MIN = 0.005 // tension-controlled limit strain for beams (9.3.3.1 / 21.2.2)
+export const EPS_CU = 0.003 // concrete crushing strain (22.2.2.1)
+export const EPS_T_MIN = 0.005 // tension-controlled limit strain for beams (9.3.3.1 / 21.2.2)
 
 /** Stress-block factor β₁ (22.2.2.4.3): 0.85 − 0.05(f'c−28)/7, clamped [0.65, 0.85]. */
 export function beta1(fc: number): number {

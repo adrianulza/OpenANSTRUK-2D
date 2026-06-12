@@ -27,6 +27,8 @@ import {
   type SectionDesignInputs,
 } from "@/lib/design/types"
 import { RcSectionPreview } from "./rc-section-preview"
+import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
+import { AdvancedReportDeck } from "./advanced-report"
 
 type ZoneKey = "support" | "midspan"
 
@@ -64,6 +66,13 @@ export function SectionDesignToolContent({
   }, [selectedSectionId, designableIds.join(",")])
 
   const [zone, setZone] = React.useState<ZoneKey>("support")
+  const [advancedOpen, setAdvancedOpen] = React.useState(false)
+
+  // Close the Advanced Report when leaving checked mode or losing the section.
+  const inputMode = selectedSectionId ? inputs[selectedSectionId]?.mode ?? "required" : null
+  React.useEffect(() => {
+    if (inputMode !== "checked") setAdvancedOpen(false)
+  }, [inputMode, selectedSectionId])
 
   const sec = selectedSectionId ? sections[selectedSectionId] : undefined
   const designable = isSectionDesignable(sec)
@@ -201,6 +210,19 @@ export function SectionDesignToolContent({
                   fc: sec.strength?.fc ?? 0,
                   legs: criteria.stirrupLegs,
                 })}
+              />
+
+              {/* Advanced Capacity Report — pill + portal deck (checked mode only) */}
+              <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
+              <AdvancedReportDeck
+                open={advancedOpen}
+                b={b}
+                h={h}
+                cover={input.cover}
+                arrangement={input[zone]}
+                zone={zone}
+                fc={sec.strength?.fc ?? 0}
+                criteria={criteria}
               />
             </>
           )}
