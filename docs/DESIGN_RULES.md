@@ -255,9 +255,9 @@ every bar's `(x, depth, db, area, role, layer)`. Both the SVG preview and
 `phiMnBars` consume it.
 
 ### 6.1 Single-layer fit (25.2.1)
-Minimum clear spacing in a layer `s_min = max(25 mm, db)` (the (4/3)·d_agg term
-is assumed satisfied — aggregate size is not tracked). Bars that fit in one
-layer:
+Minimum clear spacing in a layer `s_min = max(25 mm, db, (4/3)·d_agg)`, with the
+nominal maximum aggregate size assumed `d_agg = 25.4 mm` (`AGG_SIZE_MM`, ⇒
+(4/3)·d_agg ≈ 33.9 mm) — not a tracked input. Bars that fit in one layer:
 
 ```
 nMax = floor((bwClear + s_min)/(db + s_min)),   bwClear = b − 2·cover − 2·db,stirrup
@@ -345,7 +345,7 @@ type (no solver run needed). All are geometry-only.
 | Check | Rule | Clause |
 |-------|------|--------|
 | Single-layer fit / 2-layer overflow | bars fit within 2 layers | 25.2.1 |
-| Clear spacing in a layer | `≥ max(25, db)` | 25.2.1 |
+| Clear spacing in a layer | `≥ max(25, db, (4/3)·d_agg)`, `d_agg = 25.4 mm` | 25.2.1 |
 | Max bar spacing (crack control) | `≤ min(380·(280/fs) − 2.5cc, 300·(280/fs))`, `fs = ⅔fy` | 24.3.2 |
 | Minimum cover | `≥ 40 mm` (cast-in-place, not exposed — assumed) | 20.6.1.3.1 |
 | SMF continuous bars | `≥ 2` top and bottom | 18.6.3.1 |
@@ -472,8 +472,9 @@ Eurocode 2 / others would add a profile + a few formula overrides.
 - **Design state is App-state only** — `designCriteria`, `sectionDesignInputs`,
   `designResult` are *not* part of `StructureModel` and are *not* saved by
   JSON Save/Load (same boundary as load cases/combinations).
-- **Aggregate size & exposure class assumed** in the 25.2.1 / 24.3.2 / 20.6.1.3.1
-  checks (not tracked inputs).
+- **Aggregate size assumed `d_agg = 25.4 mm`** in the 25.2.1 clear-spacing check;
+  exposure class assumed sheltered cast-in-place (40 mm cover) in 24.3.2 /
+  20.6.1.3.1. Neither is a tracked input.
 
 ---
 
