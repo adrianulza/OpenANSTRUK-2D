@@ -668,6 +668,27 @@ export function StructuralCanvas({
           continue
         }
 
+        // Column members: one interaction pill. Shown on the default + col-dc
+        // reports only (beam-specific reports render nothing for columns).
+        if (r.kind === "column") {
+          if (designReport !== "default" && designReport !== "col-dc") continue
+          const col = r.column
+          if (!col) continue
+          let text: string
+          let color: string
+          if (r.mode === "required") {
+            const ok = col.rhoGRequired !== undefined
+            text = ok ? `ρ ${(col.rhoGRequired! * 100).toFixed(1)}%` : "ρ O/S"
+            color = ok ? navy : fail
+          } else {
+            const dcText = Number.isFinite(col.worstDC) ? col.worstDC.toFixed(2) : "O/S"
+            text = `D/C ${dcText} · ρ ${(col.rhoG * 100).toFixed(1)}%`
+            color = Number.isFinite(col.worstDC) && col.worstDC <= 1 ? navy : fail
+          }
+          drawPill(midX, midY - 14 * s, angle, text, color)
+          continue
+        }
+
         // +local-2 in screen space = (l2x, -l2y); top labels on +local-2, bottom on −.
         const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
         const spx = l2x

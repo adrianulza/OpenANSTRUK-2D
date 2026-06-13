@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.1] — 2026-06-13
+
+**Design tab — RC column axial-flexure (P–M interaction) design (ACI 318-14 / SNI 2847:2019).** The SECTION DESIGN tool gains an **Element Type** selector (Beam / Column / Auto), and columns are designed by a full **P–M interaction** capacity surface — five named points A–E plus a continuous neutral-axis sweep, radial demand/capacity ratio, in both As-required and As-checked modes. Validated against the book's Contoh 5-C (600×600, f'c 30, fy 420, 20D25). This pass covers **capacity + interaction**; column **shear** and the **SRPMK `Ash` confinement** table (Contoh 5-D) are a follow-up.
+
+### Added
+- **`src/lib/design/column.ts`** — pure interaction engine: `sectionForcesAtC` (per-bar strain compatibility about the geometric centroid, generalising `phiMnBars` to non-zero axial), `buildInteractionCurve` (sweeps `c` to trace both ±M edges → a closed loop, with the five named points A–E), `axialCapacities` (Po, φPo, `Pn,max = 0.80·φPo` tied cap, pure-tension Pnt), and `interactionDC` (radial demand/capacity against the closed φ-polygon). flexure.ts is untouched (its anchors stay byte-stable).
+- **`src/lib/design/column-layout.ts`** — `buildColumnBarLayout` (nx × ny perimeter grid, total = 2nx+2ny−4; bar inset = cover + tie + ½db), `representativeColumnBars` (As-required ring with scaled areas), and `checkColumnArrangement` (live ACI: ρg ∈ 1–8% per 10.6.1.1, ≥ 4 bars 25.7.2.1, 25.2.3 clear spacing, cover).
+- **Element Type** select in SECTION DESIGN, below Material Class. `auto` resolves per member at run: vertical → column, horizontal → beam, **promoted to column when Pu ≥ 0.1·f'c·Ag**.
+- **Column As-checked** — nx × ny grid editor, live perimeter preview (`rc-column-preview.tsx`), detailing-checks card, and an **Advanced Capacity Report** (`column-advanced-report.tsx`) that draws the **section + P–M interaction curve** (nominal + φ loops, both ±M, the A–E points, the flat `Pn,max` cap, and the run's demand markers) with a Tabel 5-19 coordinate table + summary.
+- **Column As-required** — bisects the longitudinal ratio ρg ∈ [1%, 8%] on a representative symmetric ring until the worst (P, M) lands on the curve; reports required ρg + Aₛₜ.
+- **Demands** — `collectPMPairs` (demands.ts) returns the paired (P, M) at each candidate station, since interaction needs the actual axial+moment acting together (not independently enveloped).
+- **Canvas** — column members coloured by radial interaction D/C (`designColorForDC`); a single pill (`D/C · ρ`, or `ρ req` in required mode); new "Interaction D/C" report option.
+- **Validation** — `validation/rc_column_verify.mts` (26 Contoh 5-C anchors: Po = 13050 kN, φPn,max = 6786, B/C/D/E coordinates, demand-inside check, and a cross-check that the column engine ≡ `phiMnBars` at pure bending).
+
+### Changed
+- **`runDesign()`** resolves beam vs column per member and branches to the column interaction path; the beam axial gate now only yields `axial-exceeded` for an explicitly **forced** beam carrying high axial (auto always promotes such members to columns).
+- **`MemberDesignResult`** gained `kind: "beam" | "column"` and an optional `column` result; the report dropdown gained a "Columns" group.
+
+### Notes
+- DSM solver and model math untouched — the column engine is a pure consumer of analysis results.
+- Tied columns only this pass (`Pn,max = 0.80·φPo`); spiral (0.85), column **shear**/SRPMK `Ash` confinement, and slenderness are deferred.
+- Design state remains App-state only (not persisted by Save/Load), same boundary as v1.1.
+
+### Documentation
+- `docs/DESIGN_RULES.md`: new column section (§5b) + updated extension/limitation notes.
+- `CLAUDE.md`: "RC Column Design (v1.1.1)" subsection.
+
+---
+
 ## [1.1.0] — 2026-06-12
 
 **Design tab — RC beam design checks (ACI 318-14 / SNI 2847:2019).** A fourth tab adds reinforced-concrete flexural + shear design for rectangular beams across Ordinary / Intermediate / Special moment frames (OMF / IMF / SMF). It applies to every member with a concrete rectangular section (f'c > 0) regardless of orientation — a 2D plane frame has no torsion DOF, so pure M + V design is exact. The full engineering narrative, with every governing clause, lives in the new **[docs/DESIGN_RULES.md](docs/DESIGN_RULES.md)**.

@@ -1424,6 +1424,7 @@ export default function App() {
             onPatchSectionDesignInput={handlePatchSectionDesignInput}
             designSelectedSectionId={designSelectedSectionId}
             onDesignSelectedSectionChange={setDesignSelectedSectionId}
+            designResult={designResult}
           />
 
           <StructuralCanvas

@@ -25,7 +25,7 @@ import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
 import { DesignCriteriaToolContent } from "@/tabs/design/tools/design-criteria-tool"
 import { SectionDesignToolContent } from "@/tabs/design/tools/section-design-tool"
-import type { DesignCriteria, SectionDesignInput, SectionDesignInputs } from "@/lib/design/types"
+import type { DesignCriteria, DesignRunResult, SectionDesignInput, SectionDesignInputs } from "@/lib/design/types"
 import type {
   LoadCase,
   LoadCaseId,
@@ -129,6 +129,8 @@ interface FlyoutPanelProps {
   onPatchSectionDesignInput?: (id: SectionId, patch: Partial<SectionDesignInput>) => void
   designSelectedSectionId?: SectionId | null
   onDesignSelectedSectionChange?: (id: SectionId | null) => void
+  /** Last design run — feeds the column advanced report's demand markers. */
+  designResult?: DesignRunResult | null
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -235,6 +237,7 @@ export function FlyoutPanel({
   onPatchSectionDesignInput,
   designSelectedSectionId,
   onDesignSelectedSectionChange,
+  designResult,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
@@ -358,6 +361,7 @@ export function FlyoutPanel({
           onPatchSectionDesignInput={onPatchSectionDesignInput}
           designSelectedSectionId={designSelectedSectionId}
           onDesignSelectedSectionChange={onDesignSelectedSectionChange}
+          designResult={designResult}
         />
       </div>
     </div>
@@ -468,6 +472,7 @@ function FlyoutContent({
   onPatchSectionDesignInput,
   designSelectedSectionId,
   onDesignSelectedSectionChange,
+  designResult,
 }: FlyoutContentProps) {
   if (activeTab === "Design") {
     switch (activeTool) {
@@ -487,6 +492,7 @@ function FlyoutContent({
             inputs={sectionDesignInputs ?? {}}
             onPatchInput={onPatchSectionDesignInput}
             criteria={designCriteria}
+            designResult={designResult}
           />
         ) : null
       default:

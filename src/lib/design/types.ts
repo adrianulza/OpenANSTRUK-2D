@@ -76,10 +76,42 @@ export interface RebarArrangement {
   stirrup: { size: RebarSize; spacing: number /* mm */ }
 }
 
+// ── Element type (beam vs column) ────────────────────────────────────────────
+
+/** How a member's section is designed. `auto` resolves per member: vertical →
+ *  column, horizontal → beam, promoted to column when Pu ≥ 0.1·f'c·Ag. */
+export type ElementType = "auto" | "beam" | "column"
+
+export const ELEMENT_TYPES: { id: ElementType; label: string }[] = [
+  { id: "auto", label: "Auto (by orientation)" },
+  { id: "beam", label: "Beam" },
+  { id: "column", label: "Column" },
+]
+
+/** Column longitudinal bars on an nx × ny perimeter grid (corners shared):
+ *  total = 2·nx + 2·ny − 4. */
+export interface ColumnArrangement {
+  /** Bars along the width (top & bottom rows). */
+  nx: number
+  /** Bars along the height, including the corner rows. */
+  ny: number
+  size: RebarSize
+  tie: { size: RebarSize; spacing: number /* mm */ }
+}
+
+export interface ColumnDesignInput {
+  /** "As checked" perimeter grid. */
+  checked: ColumnArrangement
+  /** "As required": bar/tie sizes for the representative ring (ρg is solved). */
+  required: { barSize: RebarSize; tieSize: RebarSize }
+}
+
 export interface SectionDesignInput {
   sectionId: SectionId
+  /** Beam vs column (auto = by orientation + axial threshold). */
+  elementType: ElementType
   mode: DesignMode
-  /** Clear cover to stirrup, mm ("As checked" mode). */
+  /** Clear cover to stirrup/tie, mm ("As checked" mode). */
   cover: number
   /** Cover to rebar centroid, mm ("As required" mode): d = h − dPrime. */
   dPrime: number
@@ -87,6 +119,8 @@ export interface SectionDesignInput {
   support: RebarArrangement
   /** Midspan arrangement — "As checked" mode. */
   midspan: RebarArrangement
+  /** Column reinforcement (used when the member resolves to a column). */
+  column: ColumnDesignInput
 }
 
 export type SectionDesignInputs = Record<SectionId, SectionDesignInput>
@@ -100,14 +134,23 @@ function defaultArrangement(): RebarArrangement {
   }
 }
 
+function defaultColumnArrangement(): ColumnArrangement {
+  return { nx: 3, ny: 3, size: "D19", tie: { size: "D10", spacing: 100 } }
+}
+
 export function defaultSectionDesignInput(sectionId: SectionId): SectionDesignInput {
   return {
     sectionId,
+    elementType: "auto",
     mode: "required",
     cover: 40,
     dPrime: 50,
     support: defaultArrangement(),
     midspan: defaultArrangement(),
+    column: {
+      checked: defaultColumnArrangement(),
+      required: { barSize: "D19", tieSize: "D10" },
+    },
   }
 }
 
@@ -180,14 +223,37 @@ export type MemberDesignStatus =
   | "axial-exceeded"
   | "no-result"
 
+// ── Column (P–M interaction) result ──────────────────────────────────────────
+
+export interface ColumnDesignResult {
+  /** Provided (checked) or representative (required) longitudinal ratio ρg. */
+  rhoG: number
+  /** Provided steel (checked) or required steel (required), mm². */
+  Ast: number
+  /** "As required": ρg needed to satisfy the worst demand; undefined in checked mode. */
+  rhoGRequired?: number
+  /** Worst radial interaction D/C across combos × candidate stations. */
+  worstDC: number
+  governing?: { combo: LoadComboId; Pu: number; Mu: number }
+  /** All checked combo (P,M) candidate pairs — drives the report's demand markers. */
+  pmPairs?: { P: number; M: number; combo: LoadComboId }[]
+  /** Checked: arrangement is buildable + ρg within limits. */
+  adequate: boolean
+}
+
 export interface MemberDesignResult {
   memberId: MemberId
   status: MemberDesignStatus
+  /** Beam vs column (set when designed). */
+  kind?: "beam" | "column"
   mode?: DesignMode
   /** Governing axial compression, kN (positive = compression). */
   Pu?: number
   zones?: Record<ZoneId, { flexure: ZoneFlexureResult; shear: ZoneShearResult }>
-  /** Worst flexural D/C across zones — drives member colour. */
+  /** Column interaction result (when kind === "column"). */
+  column?: ColumnDesignResult
+  /** Worst flexural D/C across zones (beam) or interaction D/C (column) — drives
+   *  member colour via designColorForDC. */
   worstFlexureDC?: number
   /** All zones pass shear (incl. cross-section limit + SMF spacing). */
   worstShearPass?: boolean
@@ -217,9 +283,10 @@ export type DesignReport =
   | "chk-long-dc" // longitudinal D/C, top/bottom per zone
   | "chk-rho" // ρ provided, top/bottom per zone (%)
   | "chk-shear-dc" // shear D/C per zone
+  | "col-dc" // column interaction D/C (per member)
 
 export const DESIGN_REPORTS: {
-  group: "General" | "As required" | "As checked"
+  group: "General" | "As required" | "As checked" | "Columns"
   items: { id: DesignReport; label: string }[]
 }[] = [
   { group: "General", items: [{ id: "default", label: "Design summary (D/C)" }] },
@@ -238,5 +305,9 @@ export const DESIGN_REPORTS: {
       { id: "chk-rho", label: "Reinforcement ratio ρ" },
       { id: "chk-shear-dc", label: "Shear D/C" },
     ],
+  },
+  {
+    group: "Columns",
+    items: [{ id: "col-dc", label: "Interaction D/C" }],
   },
 ]
