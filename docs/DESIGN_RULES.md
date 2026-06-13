@@ -48,21 +48,40 @@ Two principles govern the whole engine:
 
 ## 2. Module map & data flow
 
+Since v1.1.2 the engine is split into a **material-agnostic core** and **per-
+material strategies** (RC implemented; Steel stubbed). The orchestrator dispatches
+each member to its material's strategy by `section.materialClass`, so a mixed
+concrete + steel model is designed in one run.
+
 ```
 src/lib/design/
-├── types.ts        DesignCriteria, SectionDesignInput, RebarArrangement,
-│                   result types (ZoneFlexureResult, ZoneShearResult, …)
-├── rebar.ts        Metric bar catalogue D10–D32 (db, area)
-├── bar-layout.ts   buildBarLayout(): bar positions + layering;
-│                   checkArrangement() / checkTransverse(): live ACI detailing
-├── flexure.ts      beta1, asMin, requiredAs (Whitney), phiMnProvided /
-│                   phiMnBars (strain compatibility), φ ramp
-├── shear.ts        vc, vMaxLimit, avMinPerS, avSRequired, spacing caps,
-│                   suggestStirrup, avSProvided, phiVnProvided
-├── demands.ts      zoneRanges, zoneExtremes (analytic), envelope, frame
-│                   moment minimums, buildGravityCombo
-└── run-design.ts   runDesign() orchestrator — solves cases itself, then
-                    flexure → shear per member per zone
+├── core/                       material-agnostic
+│   ├── types.ts                DesignMaterial, FrameType, ElementType, ZoneId,
+│   │                           result types (ZoneFlexureResult, ZoneShearResult,
+│   │                           ColumnDesignResult, MemberDesignResult), DesignReport
+│   ├── criteria.ts             DesignCriteria { material, rc, steel } wrapper
+│   ├── section-input.ts        SectionDesignInput union + defaultSectionDesignInput
+│   │                           (dispatched by materialClass) + asRcInput/asSteelInput
+│   ├── designability.ts        DESIGN_SUPPORT registry + isSectionDesignable + materialOf
+│   ├── demands.ts              zoneRanges, zoneExtremes (analytic), envelope,
+│   │                           frame moment minimums, collectPMPairs, buildGravityCombo
+│   └── run-design.ts           runDesign() orchestrator — solve → combine →
+│                               envelope → dispatch per member to a strategy
+├── rc/                         reinforced concrete (ACI 318-14 / SNI 2847:2019)
+│   ├── criteria.ts             RcCriteria + defaultRcCriteria
+│   ├── types.ts                RebarArrangement, ColumnArrangement, RcSectionInput
+│   ├── rebar.ts                Metric bar catalogue D10–D32 (db, area)
+│   ├── bar-layout.ts           buildBarLayout(); checkArrangement()/checkTransverse()
+│   ├── flexure.ts              beta1, asMin, requiredAs, phiMnProvided/phiMnBars, φ ramp
+│   ├── shear.ts                vc, vMaxLimit, avMinPerS, avSRequired, spacing caps, …
+│   ├── column.ts               P–M interaction (sectionForcesAtC, buildInteractionCurve)
+│   ├── column-layout.ts        nx×ny grid, checkColumnArrangement
+│   ├── section-report.ts       per-level strain-compat detail for the Advanced Report
+│   └── strategy.ts             designMemberRc() — beam (flexure+shear) or column (P–M)
+└── steel/                      structural steel (AISC 360-16 / SNI 1729:2020) — STUB
+    ├── criteria.ts             SteelCriteria + defaultSteelCriteria
+    ├── types.ts                SteelSectionInput (Lb, Cb)
+    └── strategy.ts             designMemberSteel() — returns "not-implemented"
 ```
 
 **Flow (`runDesign`):**
@@ -73,19 +92,21 @@ enabled combinations ──► solveAllCases() ──► combineResults() per co
         buildGravityCombo (1.2D+1.0L) ─────────────┤ (for IMF/SMF Vg)
                                                    ▼
    for each member:
-     designable?  ─no─► status "not-designable"
+     isSectionDesignable? ─no─► status "not-designable"
         │yes
-     geometry (b, h, fc, effective depths)
+     envelopeMemberDemands (raw zone demands, Pu)
         │
-     envelopeMemberDemands ──► applyFrameMomentMinimums
-        │
-     Pu < 0.1 f'c Ag ? ─no─► status "axial-exceeded"
-        │yes
-     FLEXURE per zone  ─────────────► provides As / capacity
-        │
-     SHEAR per zone (needs flexural steel for Ve)
-        │
-     aggregate worst D/C, pass flags  ──► MemberDesignResult
+     dispatch by section.materialClass:
+        ├─ steel ──► designMemberSteel()  [STUB → "not-implemented"]
+        └─ rc ────► designMemberRc():
+             resolve beam vs column (orientation + axial gate)
+               ├─ column ─► P–M interaction ──► ColumnDesignResult
+               └─ beam ───► applyFrameMomentMinimums
+                            FLEXURE per zone  ─► provides As / capacity
+                            SHEAR per zone (needs flexural steel for Ve)
+                            aggregate worst D/C, pass flags
+        ▼
+     MemberDesignResult (tagged with `material`)
 ```
 
 `runDesign()` calls `solveAllCases` + `combineResults` **itself** — it does *not*
@@ -96,14 +117,21 @@ active.
 
 ## 3. Applicability & qualification
 
-### 3.1 Designable sections (`isSectionDesignable`)
-A section is designable when **all** hold:
-- `materialClass === "concrete"`
-- `shape.kind === "rect"`
+### 3.1 Designable sections (`core/designability.ts`)
+`isSectionDesignable()` consults the **`DESIGN_SUPPORT`** registry — the target
+matrix of (material × geometry × element type), each row flagged `implemented`.
+A section is designable when its material + geometry maps to an **implemented**
+entry whose strength/dims check out. Today only `{rc, rect, beam+column}` is
+implemented, so the live gate is exactly:
+- `materialClass === "concrete"`, `shape.kind === "rect"`
 - `strength.fc > 0`, `dims.b > 0`, `dims.h > 0`
 
-Anything else (steel, non-rectangular, missing strength) is listed but disabled
-("N.A.") in the section picker and renders `status: "not-designable"`.
+Planned-but-unbuilt combinations (RC circle/tee, all steel — see
+[`DESIGN_P4_PLAN.md`](DESIGN_P4_PLAN.md)) are listed in the registry but render
+`status: "not-designable"` and show as "N.A." in the picker. Enabling one is a
+data edit (flip `implemented`) plus its strategy branch. `materialOf(section)`
+maps `concrete → "rc"`, `steel → "steel"`, and routes the orchestrator's
+dispatch.
 
 ### 3.2 Beam vs column (element-type resolution)
 Each section carries an **Element Type** — `auto` (default), `beam`, or `column`

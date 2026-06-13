@@ -80,8 +80,8 @@ import {
   COLOR_DESIGN_LABEL,
   DESIGN_DC_BANDS,
 } from "@/lib/constants"
-import type { DesignReport, DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/types"
-import { DESIGN_REPORTS, ZONE_IDS } from "@/lib/design/types"
+import type { DesignReport, DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/core/types"
+import { DESIGN_REPORTS, ZONE_IDS } from "@/lib/design/core/types"
 
 // Resolves the hover/selection palette for the active tool.
 // - "generic" (yellow) for MODIFY/MOVE/MODIFY_LOAD style tools

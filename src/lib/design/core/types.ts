@@ -1,16 +1,30 @@
 /**
- * RC beam design — shared types (ACI 318-14 / SNI 2847:2019).
+ * Shared, material-agnostic design types (RC + Steel).
  *
  * Pure domain module: no React imports. Design state (criteria + per-section
- * rebar inputs) lives in App state like loadCases/combinations — it is NOT part
- * of StructureModel and is not persisted by Save/Load (v1.1 limitation).
+ * inputs) lives in App state like loadCases/combinations — it is NOT part of
+ * StructureModel and is not persisted by Save/Load (v1.1 limitation).
+ *
+ * Material-specific types live beside their strategy:
+ *   - RC:    `../rc/criteria.ts`, `../rc/types.ts`
+ *   - Steel: `../steel/criteria.ts`, `../steel/types.ts`
+ * The criteria wrapper + per-section input union live in `./criteria.ts` and
+ * `./section-input.ts`.
  */
 
-import type { Section, SectionId, MemberId } from "@/lib/model"
+import type { MemberId } from "@/lib/model"
 import type { LoadComboId } from "@/lib/load-cases"
-import type { RebarSize } from "./rebar"
 
-// ── Criteria (global, SAP2000-Preferences-like) ──────────────────────────────
+// ── Material family ───────────────────────────────────────────────────────────
+
+export type DesignMaterial = "rc" | "steel"
+
+export const DESIGN_MATERIALS: { id: DesignMaterial; label: string }[] = [
+  { id: "rc", label: "Reinforced Concrete" },
+  { id: "steel", label: "Steel" },
+]
+
+// ── Frame (seismic detailing) type — shared by both materials ─────────────────
 
 export type FrameType = "OMF" | "IMF" | "SMF"
 
@@ -20,66 +34,10 @@ export const FRAME_TYPES: { id: FrameType; label: string }[] = [
   { id: "SMF", label: "Special Moment Frame (SMF)" },
 ]
 
-export type DesignCode = "ACI318-14_SNI2847-2019"
-
-export interface DesignCriteria {
-  code: DesignCode
-  frameType: FrameType
-  /** Main (longitudinal) bar yield strength, MPa */
-  fy: number
-  /** Transverse (stirrup) bar yield strength, MPa */
-  fyt: number
-  /** Steel elastic modulus, MPa */
-  Es: number
-  /** φ, tension-controlled flexure (21.2.1) */
-  phiTension: number
-  /** φ, shear (21.2.1) */
-  phiShear: number
-  /** φ, compression-controlled (tied) — lower bound of the flexure ramp */
-  phiCompression: number
-  /** Lightweight-concrete modification factor (normal-weight = 1.0) */
-  lambda: number
-  /** Stirrup legs crossing the shear plane */
-  stirrupLegs: number
-}
-
-export function defaultDesignCriteria(): DesignCriteria {
-  return {
-    code: "ACI318-14_SNI2847-2019",
-    frameType: "OMF",
-    fy: 420,
-    fyt: 420,
-    Es: 200000,
-    phiTension: 0.9,
-    phiShear: 0.75,
-    phiCompression: 0.65,
-    lambda: 1.0,
-    stirrupLegs: 2,
-  }
-}
-
-// ── Per-section reinforcement input ──────────────────────────────────────────
-
-export type DesignMode = "required" | "checked"
-
-export interface BarLayer {
-  count: number
-  size: RebarSize
-}
-
-export interface RebarArrangement {
-  top: BarLayer
-  bottom: BarLayer
-  /** Skin bars on each face — included in flexural capacity via the per-bar
-   *  strain-compatibility solver (permitted by 9.7.2.3). */
-  side: BarLayer
-  stirrup: { size: RebarSize; spacing: number /* mm */ }
-}
-
 // ── Element type (beam vs column) ────────────────────────────────────────────
 
 /** How a member's section is designed. `auto` resolves per member: vertical →
- *  column, horizontal → beam, promoted to column when Pu ≥ 0.1·f'c·Ag. */
+ *  column, horizontal → beam, promoted to column when the axial gate is met. */
 export type ElementType = "auto" | "beam" | "column"
 
 export const ELEMENT_TYPES: { id: ElementType; label: string }[] = [
@@ -88,88 +46,14 @@ export const ELEMENT_TYPES: { id: ElementType; label: string }[] = [
   { id: "column", label: "Column" },
 ]
 
-/** Column longitudinal bars on an nx × ny perimeter grid (corners shared):
- *  total = 2·nx + 2·ny − 4. */
-export interface ColumnArrangement {
-  /** Bars along the width (top & bottom rows). */
-  nx: number
-  /** Bars along the height, including the corner rows. */
-  ny: number
-  size: RebarSize
-  tie: { size: RebarSize; spacing: number /* mm */ }
-}
+export type DesignMode = "required" | "checked"
 
-export interface ColumnDesignInput {
-  /** "As checked" perimeter grid. */
-  checked: ColumnArrangement
-  /** "As required": bar/tie sizes for the representative ring (ρg is solved). */
-  required: { barSize: RebarSize; tieSize: RebarSize }
-}
-
-export interface SectionDesignInput {
-  sectionId: SectionId
-  /** Beam vs column (auto = by orientation + axial threshold). */
-  elementType: ElementType
-  mode: DesignMode
-  /** Clear cover to stirrup/tie, mm ("As checked" mode). */
-  cover: number
-  /** Cover to rebar centroid, mm ("As required" mode): d = h − dPrime. */
-  dPrime: number
-  /** End-zone (support, 2h) arrangement — "As checked" mode. */
-  support: RebarArrangement
-  /** Midspan arrangement — "As checked" mode. */
-  midspan: RebarArrangement
-  /** Column reinforcement (used when the member resolves to a column). */
-  column: ColumnDesignInput
-}
-
-export type SectionDesignInputs = Record<SectionId, SectionDesignInput>
-
-function defaultArrangement(): RebarArrangement {
-  return {
-    top: { count: 3, size: "D19" },
-    bottom: { count: 2, size: "D19" },
-    side: { count: 0, size: "D13" },
-    stirrup: { size: "D10", spacing: 150 },
-  }
-}
-
-function defaultColumnArrangement(): ColumnArrangement {
-  return { nx: 3, ny: 3, size: "D19", tie: { size: "D10", spacing: 100 } }
-}
-
-export function defaultSectionDesignInput(sectionId: SectionId): SectionDesignInput {
-  return {
-    sectionId,
-    elementType: "auto",
-    mode: "required",
-    cover: 40,
-    dPrime: 50,
-    support: defaultArrangement(),
-    midspan: defaultArrangement(),
-    column: {
-      checked: defaultColumnArrangement(),
-      required: { barSize: "D19", tieSize: "D10" },
-    },
-  }
-}
-
-/** RC beam design supports rectangular concrete sections with f'c > 0 only. */
-export function isSectionDesignable(s: Section | undefined): boolean {
-  return (
-    !!s &&
-    s.materialClass === "concrete" &&
-    s.shape?.kind === "rect" &&
-    (s.strength?.fc ?? 0) > 0 &&
-    (s.shape.dims.b ?? 0) > 0 &&
-    (s.shape.dims.h ?? 0) > 0
-  )
-}
-
-// ── Results ──────────────────────────────────────────────────────────────────
+// ── Zones ─────────────────────────────────────────────────────────────────────
 
 export type ZoneId = "end-i" | "midspan" | "end-j"
 export const ZONE_IDS: ZoneId[] = ["end-i", "midspan", "end-j"]
+
+// ── Results (RC payload today; steel payload added in a later pass) ───────────
 
 export interface ZoneFlexureResult {
   /** Design moments after frame-type minimums. MuPos = sagging, MuNeg ≤ 0 = hogging. kN·m */
@@ -205,7 +89,7 @@ export interface ZoneShearResult {
   phiVmax: number // kN — φ(Vc + 0.66√f'c·bw·d) cross-section limit
   // "As required" mode:
   AvSReq?: number // mm²/m, incl. Av,min floor
-  suggested?: { size: RebarSize; legs: number; spacing: number }
+  suggested?: { size: string; legs: number; spacing: number }
   // "As checked" mode:
   phiVn?: number // kN
   dc?: number
@@ -220,10 +104,9 @@ export interface ZoneShearResult {
 export type MemberDesignStatus =
   | "designed"
   | "not-designable"
+  | "not-implemented"
   | "axial-exceeded"
   | "no-result"
-
-// ── Column (P–M interaction) result ──────────────────────────────────────────
 
 export interface ColumnDesignResult {
   /** Provided (checked) or representative (required) longitudinal ratio ρg. */
@@ -244,6 +127,8 @@ export interface ColumnDesignResult {
 export interface MemberDesignResult {
   memberId: MemberId
   status: MemberDesignStatus
+  /** Design material family (set when designed). */
+  material?: DesignMaterial
   /** Beam vs column (set when designed). */
   kind?: "beam" | "column"
   mode?: DesignMode

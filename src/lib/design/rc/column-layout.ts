@@ -14,7 +14,8 @@
 import { barArea, barDia, type RebarSize } from "./rebar"
 import { minClearSpacing, type ArrangementCheck } from "./bar-layout"
 import type { ColumnBar } from "./column"
-import type { ColumnArrangement, FrameType } from "./types"
+import type { FrameType } from "../core/types"
+import type { ColumnArrangement } from "./types"
 
 export interface ColumnLayoutBar {
   /** Centre x from the left face, mm. */

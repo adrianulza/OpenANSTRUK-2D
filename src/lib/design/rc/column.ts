@@ -20,7 +20,7 @@
  */
 
 import { beta1, EPS_CU, EPS_T_MIN } from "./flexure"
-import type { DesignCriteria } from "./types"
+import type { RcCriteria } from "./criteria"
 
 /** A reinforcing bar reduced to (depth from the compression fibre, area). */
 export interface ColumnBar {
@@ -87,7 +87,7 @@ export function axialCapacities(
   Ast: number,
   Ag: number,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
 ): AxialCapacities {
   const fy = cr.fy
   const Po = (0.85 * fc * (Ag - Ast) + fy * Ast) / 1e3 // kN
@@ -122,7 +122,7 @@ function sectionForcesAtC(
   b: number,
   h: number,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   c: number,
 ): SectionForces {
   const { Es, fy } = cr
@@ -149,7 +149,7 @@ function sectionForcesAtC(
 }
 
 /** φ ramp 0.65 → 0.9 over εty → 0.005 (21.2.2). */
-function phiFor(epsT: number, cr: DesignCriteria): number {
+function phiFor(epsT: number, cr: RcCriteria): number {
   const epsTy = cr.fy / cr.Es
   const t = (epsT - epsTy) / (EPS_T_MIN - epsTy)
   return Math.min(
@@ -166,7 +166,7 @@ function pointAtC(
   b: number,
   h: number,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   c: number,
   sign: 1 | -1,
   caps: AxialCapacities,
@@ -198,7 +198,7 @@ function sampleCs(dt: number, h: number, fc: number, n: number): number[] {
 }
 
 /** Pure-moment depth (Pn = 0) by bisection on net axial — the beam solve. */
-function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: DesignCriteria): number {
+function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: RcCriteria): number {
   const axial = (c: number) => sectionForcesAtC(bars, b, h, fc, cr, c).axialCompPos
   let lo = 1e-3
   let hi = h
@@ -224,7 +224,7 @@ export function buildInteractionCurve(
   b: number,
   h: number,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
 ): ColumnInteractionCurve {
   const Ast = barsTop.reduce((s, p) => s + p.area, 0)
   const Ag = b * h

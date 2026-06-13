@@ -1,25 +1,37 @@
 /**
- * Design-run orchestrator. Solves all load cases itself (the Analyze tab's
- * memo is empty unless that tab is active), combines per enabled combination,
- * envelopes per zone, then runs flexure → shear per member.
+ * RC member design strategy (ACI 318-14 / SNI 2847:2019). Given one member's
+ * demand context (per-combo end forces + enveloped zone demands), designs it as
+ * a beam (flexure + shear per zone) or column (P–M interaction).
  *
- * Flexure runs before shear because IMF/SMF capacity-design shear (Ve) needs
- * the flexural steel: provided bars in "checked" mode, required As in
- * "required" mode.
+ * Element resolution: explicit beam/column wins; `auto` picks by orientation,
+ * promoted to column when the axial compression reaches the beam gate
+ * Pu ≥ 0.1·f'c·Ag. Flexure runs before shear because IMF/SMF capacity-design
+ * shear (Ve) needs the flexural steel.
+ *
+ * Pure domain module: no React imports. The orchestrator in core/run-design.ts
+ * builds the demand context and dispatches here by section material.
  */
 
-import type { StructureModel, MemberId, SectionId } from "@/lib/model"
-import type { LoadCase, LoadCaseId, LoadCombination, LoadComboId } from "@/lib/load-cases"
-import { combineResults, solveAllCases } from "@/lib/analysis-pipeline"
+import type { MemberId } from "@/lib/model"
+import type { LoadComboId } from "@/lib/load-cases"
 import type { MemberEndForces } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
+import type {
+  ColumnDesignResult,
+  ElementType,
+  MemberDesignResult,
+  ZoneFlexureResult,
+  ZoneId,
+  ZoneShearResult,
+} from "../core/types"
+import { ZONE_IDS } from "../core/types"
 import {
   applyFrameMomentMinimums,
-  buildGravityCombo,
   collectPMPairs,
-  envelopeMemberDemands,
   type MemberZoneDemands,
-} from "./demands"
+} from "../core/demands"
+import type { RcCriteria } from "./criteria"
+import type { RcSectionInput, RebarArrangement } from "./types"
 import { buildInteractionCurve, interactionDC, type ColumnInteractionCurve } from "./column"
 import {
   buildColumnBarLayout,
@@ -44,36 +56,11 @@ import {
   vsSpacingThreshold,
 } from "./shear"
 import { barArea, barDia } from "./rebar"
-import {
-  defaultSectionDesignInput,
-  isSectionDesignable,
-  ZONE_IDS,
-  type ColumnDesignResult,
-  type DesignCriteria,
-  type DesignRunResult,
-  type ElementType,
-  type MemberDesignResult,
-  type RebarArrangement,
-  type SectionDesignInput,
-  type SectionDesignInputs,
-  type ZoneFlexureResult,
-  type ZoneId,
-  type ZoneShearResult,
-} from "./types"
 
 // "As required" mode no longer asks for assumed bars — these defaults drive the
 // SMF hinge-zone spacing cap (6·db) and the stirrup-size suggestion only.
 const REQUIRED_MAIN_BAR = "D19" as const
 const REQUIRED_STIRRUP_BAR = "D10" as const
-
-export interface DesignRunInput {
-  model: StructureModel
-  loadCases: Record<LoadCaseId, LoadCase>
-  combinations: Record<LoadComboId, LoadCombination>
-  criteria: DesignCriteria
-  inputs: SectionDesignInputs
-  shearDeformation: boolean
-}
 
 // Per-sign effective depths. "Bottom" = −local-2 fibre (tension under sagging
 // MuPos), "top" = +local-2. For vertical/inclined members this is the local
@@ -102,18 +89,11 @@ function barsCompressionBottom(layout: BarLayout, h: number): BarPoint[] {
   return layout.bars.map((p) => ({ d: h - p.y, area: p.area }))
 }
 
-function memberLength(model: StructureModel, memberId: MemberId): number {
-  const m = model.members[memberId]
-  const a = model.nodes[m.a]
-  const b = model.nodes[m.b]
-  return Math.hypot(b.x - a.x, b.y - a.y)
-}
-
 function geometryFor(
   bMm: number,
   hMm: number,
   fc: number,
-  input: SectionDesignInput,
+  input: RcSectionInput,
   arr: RebarArrangement,
 ): MemberGeometry {
   if (input.mode === "required") {
@@ -153,8 +133,8 @@ function designZoneFlexure(
   MuPos: number,
   MuNeg: number,
   g: MemberGeometry,
-  input: SectionDesignInput,
-  cr: DesignCriteria,
+  input: RcSectionInput,
+  cr: RcCriteria,
 ): ZoneFlexureResult {
   if (input.mode === "required") {
     const bot = requiredAs(MuPos, flexGeomPos(g), cr)
@@ -204,8 +184,8 @@ interface EndMoments {
 function capacityEndMoments(
   g: MemberGeometry,
   zone: ZoneFlexureResult,
-  input: SectionDesignInput,
-  cr: DesignCriteria,
+  input: RcSectionInput,
+  cr: RcCriteria,
   fyFactor: number, // 1.0 for Mn (IMF), 1.25 for Mpr (SMF)
 ): EndMoments {
   const fyOver = fyFactor * cr.fy
@@ -233,7 +213,7 @@ function capacityEndMoments(
  *   Vs > 0.33√f'c·bw·d                              [9.7.6.2.2]
  */
 function governingSpacingMax(
-  cr: DesignCriteria,
+  cr: RcCriteria,
   isEndZone: boolean,
   d: number,
   dbLong: number,
@@ -252,9 +232,9 @@ function designZoneShear(
   Vu: number,
   Ve: number | undefined,
   g: MemberGeometry,
-  input: SectionDesignInput,
+  input: RcSectionInput,
   arr: RebarArrangement,
-  cr: DesignCriteria,
+  cr: RcCriteria,
 ): ZoneShearResult {
   const d = Math.min(g.dPos, g.dNeg)
   const isEndZone = zoneId !== "midspan"
@@ -367,8 +347,8 @@ function designColumn(
   hMm: number,
   fc: number,
   L: number,
-  di: SectionDesignInput,
-  cr: DesignCriteria,
+  di: RcSectionInput,
+  cr: RcCriteria,
   efByCombo: Record<LoadComboId, MemberEndForces>,
   Pu: number,
 ): MemberDesignResult {
@@ -383,7 +363,7 @@ function designColumn(
       rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
     }
     return {
-      memberId, status: "designed", kind: "column", mode: "checked", Pu,
+      memberId, status: "designed", material: "rc", kind: "column", mode: "checked", Pu,
       column, worstFlexureDC: worstDC, // continuous colouring via designColorForDC
     }
   }
@@ -416,169 +396,106 @@ function designColumn(
     worstDC: adequate ? 1 : dcAt(RHO_G_MAX), adequate,
   }
   return {
-    memberId, status: "designed", kind: "column", mode: "required", Pu,
+    memberId, status: "designed", material: "rc", kind: "column", mode: "required", Pu,
     column, worstFlexureDC: adequate ? 0 : Infinity, // binary colouring like beam required
   }
 }
 
-// ── Main entry ───────────────────────────────────────────────────────────────
+// ── Member entry ──────────────────────────────────────────────────────────────
 
-export function runDesign(input: DesignRunInput): DesignRunResult {
-  const { model, loadCases, combinations, criteria, inputs } = input
-  const issues: string[] = []
-  const members: Record<MemberId, MemberDesignResult> = {}
+export interface RcMemberInput {
+  memberId: MemberId
+  b: number
+  h: number
+  fc: number
+  L: number
+  di: RcSectionInput
+  cr: RcCriteria
+  efByCombo: Record<LoadComboId, MemberEndForces>
+  /** Internal 1.2D+1.0L gravity end forces for this member (Vg in IMF/SMF Ve). */
+  gravityEf: MemberEndForces | null
+  /** Enveloped zone demands (before frame-type minimums). */
+  raw: MemberZoneDemands
+  /** Governing axial compression, kN (positive = compression). */
+  Pu: number
+  isVertical: boolean
+}
 
-  const enabledCombos = Object.values(combinations).filter((c) => c.enabled !== false)
-  if (enabledCombos.length === 0) {
-    return {
-      ok: false,
-      issues: ["No enabled load combinations — define combinations in the Load tab first."],
-      members: {},
-    }
+/** Design one RC member (beam or column). */
+export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
+  const { memberId, b: bMm, h: hMm, fc, L, di, cr, efByCombo, gravityEf, raw, Pu, isVertical } = inp
+  const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN (beam axial gate, Pers. 5-2)
+
+  if (resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
+    return designColumn(memberId, bMm, hMm, fc, L, di, cr, efByCombo, Pu)
   }
 
-  // Solve every enabled case once, then combine.
-  const caseResults = solveAllCases(model, loadCases, {
-    shearDeformation: input.shearDeformation,
-  })
-  for (const [id, r] of Object.entries(caseResults)) {
-    if (!r.ok) issues.push(`Load case "${loadCases[id]?.name ?? id}" failed to solve: ${r.reason}`)
+  // ── Beam path ──
+  // A forced beam carrying appreciable axial is out of beam scope.
+  if (Pu >= PuLimit) {
+    return { memberId, status: "axial-exceeded", Pu }
+  }
+  const demands = applyFrameMomentMinimums(raw, cr.frameType)
+
+  // Flexure per zone (support arrangement at end zones, midspan in between).
+  const arrFor = (z: ZoneId): RebarArrangement => (z === "midspan" ? di.midspan : di.support)
+  const geomFor = (z: ZoneId): MemberGeometry => geometryFor(bMm, hMm, fc, di, arrFor(z))
+  const flexure = {} as Record<ZoneId, ZoneFlexureResult>
+  for (const z of ZONE_IDS) {
+    const zd = demands.zones[z]
+    flexure[z] = designZoneFlexure(zd.MuPos, zd.MuNeg, geomFor(z), di, cr)
   }
 
-  const perCombo: Record<LoadComboId, Record<MemberId, MemberEndForces>> = {}
-  for (const combo of enabledCombos) {
-    const r = combineResults(caseResults, combo)
-    if (!r) {
-      issues.push(`Combination "${combo.name}" skipped — none of its load cases produced results.`)
-      continue
+  // Capacity-design shear demand Ve (IMF: Mn, SMF: Mpr) + gravity shear Vg.
+  let Ve: number | undefined
+  if (cr.frameType !== "OMF") {
+    const fyFactor = cr.frameType === "SMF" ? 1.25 : 1.0
+    const mi = capacityEndMoments(geomFor("end-i"), flexure["end-i"], di, cr, fyFactor)
+    const mj = capacityEndMoments(geomFor("end-j"), flexure["end-j"], di, cr, fyFactor)
+    let Vg = 0
+    if (gravityEf) {
+      const Vgi = memberInternalForces(gravityEf, 0, L).V
+      const Vgj = memberInternalForces(gravityEf, L, L).V
+      Vg = Math.max(Math.abs(Vgi), Math.abs(Vgj))
     }
-    perCombo[combo.id] = r.memberEndForces
-  }
-  if (Object.keys(perCombo).length === 0) {
-    return { ok: false, issues: [...issues, "No combination produced results — design aborted."], members: {} }
-  }
-
-  // Internal gravity combo for Vg (IMF/SMF capacity-design shear).
-  let gravityEf: Record<MemberId, MemberEndForces> | null = null
-  if (criteria.frameType !== "OMF") {
-    const gr = combineResults(caseResults, buildGravityCombo(loadCases))
-    if (gr) gravityEf = gr.memberEndForces
-    else issues.push("Gravity combo (1.2D + 1.0L) unavailable — Ve computed without Vg.")
+    // Both sway directions (Gambar 5-17); take the larger.
+    const Ve1 = (mi.neg + mj.pos) / L + Vg
+    const Ve2 = (mi.pos + mj.neg) / L + Vg
+    Ve = Math.max(Ve1, Ve2)
   }
 
-  for (const m of Object.values(model.members)) {
-    const sec = model.sections[m.section]
-    if (!isSectionDesignable(sec)) {
-      members[m.id] = { memberId: m.id, status: "not-designable" }
-      continue
-    }
-    const bMm = sec!.shape!.dims.b
-    const hMm = sec!.shape!.dims.h
-    const fc = sec!.strength!.fc!
-    const L = memberLength(model, m.id)
-    if (!(L > 0)) {
-      members[m.id] = { memberId: m.id, status: "not-designable" }
-      continue
-    }
-    const di = inputs[m.section as SectionId] ?? defaultSectionDesignInput(m.section)
-
-    // Per-member, per-combo end forces → envelope per zone → frame minimums.
-    const efByCombo: Record<LoadComboId, MemberEndForces> = {}
-    for (const [comboId, all] of Object.entries(perCombo)) {
-      const ef = all[m.id]
-      if (ef) efByCombo[comboId] = ef
-    }
-    if (Object.keys(efByCombo).length === 0) {
-      members[m.id] = { memberId: m.id, status: "no-result" }
-      continue
-    }
-    const raw: MemberZoneDemands = envelopeMemberDemands(efByCombo, L, hMm)
-    const Pu = raw.PuMaxCompression
-    const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN (beam axial gate, Pers. 5-2)
-
-    // Resolve beam vs column for this member (auto = orientation + axial gate).
-    const na = model.nodes[m.a]
-    const nb = model.nodes[m.b]
-    const isVertical = Math.abs(nb.y - na.y) > Math.abs(nb.x - na.x)
-    if (resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
-      members[m.id] = designColumn(m.id, bMm, hMm, fc, L, di, criteria, efByCombo, Pu)
-      continue
-    }
-
-    // ── Beam path ──
-    // A forced beam carrying appreciable axial is out of beam scope.
-    if (Pu >= PuLimit) {
-      members[m.id] = { memberId: m.id, status: "axial-exceeded", Pu }
-      continue
-    }
-    const demands = applyFrameMomentMinimums(raw, criteria.frameType)
-
-    // Flexure per zone (support arrangement at end zones, midspan in between).
-    const arrFor = (z: ZoneId): RebarArrangement => (z === "midspan" ? di.midspan : di.support)
-    const geomFor = (z: ZoneId): MemberGeometry => geometryFor(bMm, hMm, fc, di, arrFor(z))
-    const flexure = {} as Record<ZoneId, ZoneFlexureResult>
-    for (const z of ZONE_IDS) {
-      const zd = demands.zones[z]
-      flexure[z] = designZoneFlexure(zd.MuPos, zd.MuNeg, geomFor(z), di, criteria)
-    }
-
-    // Capacity-design shear demand Ve (IMF: Mn, SMF: Mpr) + gravity shear Vg.
-    let Ve: number | undefined
-    if (criteria.frameType !== "OMF") {
-      const fyFactor = criteria.frameType === "SMF" ? 1.25 : 1.0
-      const mi = capacityEndMoments(geomFor("end-i"), flexure["end-i"], di, criteria, fyFactor)
-      const mj = capacityEndMoments(geomFor("end-j"), flexure["end-j"], di, criteria, fyFactor)
-      let Vg = 0
-      const gef = gravityEf?.[m.id]
-      if (gef) {
-        const Vgi = memberInternalForces(gef, 0, L).V
-        const Vgj = memberInternalForces(gef, L, L).V
-        Vg = Math.max(Math.abs(Vgi), Math.abs(Vgj))
-      }
-      // Both sway directions (Gambar 5-17); take the larger.
-      const Ve1 = (mi.neg + mj.pos) / L + Vg
-      const Ve2 = (mi.pos + mj.neg) / L + Vg
-      Ve = Math.max(Ve1, Ve2)
-    }
-
-    const shear = {} as Record<ZoneId, ZoneShearResult>
-    for (const z of ZONE_IDS) {
-      shear[z] = designZoneShear(z, demands.zones[z].Vu, Ve, geomFor(z), di, arrFor(z), criteria)
-    }
-
-    // Aggregates for canvas colouring/labels.
-    let worstFlexureDC = 0
-    let worstShearPass = true
-    for (const z of ZONE_IDS) {
-      worstFlexureDC = Math.max(worstFlexureDC, flexure[z].dc)
-      if (!flexure[z].adequate) worstFlexureDC = Infinity
-      if (!shear[z].pass) worstShearPass = false
-    }
-
-    members[m.id] = {
-      memberId: m.id,
-      status: "designed",
-      mode: di.mode,
-      Pu,
-      zones: {
-        "end-i": { flexure: flexure["end-i"], shear: shear["end-i"] },
-        midspan: { flexure: flexure["midspan"], shear: shear["midspan"] },
-        "end-j": { flexure: flexure["end-j"], shear: shear["end-j"] },
-      },
-      worstFlexureDC,
-      worstShearPass,
-      governing: {
-        "end-i": demands.zones["end-i"].governing,
-        midspan: demands.zones["midspan"].governing,
-        "end-j": demands.zones["end-j"].governing,
-      },
-    }
+  const shear = {} as Record<ZoneId, ZoneShearResult>
+  for (const z of ZONE_IDS) {
+    shear[z] = designZoneShear(z, demands.zones[z].Vu, Ve, geomFor(z), di, arrFor(z), cr)
   }
 
-  const anyDesigned = Object.values(members).some((r) => r.status === "designed")
-  if (!anyDesigned) {
-    issues.push("No designable members found — RC design requires concrete rectangular sections.")
+  // Aggregates for canvas colouring/labels.
+  let worstFlexureDC = 0
+  let worstShearPass = true
+  for (const z of ZONE_IDS) {
+    worstFlexureDC = Math.max(worstFlexureDC, flexure[z].dc)
+    if (!flexure[z].adequate) worstFlexureDC = Infinity
+    if (!shear[z].pass) worstShearPass = false
   }
 
-  return { ok: true, issues, members }
+  return {
+    memberId,
+    status: "designed",
+    material: "rc",
+    kind: "beam",
+    mode: di.mode,
+    Pu,
+    zones: {
+      "end-i": { flexure: flexure["end-i"], shear: shear["end-i"] },
+      midspan: { flexure: flexure["midspan"], shear: shear["midspan"] },
+      "end-j": { flexure: flexure["end-j"], shear: shear["end-j"] },
+    },
+    worstFlexureDC,
+    worstShearPass,
+    governing: {
+      "end-i": demands.zones["end-i"].governing,
+      midspan: demands.zones["midspan"].governing,
+      "end-j": demands.zones["end-j"].governing,
+    },
+  }
 }

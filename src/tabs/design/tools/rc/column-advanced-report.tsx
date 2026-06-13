@@ -2,9 +2,10 @@ import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { COLOR_DESIGN_FAIL } from "@/lib/constants"
-import { buildColumnBarLayout, layoutToColumnBars } from "@/lib/design/column-layout"
-import { buildInteractionCurve, type PMPoint } from "@/lib/design/column"
-import type { ColumnArrangement, DesignCriteria } from "@/lib/design/types"
+import { buildColumnBarLayout, layoutToColumnBars } from "@/lib/design/rc/column-layout"
+import { buildInteractionCurve, type PMPoint } from "@/lib/design/rc/column"
+import type { RcCriteria } from "@/lib/design/rc/criteria"
+import type { ColumnArrangement } from "@/lib/design/rc/types"
 import { RcColumnPreview } from "./rc-column-preview"
 
 /**
@@ -37,7 +38,7 @@ interface Props {
   cover: number
   arrangement: ColumnArrangement
   fc: number
-  criteria: DesignCriteria
+  criteria: RcCriteria
   /** All combo (P,M) candidate pairs for members using this section (kN, kN·m). */
   demandPairs?: DemandPair[]
   /** Governing demand + its radial D/C. */

@@ -39,6 +39,7 @@ export type ToolType =
   | "DEFORMATION"
   | "DESIGN_CRITERIA"
   | "SECTION_DESIGN"
+  | "STEEL_DESIGN"
   | null
 
 interface Tool {
@@ -93,9 +94,19 @@ const analyzeTools: Tool[] = [
   { id: "DEFORMATION", label: "DEFORMATION", icon: <Waves size={20} /> },
 ]
 
+// Steel I-section — Design tab "Steel" icon
+const steelSectionIcon = (
+  <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="3.5" x2="15" y2="3.5" />
+    <line x1="5" y1="16.5" x2="15" y2="16.5" />
+    <line x1="10" y1="3.5" x2="10" y2="16.5" />
+  </svg>
+)
+
 const designTools: Tool[] = [
   { id: "DESIGN_CRITERIA", label: "DESIGN\nCRITERIA", icon: <SlidersHorizontal size={20} /> },
-  { id: "SECTION_DESIGN", label: "SECTION\nDESIGN", icon: rcSectionIcon },
+  { id: "SECTION_DESIGN", label: "REINFORCED\nCONCRETE", icon: rcSectionIcon },
+  { id: "STEEL_DESIGN", label: "STEEL", icon: steelSectionIcon },
 ]
 
 interface ToolSidebarProps {
