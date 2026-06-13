@@ -21,6 +21,31 @@ import type { DesignCriteria, RebarArrangement } from "./types"
 
 export type BendingDirection = "pos" | "neg"
 
+/** Density of reinforcing steel, kg/m³ (for the steel-weight summary). */
+const STEEL_DENSITY = 7850
+
+/** Engineering summary ratios — tension steel actually counted in capacity. */
+export interface SectionSummary {
+  /** Tension steel area (levels below the NA, incl. side bars), mm². */
+  AsTension: number
+  /** All longitudinal steel (top + side + bottom), mm². */
+  AsTotal: number
+  /** Effective depth = tension-steel centroid, mm. */
+  dEff: number
+  /** Tension reinforcement ratio ρ = As / (b·d). */
+  rho: number
+  /** Minimum ratio ρ_min = max(0.25√f'c, 1.4)/fy (9.6.1.2). */
+  rhoMin: number
+  /** Tension-controlled singly-reinforced max ratio ρ_max (εt = 0.005). */
+  rhoMax: number
+  /** Gross steel ratio ρ_g = As,total / (b·h). */
+  rhoG: number
+  /** Steel mass per metre of beam, kg/m. */
+  steelWeight: number
+  /** Neutral-axis ratio c/d (ductility indicator). */
+  cOverD: number
+}
+
 export interface ReportLevel {
   /** Level label per the locked notation: t1, t2 (top layers), s1…sn (side
    *  levels top→bottom), b2, b1 (bottom layer 2 then layer 1). */
@@ -62,6 +87,8 @@ export interface SectionCapacityReport {
   phiMn: number
   /** Ordered top of section → bottom (physical y ascending). */
   levels: ReportLevel[]
+  /** Engineering summary ratios for this direction. */
+  summary: SectionSummary
   /** True when the arrangement does not fit (2-layer cap exceeded). */
   fits: boolean
   /** Shear capacities; Vc zeroed in SMF end (support) zones per 18.6.5.2. */
@@ -218,6 +245,30 @@ export function buildSectionCapacityReport(
 
   const Mn = Math.max(0, Mn_Nmm) / 1e6
 
+  // ── Summary ratios: tension steel = levels below the NA (incl. side bars) ──
+  const tension = levels.filter((l) => l.As > 0 && l.d > c)
+  const AsTension = tension.reduce((s, l) => s + l.As, 0)
+  const AsTotal = levels.reduce((s, l) => s + l.As, 0)
+  const dEff =
+    AsTension > 0 ? tension.reduce((s, l) => s + l.As * l.d, 0) / AsTension : dt
+  const rho = dEff > 0 ? AsTension / (b * dEff) : 0
+  const rhoMin = Math.max(0.25 * Math.sqrt(fc), 1.4) / fy
+  const rhoMax = ((0.85 * b1 * fc) / fy) * (EPS_CU / (EPS_CU + EPS_T_MIN))
+  const rhoG = AsTotal / (b * h)
+  const steelWeight = (AsTotal * STEEL_DENSITY) / 1e6 // mm²·kg/m³ → kg/m
+  const cOverD = dEff > 0 ? c / dEff : 0
+  const summary: SectionSummary = {
+    AsTension,
+    AsTotal,
+    dEff,
+    rho,
+    rhoMin,
+    rhoMax,
+    rhoG,
+    steelWeight,
+    cOverD,
+  }
+
   // ── Shear: d = tension-group centroid for this direction (22.5) ────────────
   const dShear =
     direction === "pos" ? layout.bottom.centroid : h - layout.top.centroid
@@ -240,6 +291,7 @@ export function buildSectionCapacityReport(
     Mn,
     phiMn: phi * Mn,
     levels,
+    summary,
     fits: layout.fits,
     shear: {
       d: dShear,

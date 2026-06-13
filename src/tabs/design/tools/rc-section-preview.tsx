@@ -40,6 +40,21 @@ function safe(n: number): number {
   return Number.isFinite(n) && n > 0 ? n : 1
 }
 
+/** ViewBox width — exported so the Advanced Report chart can convert the
+ *  preview's viewBox-unit scale into on-screen pixels. */
+export const PREVIEW_VIEW_W = VIEW_W
+
+/**
+ * Section auto-fit scale (viewBox units per mm) — the exact sizing rule this
+ * preview uses. Shared with the Advanced Report chart so both sketches draw
+ * the section at the same on-screen size.
+ */
+export function sectionFitScale(b: number, h: number): number {
+  const availW = VIEW_W - MARGIN_LEFT - MARGIN_RIGHT
+  const availH = VIEW_H - MARGIN_TOP - MARGIN_BOTTOM
+  return (Math.min(availW / safe(b), availH / safe(h)) * SECTION_SIZE_PCT) / 100
+}
+
 // ── CAD dimension-line primitives (same style/sizes as ShapePreview) ─────────
 const DIM_STROKE = 0.5
 const EXT_GAP = 1.5
@@ -176,7 +191,7 @@ export function RcSectionPreview({ b, h, cover, arrangement }: Props) {
   // true b:h ratio, then scale by SECTION_SIZE_PCT and centre it.
   const availW = VIEW_W - MARGIN_LEFT - MARGIN_RIGHT
   const availH = VIEW_H - MARGIN_TOP - MARGIN_BOTTOM
-  const scale = (Math.min(availW / b, availH / h) * SECTION_SIZE_PCT) / 100
+  const scale = sectionFitScale(b, h)
   const w = b * scale
   const ht = h * scale
   const x = MARGIN_LEFT + (availW - w) / 2
