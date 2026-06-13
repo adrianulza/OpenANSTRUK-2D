@@ -17,14 +17,14 @@ const DIM = "#1a2f5e"
 // into the available area at its true b:h ratio, then scaled by SECTION_SIZE_PCT
 // and centered — so the section (with its bars) gets smaller/larger as a whole
 // while the frame, dimension lines, and label text stay constant.
-const VIEW_W = 150
-const VIEW_H = 118 // frame proportion — fixed shape
-const MARGIN_TOP = 14 // reserved for the b dimension line + label
-const MARGIN_LEFT = 14 // reserved for the h dimension line + label
-const MARGIN_RIGHT = 7
-const MARGIN_BOTTOM = 7
+export const VIEW_W = 150
+export const VIEW_H = 118 // frame proportion — fixed shape
+export const MARGIN_TOP = 14 // reserved for the b dimension line + label
+export const MARGIN_LEFT = 14 // reserved for the h dimension line + label
+export const MARGIN_RIGHT = 7
+export const MARGIN_BOTTOM = 7
 const SECTION_SIZE_PCT = 100 // ← overall section size within the frame;
-const DIM_OFFSET = 6 // gap from section edge to its dimension line
+export const DIM_OFFSET = 6 // gap from section edge to its dimension line
 
 interface Props {
   /** Section width, mm */
@@ -66,7 +66,7 @@ const LABEL_PAD_X = 1.6
 const LABEL_PAD_Y = 0.4
 
 /** Horizontal dimension between x1 and x2 at y = yDim. Feature edge at yShape. */
-function HDim({
+export function HDim({
   x1,
   x2,
   yDim,
@@ -124,7 +124,7 @@ function HDim({
 }
 
 /** Vertical dimension between y1 and y2 at x = xDim. Feature edge at xShape. */
-function VDim({
+export function VDim({
   y1,
   y2,
   xDim,

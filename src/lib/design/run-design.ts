@@ -16,9 +16,18 @@ import { memberInternalForces } from "@/lib/solver"
 import {
   applyFrameMomentMinimums,
   buildGravityCombo,
+  collectPMPairs,
   envelopeMemberDemands,
   type MemberZoneDemands,
 } from "./demands"
+import { buildInteractionCurve, interactionDC, type ColumnInteractionCurve } from "./column"
+import {
+  buildColumnBarLayout,
+  layoutToColumnBars,
+  representativeColumnBars,
+  RHO_G_MAX,
+  RHO_G_MIN,
+} from "./column-layout"
 import { phiMnBars, phiMnProvided, requiredAs, type BarPoint, type FlexureGeometry } from "./flexure"
 import { buildBarLayout, type BarLayout } from "./bar-layout"
 import {
@@ -39,8 +48,10 @@ import {
   defaultSectionDesignInput,
   isSectionDesignable,
   ZONE_IDS,
+  type ColumnDesignResult,
   type DesignCriteria,
   type DesignRunResult,
+  type ElementType,
   type MemberDesignResult,
   type RebarArrangement,
   type SectionDesignInput,
@@ -297,6 +308,119 @@ function designZoneShear(
   }
 }
 
+// ── Element-type resolution ───────────────────────────────────────────────────
+
+/**
+ * Resolve a section's element-type setting for one member. Explicit beam/column
+ * is honoured; `auto` picks by orientation (vertical → column, horizontal →
+ * beam) but is promoted to column whenever the axial compression reaches the
+ * beam gate Pu ≥ 0.1·f'c·Ag.
+ */
+function resolveElementType(
+  et: ElementType,
+  isVertical: boolean,
+  Pu: number,
+  PuLimit: number,
+): "beam" | "column" {
+  if (et === "beam") return "beam"
+  if (et === "column") return "column"
+  if (Pu >= PuLimit) return "column"
+  return isVertical ? "column" : "beam"
+}
+
+// ── Column (P–M interaction) ──────────────────────────────────────────────────
+
+/** Worst radial interaction D/C over every combo × candidate (P,M) station. */
+function worstInteraction(
+  curve: ColumnInteractionCurve,
+  efByCombo: Record<LoadComboId, MemberEndForces>,
+  L: number,
+): {
+  worstDC: number
+  governing?: { combo: LoadComboId; Pu: number; Mu: number }
+  pairs: { P: number; M: number; combo: LoadComboId }[]
+} {
+  let worstDC = 0
+  let governing: { combo: LoadComboId; Pu: number; Mu: number } | undefined
+  const pairs: { P: number; M: number; combo: LoadComboId }[] = []
+  for (const [comboId, ef] of Object.entries(efByCombo)) {
+    for (const p of collectPMPairs(ef, L)) {
+      pairs.push({ P: p.P, M: p.M, combo: comboId })
+      const { dc } = interactionDC(curve, p.P, p.M)
+      if (dc > worstDC) {
+        worstDC = dc
+        governing = { combo: comboId, Pu: p.P, Mu: p.M }
+      }
+    }
+  }
+  return { worstDC, governing, pairs }
+}
+
+/**
+ * Column design by P–M interaction. Checked mode tests the user's nx×ny grid;
+ * required mode bisects the longitudinal ratio ρg ∈ [1%, 8%] (D/C decreases
+ * monotonically with ρg) on a representative symmetric ring.
+ */
+function designColumn(
+  memberId: MemberId,
+  bMm: number,
+  hMm: number,
+  fc: number,
+  L: number,
+  di: SectionDesignInput,
+  cr: DesignCriteria,
+  efByCombo: Record<LoadComboId, MemberEndForces>,
+  Pu: number,
+): MemberDesignResult {
+  const Ag = bMm * hMm
+
+  if (di.mode === "checked") {
+    const layout = buildColumnBarLayout(bMm, hMm, di.cover, di.column.checked)
+    const curve = buildInteractionCurve(layoutToColumnBars(layout), bMm, hMm, fc, cr)
+    const { worstDC, governing, pairs } = worstInteraction(curve, efByCombo, L)
+    const rhoG = Ag > 0 ? layout.Ast / Ag : 0
+    const column: ColumnDesignResult = {
+      rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
+    }
+    return {
+      memberId, status: "designed", kind: "column", mode: "checked", Pu,
+      column, worstFlexureDC: worstDC, // continuous colouring via designColorForDC
+    }
+  }
+
+  // Required: smallest ρg bringing the worst demand onto the curve.
+  const dcAt = (rhoG: number): number => {
+    const bars = representativeColumnBars(bMm, hMm, di.cover, rhoG * Ag, {
+      barSize: di.column.required.barSize,
+      tieSize: di.column.required.tieSize,
+    })
+    return worstInteraction(buildInteractionCurve(bars, bMm, hMm, fc, cr), efByCombo, L).worstDC
+  }
+  let rhoGRequired: number | undefined
+  if (dcAt(RHO_G_MAX) > 1) rhoGRequired = undefined // even 8% can't carry it
+  else if (dcAt(RHO_G_MIN) <= 1) rhoGRequired = RHO_G_MIN
+  else {
+    let lo = RHO_G_MIN
+    let hi = RHO_G_MAX
+    for (let i = 0; i < 40; i++) {
+      const mid = 0.5 * (lo + hi)
+      if (dcAt(mid) <= 1) hi = mid
+      else lo = mid
+    }
+    rhoGRequired = hi
+  }
+  const adequate = rhoGRequired !== undefined
+  const rhoG = rhoGRequired ?? RHO_G_MAX
+  const column: ColumnDesignResult = {
+    rhoG, Ast: rhoG * Ag, rhoGRequired,
+    worstDC: adequate ? 1 : dcAt(RHO_G_MAX), adequate,
+  }
+  return {
+    memberId, status: "designed", kind: "column", mode: "required", Pu,
+    column, worstFlexureDC: adequate ? 0 : Infinity, // binary colouring like beam required
+  }
+}
+
 // ── Main entry ───────────────────────────────────────────────────────────────
 
 export function runDesign(input: DesignRunInput): DesignRunResult {
@@ -369,15 +493,25 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
       continue
     }
     const raw: MemberZoneDemands = envelopeMemberDemands(efByCombo, L, hMm)
-    const demands = applyFrameMomentMinimums(raw, criteria.frameType)
+    const Pu = raw.PuMaxCompression
+    const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN (beam axial gate, Pers. 5-2)
 
-    // Beam qualification (Pers. 5-2): Pu < 0.1·f'c·Ag.
-    const Pu = demands.PuMaxCompression
-    const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN
+    // Resolve beam vs column for this member (auto = orientation + axial gate).
+    const na = model.nodes[m.a]
+    const nb = model.nodes[m.b]
+    const isVertical = Math.abs(nb.y - na.y) > Math.abs(nb.x - na.x)
+    if (resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
+      members[m.id] = designColumn(m.id, bMm, hMm, fc, L, di, criteria, efByCombo, Pu)
+      continue
+    }
+
+    // ── Beam path ──
+    // A forced beam carrying appreciable axial is out of beam scope.
     if (Pu >= PuLimit) {
       members[m.id] = { memberId: m.id, status: "axial-exceeded", Pu }
       continue
     }
+    const demands = applyFrameMomentMinimums(raw, criteria.frameType)
 
     // Flexure per zone (support arrangement at end zones, midspan in between).
     const arrFor = (z: ZoneId): RebarArrangement => (z === "midspan" ? di.midspan : di.support)

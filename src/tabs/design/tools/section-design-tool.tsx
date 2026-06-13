@@ -16,19 +16,26 @@ import {
   type ArrangementCheck,
   type TransverseChecks,
 } from "@/lib/design/bar-layout"
+import { checkColumnArrangement } from "@/lib/design/column-layout"
 import {
   defaultSectionDesignInput,
+  ELEMENT_TYPES,
   isSectionDesignable,
   type BarLayer,
+  type ColumnArrangement,
   type DesignCriteria,
   type DesignMode,
+  type ElementType,
   type RebarArrangement,
   type SectionDesignInput,
   type SectionDesignInputs,
 } from "@/lib/design/types"
+import type { DesignRunResult } from "@/lib/design/types"
 import { RcSectionPreview } from "./rc-section-preview"
+import { RcColumnPreview } from "./rc-column-preview"
 import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
 import { AdvancedReportDeck } from "./advanced-report"
+import { ColumnAdvancedReportDeck } from "./column-advanced-report"
 
 type ZoneKey = "support" | "midspan"
 
@@ -39,6 +46,8 @@ interface SectionDesignToolProps {
   inputs: SectionDesignInputs
   onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
   criteria: DesignCriteria
+  /** Last design run — feeds the column advanced report's demand markers. */
+  designResult?: DesignRunResult | null
 }
 
 /**
@@ -53,6 +62,7 @@ export function SectionDesignToolContent({
   inputs,
   onPatchInput,
   criteria,
+  designResult,
 }: SectionDesignToolProps) {
   const sections = model?.sections ?? {}
   const designableIds = Object.keys(sections).filter((id) => isSectionDesignable(sections[id]))
@@ -87,9 +97,54 @@ export function SectionDesignToolContent({
     if (!input) return
     patch({ [key]: { ...input[key], ...p } } as Partial<SectionDesignInput>)
   }
+  const patchColumnChecked = (p: Partial<ColumnArrangement>) => {
+    if (!input) return
+    patch({ column: { ...input.column, checked: { ...input.column.checked, ...p } } })
+  }
+  const patchColumnReq = (p: Partial<SectionDesignInput["column"]["required"]>) => {
+    if (!input) return
+    patch({ column: { ...input.column, required: { ...input.column.required, ...p } } })
+  }
 
   const b = sec?.shape?.dims.b ?? 0
   const h = sec?.shape?.dims.h ?? 0
+
+  // "auto" can't know per-member axial here, but orientation is known: show the
+  // column editor when any member using this section is vertical (the run still
+  // resolves each member, incl. axial promotion).
+  const autoLooksColumn = React.useMemo(() => {
+    if (!selectedSectionId || !model) return false
+    return Object.values(model.members).some((m) => {
+      if (m.section !== selectedSectionId) return false
+      const na = model.nodes[m.a]
+      const nb = model.nodes[m.b]
+      return na && nb && Math.abs(nb.y - na.y) > Math.abs(nb.x - na.x)
+    })
+  }, [model, selectedSectionId])
+
+  const effectiveType: "beam" | "column" =
+    input?.elementType === "column" ? "column"
+    : input?.elementType === "beam" ? "beam"
+    : autoLooksColumn ? "column" : "beam"
+
+  // Demand (P,M) markers + governing for the column advanced report: gather every
+  // column member that uses this section from the last run.
+  const colDemand = React.useMemo(() => {
+    const pairs: { P: number; M: number }[] = []
+    let governing: { P: number; M: number; dc: number } | undefined
+    if (!designResult || !selectedSectionId || !model) return { pairs, governing }
+    for (const m of Object.values(model.members)) {
+      if (m.section !== selectedSectionId) continue
+      const r = designResult.members[m.id]
+      if (r?.kind !== "column" || !r.column) continue
+      if (r.column.pmPairs) for (const p of r.column.pmPairs) pairs.push({ P: p.P, M: p.M })
+      const g = r.column.governing
+      if (g && (!governing || r.column.worstDC > governing.dc)) {
+        governing = { P: g.Pu, M: g.Mu, dc: r.column.worstDC }
+      }
+    }
+    return { pairs, governing }
+  }, [designResult, selectedSectionId, model])
 
   return (
     <div className="space-y-3">
@@ -102,6 +157,29 @@ export function SectionDesignToolContent({
             <SelectItem value="rc">Reinforced Concrete</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Element type — beam vs column (auto = by orientation + axial gate) */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Element Type</Label>
+        <Select
+          value={input?.elementType ?? "auto"}
+          onValueChange={(v) => patch({ elementType: v as ElementType })}
+          disabled={!input}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {ELEMENT_TYPES.map((e) => (
+              <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {input?.elementType === "auto" && (
+          <p className="text-[10px] text-gray-500 leading-snug">
+            Vertical members & any member with Pu ≥ 0.1·f′c·Ag are designed as columns;
+            others as beams. Showing the {effectiveType} editor.
+          </p>
+        )}
       </div>
 
       {/* Section picker — non-RC/rect sections are listed but disabled */}
@@ -154,7 +232,8 @@ export function SectionDesignToolContent({
             </div>
           </div>
 
-          {input.mode === "required" ? (
+          {effectiveType === "beam" ? (
+            input.mode === "required" ? (
             <>
               {/* As-required: cover to rebar centroid → fixed d′ */}
               <CoverInput
@@ -223,6 +302,54 @@ export function SectionDesignToolContent({
                 zone={zone}
                 fc={sec.strength?.fc ?? 0}
                 criteria={criteria}
+              />
+            </>
+          )
+          ) : input.mode === "required" ? (
+            <>
+              {/* Column As-required: cover + representative-ring bar/tie sizes */}
+              <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
+              <SizeSelectRow
+                label="Bar size"
+                value={input.column.required.barSize}
+                options={REBAR_SIZES}
+                onChange={(s) => patchColumnReq({ barSize: s })}
+              />
+              <SizeSelectRow
+                label="Tie size"
+                value={input.column.required.tieSize}
+                options={STIRRUP_SIZES}
+                onChange={(s) => patchColumnReq({ tieSize: s })}
+              />
+              <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5">
+                <p className="text-[10px] text-gray-500 leading-snug">
+                  Run Design Check to size the longitudinal ratio ρg (1–8%) and Aₛₜ on a
+                  symmetric perimeter ring for the worst (P, M).
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Column As-checked: nx × ny grid + preview + checks + P–M report */}
+              <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
+              <ColumnGridEditor arr={input.column.checked} onPatch={patchColumnChecked} />
+              <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={input.column.checked} />
+              <ColumnDetailingCard
+                checks={checkColumnArrangement(b, h, input.cover, input.column.checked, {
+                  frameType: criteria.frameType,
+                })}
+              />
+              <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
+              <ColumnAdvancedReportDeck
+                open={advancedOpen}
+                b={b}
+                h={h}
+                cover={input.cover}
+                arrangement={input.column.checked}
+                fc={sec.strength?.fc ?? 0}
+                criteria={criteria}
+                demandPairs={colDemand.pairs}
+                governing={colDemand.governing}
               />
             </>
           )}
@@ -469,6 +596,154 @@ function StirrupRow({
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         className="h-7 text-xs font-mono w-20 text-center"
       />
+    </div>
+  )
+}
+
+// ── Column sub-components ──────────────────────────────────────────────────────
+
+function ColumnGridEditor({
+  arr, onPatch,
+}: {
+  arr: ColumnArrangement
+  onPatch: (p: Partial<ColumnArrangement>) => void
+}) {
+  const total = 2 * arr.nx + 2 * arr.ny - 4
+  return (
+    <div className="space-y-1.5">
+      <CountInputRow label="Bars across width (nₓ)" value={arr.nx} min={2} onChange={(n) => onPatch({ nx: n })} />
+      <CountInputRow label="Bars up height (n_y)" value={arr.ny} min={2} onChange={(n) => onPatch({ ny: n })} />
+      <SizeSelectRow label="Bar size" value={arr.size} options={REBAR_SIZES} onChange={(s) => onPatch({ size: s })} />
+      <TieRow tie={arr.tie} onChange={(t) => onPatch({ tie: t })} />
+      <p className="text-[10px] text-gray-500">
+        Total = 2·nₓ + 2·n_y − 4 = <span className="font-mono">{total}</span> bars
+      </p>
+    </div>
+  )
+}
+
+function CountInputRow({
+  label, value, min, onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  onChange: (n: number) => void
+}) {
+  const [text, setText] = React.useState(String(value))
+  React.useEffect(() => setText(String(value)), [value])
+  const commit = () => {
+    const n = Math.round(parseFloat(text))
+    if (!Number.isFinite(n) || n < min) {
+      setText(String(value))
+      return
+    }
+    setText(String(n))
+    if (n !== value) onChange(n)
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="text-xs text-gray-600 flex-1">{label}</Label>
+      <Input
+        type="number"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        className="h-7 text-xs font-mono w-16 text-center"
+      />
+    </div>
+  )
+}
+
+function SizeSelectRow({
+  label, value, options, onChange,
+}: {
+  label: string
+  value: RebarSize
+  options: RebarSize[]
+  onChange: (s: RebarSize) => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="text-xs text-gray-600 flex-1">{label}</Label>
+      <Select value={value} onValueChange={(v) => onChange(v as RebarSize)}>
+        <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {options.map((s) => (
+            <SelectItem key={s} value={s}>{s}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function TieRow({
+  tie, onChange,
+}: {
+  tie: ColumnArrangement["tie"]
+  onChange: (t: ColumnArrangement["tie"]) => void
+}) {
+  const [spacingText, setSpacingText] = React.useState(String(tie.spacing))
+  React.useEffect(() => setSpacingText(String(tie.spacing)), [tie.spacing])
+  const commitSpacing = () => {
+    const n = Math.round(parseFloat(spacingText))
+    if (!Number.isFinite(n) || n < 25) {
+      setSpacingText(String(tie.spacing))
+      return
+    }
+    setSpacingText(String(n))
+    if (n !== tie.spacing) onChange({ ...tie, spacing: n })
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="text-xs text-gray-600 flex-1">Tie</Label>
+      <Select value={tie.size} onValueChange={(v) => onChange({ ...tie, size: v as RebarSize })}>
+        <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {STIRRUP_SIZES.map((s) => (
+            <SelectItem key={s} value={s}>{s}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <span className="text-xs text-gray-400">@</span>
+      <Input
+        type="number"
+        value={spacingText}
+        onChange={(e) => setSpacingText(e.target.value)}
+        onBlur={commitSpacing}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        className="h-7 text-xs font-mono w-20 text-center"
+      />
+    </div>
+  )
+}
+
+/** Column detailing checks card (longitudinal only; transverse confinement is a
+ *  later pass). Reuses the same glyph styling as the beam card. */
+function ColumnDetailingCard({ checks }: { checks: ArrangementCheck[] }) {
+  return (
+    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
+      <p className="text-[10px] font-semibold text-[#1a2f5e] leading-snug">
+        Reinforcement Detailing Checks
+      </p>
+      {checks.map((c, i) => {
+        const g = CHECK_GLYPH[c.status]
+        return (
+          <div key={i} className="flex items-start gap-1.5">
+            <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>
+              {g.glyph}
+            </span>
+            <p className="text-[10px] text-gray-600 leading-snug flex-1">
+              {c.text} <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
+            </p>
+          </div>
+        )
+      })}
+      <p className="text-[10px] text-gray-400 leading-snug pt-0.5">
+        Transverse confinement (ties / Aₛₕ, SRPMK) is designed in a later pass.
+      </p>
     </div>
   )
 }

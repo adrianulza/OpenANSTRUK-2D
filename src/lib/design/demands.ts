@@ -88,6 +88,28 @@ export function zoneExtremes(ef: MemberEndForces, L: number, r: ZoneRange): Zone
   return { Mmax, Mmin, Vabs, Nmin, Nmax }
 }
 
+// ── Column (P, M) candidate pairs ─────────────────────────────────────────────
+
+/**
+ * Paired axial/moment candidates along a member for the column interaction
+ * check. Unlike `zoneExtremes` (which envelopes P and M independently), the
+ * interaction surface needs the ACTUAL (P, M) acting together at each station.
+ *
+ * Stations: member ends, the M extrema (roots of V(x) = 0), the N extreme
+ * (root of qx(x) = 0), plus quarter points to catch interior worst cases. P is
+ * tension-positive (solver convention), M is signed.
+ */
+export function collectPMPairs(ef: MemberEndForces, L: number): { x: number; P: number; M: number }[] {
+  const { q1, q2, qx1, qx2, V1 } = ef
+  const xs: number[] = [0, 0.25 * L, 0.5 * L, 0.75 * L, L]
+  xs.push(...rootsIn(-(q2 - q1) / (2 * L), -q1, V1, 0, L)) // dM/dx = −V = 0
+  xs.push(...rootsIn(0, (qx2 - qx1) / L, qx1, 0, L)) // dN/dx = −qx = 0
+  return xs.map((x) => {
+    const { N, M } = memberInternalForces(ef, x, L)
+    return { x, P: N, M }
+  })
+}
+
 // ── Envelope across combinations ─────────────────────────────────────────────
 
 export interface ZoneDemand {

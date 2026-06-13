@@ -5,12 +5,15 @@ logic, the governing code clauses, and the assumptions behind every number it
 produces. It is the authoritative reference for the `src/lib/design/` domain
 modules.
 
-> **Scope today (v1.1):** Reinforced-concrete (RC) **rectangular beams**, flexure
-> + shear, per **ACI 318-14** (≡ **SNI 2847:2019**), for Ordinary / Intermediate /
-> Special moment frames (OMF / IMF / SMF).
+> **Scope today (v1.1.1):** Reinforced-concrete (RC) **rectangular** sections, per
+> **ACI 318-14** (≡ **SNI 2847:2019**), for Ordinary / Intermediate / Special
+> moment frames (OMF / IMF / SMF):
+> - **Beams** — flexure + shear.
+> - **Columns** — axial-flexure **P–M interaction** capacity ([§5b](#5b-columns--pm-interaction)).
+>   Column **shear** and SRPMK `Ash` confinement are a follow-up pass.
 >
-> **Scope tomorrow:** structural **steel** members and additional concrete
-> **section shapes** (T, L, circular, hollow…) and **columns**. The engine is
+> **Scope tomorrow:** column shear/confinement, structural **steel** members, and
+> additional concrete **section shapes** (T, L, circular, hollow…). The engine is
 > deliberately structured so these slot in as new *material/shape strategies*
 > behind the same pipeline — see [§12 Extending the engine](#12-extending-the-engine).
 
@@ -102,17 +105,22 @@ A section is designable when **all** hold:
 Anything else (steel, non-rectangular, missing strength) is listed but disabled
 ("N.A.") in the section picker and renders `status: "not-designable"`.
 
-### 3.2 Beam qualification (axial gate)
-A member is designed as a **beam** only when the factored axial compression is
-small (ACI treats members with appreciable axial load as columns):
+### 3.2 Beam vs column (element-type resolution)
+Each section carries an **Element Type** — `auto` (default), `beam`, or `column`
+— resolved **per member** in `runDesign` (`resolveElementType`):
+
+- explicit `beam` / `column` is honoured;
+- `auto` → **vertical** members (`|Δy| > |Δx|`) design as columns, **horizontal**
+  as beams, but **any** member is **promoted to column** when the factored axial
+  compression reaches the gate:
 
 ```
-Pu < 0.1 · f'c · Ag        (Ag = b·h)
+Pu ≥ 0.1 · f'c · Ag        (Ag = b·h)      → column
 ```
 
 The solver's axial sign is **tension-positive**, so `Pu = −Nmin` (the most
-compressive value across the envelope). Exceeding the gate yields
-`status: "axial-exceeded"` — columns are deferred to a later release.
+compressive value across the envelope). A member explicitly **forced** to beam
+while carrying `Pu ≥ 0.1 f'c Ag` is out of beam scope → `status: "axial-exceeded"`.
 
 ### 3.3 Orientation independence
 Design applies to **every** qualifying member regardless of orientation. A 2D
@@ -245,6 +253,61 @@ which this is. (In the older Whitney path they would be excluded.)
 In checked mode these run through the **same** strain-compat solver (side bars
 included). In required mode they use the Whitney `phiMnProvided` on the required
 tension steel (AsPrime = 0), preserving the validation anchor.
+
+---
+
+## 5b. Columns — P–M interaction (`column.ts`, `column-layout.ts`)
+
+Columns are designed by a **P–M interaction** capacity surface, the same
+strain-compatibility mechanic as [§5.3](#53-as-checked-mode--per-bar-strain-compatibility-phimnbars)
+generalised so the net axial is no longer forced to zero. `column.ts` reuses
+`beta1`, `εcu`, `εt` from `flexure.ts`; flexure.ts itself is untouched
+(byte-stable anchors). Sign convention matches the solver: **tension +,
+compression −**. Validated against book Contoh 5-C (`validation/rc_column_verify.mts`).
+
+### 5b.1 Section forces at neutral-axis depth `c` (`sectionForcesAtC`)
+About the **geometric centroid** (h/2), with `a = min(β₁c, h)`:
+```
+Cc  = 0.85·f'c·b·a                       (at a/2 from the compression face)
+Fsᵢ = Asᵢ·(fsᵢ − displaced),  fsᵢ = clamp(Es·εcu·(c−dᵢ)/c, ±fy)
+      displaced = 0.85f'c when fsᵢ > 0 ∧ dᵢ ≤ a
+Pn  = Cc + ΣFsᵢ      (compression +, then negated at the boundary → tension +)
+Mn  = Cc·(h/2 − a/2) + ΣFsᵢ·(h/2 − dᵢ)
+```
+`εt` at the extreme tension bar drives the same **φ ramp** 0.65→0.9 (21.2.2).
+
+### 5b.2 Continuous sweep → closed curve (`buildInteractionCurve`)
+Sweeping `c` from `0⁺` (all bars yield in tension → **E**, pure tension) up
+through pure moment (Pn = 0 → **D**), tension-control (εt = 0.005 → **C**),
+balanced (εt = εy → **B**), to large `c` (pure compression → **A**) traces the
+whole **+M** edge. Re-sweeping with mirrored depths `dᵢ → h − dᵢ` gives the
+**−M** edge; the two share endpoints A and E → a **closed loop** (asymmetric when
+nx ≠ ny). Closed-form endpoints:
+
+| Point | Quantity | Clause |
+|-------|----------|--------|
+| **A** pure compression | `Po = 0.85f'c(Ag − Ast) + fy·Ast`; **cap `Pn,max = 0.80·Po`** (tied) | 22.4.2.2 / 22.4.2.1 |
+| **E** pure tension | `Pnt = fy·Ast` | 22.4.3.1 |
+
+Every compression-side `φPn` is clamped to `−φPn,max`, so the polygon top is a
+flat cap edge (vertical/near-axial rays intersect it cleanly).
+
+### 5b.3 Radial D/C (`interactionDC`)
+The origin lies inside the surface, so the ray O→(Mu, Pu) crosses the closed
+φ-polygon exactly once; **D/C = ‖demand‖ / ‖crossing‖**. Demand pairs come from
+`collectPMPairs` (the actual (P, M) acting together at each candidate station —
+*not* independently enveloped); the worst across combos × stations governs.
+
+### 5b.4 Bar layout + modes (`column-layout.ts`)
+- **As-checked**: `nx × ny` perimeter grid (total `2nx + 2ny − 4`; bar inset =
+  `cover + tie + ½db`). Live checks: ρg ∈ [1%, 8%] (10.6.1.1), ≥ 4 bars
+  (25.7.2.1), 25.2.3 clear spacing, cover.
+- **As-required**: bisect ρg ∈ [1%, 8%] (D/C decreases monotonically with ρg) on
+  a representative symmetric ring; report required ρg + Aₛₜ.
+
+> **Deferred (next pass):** column **shear** (`Ve` from `Mpr`, `Vc = 0` seismic) +
+> the **SRPMK `Ash` confinement** table (Contoh 5-D), spiral columns
+> (`Pn,max = 0.85`), and slenderness (6.6/6.7).
 
 ---
 
@@ -401,6 +464,7 @@ type (no solver run needed). All are geometry-only.
 |--------|---------|
 | `validation/rc_beam_verify.mjs` | Book Contoh 5-A/5-B (SMF, 350×600, f'c 30, fy 420): `As = 2224 mm²`, `Mpr = 552.9 kN·m`, `Ve = 234.03 kN`, `Aᵥ/s = 1417 mm²/m → D10@100`; β₁ clamps, As,min, φ-ramp endpoints, analytic zone extremes vs dense sampling (25 assertions). |
 | `validation/strain_compat_check.mts` | Strain-compat ≡ Whitney on the single-layer case; Mpr parity; compression steel; 2-layer bracketing; side-bar capacity gain; auto-overflow geometry (50 mm clear, centroid, corner placement); transverse spacing caps + Vs threshold (16 assertions). Run via `npx tsx --tsconfig config/tsconfig.json …`. |
+| `validation/rc_column_verify.mts` | Book Contoh 5-C (600×600, f'c 30, fy 420, 20D25): `Po = 13050 kN`, `φPn,max = 6786 kN`, balanced/tension-control/pure-moment/pure-tension coordinates (B −2594/856, C −1394/1068, D 0/855, E +3710), demand (−1435, 625) inside the φ curve, polygon cap edge, and column engine ≡ `phiMnBars` at pure bending (26 assertions). Run via tsx. |
 
 Required-mode flexure and the SMF shear path are **byte-stable** against these
 anchors — changes to the strain-compat / checked path must keep them passing.
@@ -425,11 +489,16 @@ not rewriting the orchestrator.
 4. Bar layout (`buildBarLayout`) is already position-based; extend it to place
    bars on the actual section outline.
 
-### 12.2 Columns (axial + biaxial-in-plane)
-- Lift the `Pu < 0.1 f'c Ag` gate; build a **P–M interaction** capacity
-  (strain-compat over the full section at varying `c`, sweeping the axial level).
-- Add slenderness (6.6/6.7) and tie/spiral detailing (25.7.2/3, 18.7 for SMF).
-- The demand side already provides `Nmin/Nmax` per zone — reuse it.
+### 12.2 Columns (axial + in-plane flexure) — implemented (capacity)
+The P–M interaction capacity path is implemented in **v1.1.1** ([§5b](#5b-columns--pm-interaction)):
+`column.ts` (`sectionForcesAtC` / `buildInteractionCurve` / `interactionDC`),
+`column-layout.ts` (perimeter grid + ρg checks), the Element-Type resolver in
+`run-design.ts`, and the section + P–M Advanced Report. **Still open:**
+- **Column shear** — `Ve` from column-end `Mpr`, `Vc = 0` seismic; and the
+  **SRPMK `Ash` confinement** table (Tabel 5-20, Pers. a/b/c with `Ach`, `bc`,
+  `kf`, `kn`, cross-tie spacing) — Contoh 5-D.
+- **Spiral** columns (`Pn,max = 0.85`), **slenderness** (6.6/6.7), and biaxial
+  out-of-plane (the 2D model has one bending axis).
 
 ### 12.3 Steel members
 Steel is a distinct material strategy, not a tweak to the RC path:
@@ -460,15 +529,21 @@ Eurocode 2 / others would add a profile + a few formula overrides.
 
 ---
 
-## 13. Known v1.1 limitations
+## 13. Known v1.1.1 limitations
 
-- **Beams only** — columns (axial-flexure interaction) deferred.
+- **Beams (flexure + shear) + columns (P–M capacity)** — column **shear** and
+  SRPMK `Ash` confinement deferred; **spiral** columns, **slenderness**, and
+  biaxial out-of-plane deferred ([§12.2](#122-columns-axial--in-plane-flexure--implemented-capacity)).
 - **RC rectangular only** — other shapes and steel deferred (engine ready, see
   [§12](#12-extending-the-engine)).
 - **OMF/IMF unanchored** — share the SMF-validated engine but lack a separate
-  published-example check.
+  published-example check. Column anchor is SMF Contoh 5-C (capacity).
+- **Column D/C = radial-to-origin** against the closed φ-polygon; demand pairs
+  sampled at candidate stations (zone bounds + V=0 / qx=0 roots + quarter points).
 - **`Ln` = node-to-node length** — no column-face offset for the clear span.
-- **Top/bottom = ±local-2**, not gravity-up, for vertical/inclined members.
+- **Top/bottom = ±local-2** (beams), not gravity-up, for vertical/inclined
+  members. Column "auto" classification uses orientation (`|Δy| > |Δx|`) + the
+  `Pu ≥ 0.1 f'c Ag` promotion.
 - **Design state is App-state only** — `designCriteria`, `sectionDesignInputs`,
   `designResult` are *not* part of `StructureModel` and are *not* saved by
   JSON Save/Load (same boundary as load cases/combinations).
