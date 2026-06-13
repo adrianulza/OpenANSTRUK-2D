@@ -240,13 +240,14 @@ export function FlyoutPanel({
 
   const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
   const medium = activeTool === "SECTION_DESIGN"
+  const criteria = activeTool === "DESIGN_CRITERIA"
 
   return (
     <div
       data-flyout-root
       className={cn(
         "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-20",
-        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[300px]" : "sm:right-auto sm:w-[215px]",
+        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[355px]" : criteria ? "sm:right-auto sm:w-[355px]" : "sm:right-auto sm:w-[215px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}

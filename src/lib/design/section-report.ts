@@ -26,21 +26,27 @@ const STEEL_DENSITY = 7850
 
 /** Engineering summary ratios — tension steel actually counted in capacity. */
 export interface SectionSummary {
-  /** Tension steel area (levels below the NA, incl. side bars), mm². */
-  AsTension: number
+  /** Bottom longitudinal steel area (both layers), mm². */
+  AsBot: number
+  /** Top longitudinal steel area (both layers), mm². */
+  AsTop: number
+  /** Effective depth to the bottom-steel centroid, mm (bottom in tension). */
+  dBot: number
+  /** Effective depth to the top-steel centroid, mm (top in tension). */
+  dTop: number
+  /** Bottom reinforcement ratio ρ_bot = As,bot / (b·d_bot). */
+  rhoBot: number
+  /** Top reinforcement ratio ρ_top = As,top / (b·d_top). */
+  rhoTop: number
   /** All longitudinal steel (top + side + bottom), mm². */
   AsTotal: number
-  /** Effective depth = tension-steel centroid, mm. */
-  dEff: number
-  /** Tension reinforcement ratio ρ = As / (b·d). */
-  rho: number
   /** Minimum ratio ρ_min = max(0.25√f'c, 1.4)/fy (9.6.1.2). */
   rhoMin: number
   /** Tension-controlled singly-reinforced max ratio ρ_max (εt = 0.005). */
   rhoMax: number
-  /** Gross steel ratio ρ_g = As,total / (b·h). */
-  rhoG: number
-  /** Steel mass per metre of beam, kg/m. */
+  /** Gross steel ratio ρ_gross = As,total / (b·h). */
+  rhoGross: number
+  /** Steel mass per metre of beam (longitudinal bars only), kg/m. */
   steelWeight: number
   /** Neutral-axis ratio c/d (ductility indicator). */
   cOverD: number
@@ -95,6 +101,8 @@ export interface SectionCapacityReport {
   shear: {
     /** Effective depth used (tension-group centroid for this direction), mm. */
     d: number
+    /** Provided transverse steel Av/s, mm²/m. */
+    avS: number
     Vc: number
     Vs: number
     Vn: number
@@ -245,26 +253,38 @@ export function buildSectionCapacityReport(
 
   const Mn = Math.max(0, Mn_Nmm) / 1e6
 
-  // ── Summary ratios: tension steel = levels below the NA (incl. side bars) ──
-  const tension = levels.filter((l) => l.As > 0 && l.d > c)
-  const AsTension = tension.reduce((s, l) => s + l.As, 0)
+  // ── Summary ratios: report BOTH faces transparently from the actual layout ──
+  // ρ_bot and ρ_top use each face's own steel area (across both layers, exactly
+  // as drawn in the preview) over its effective depth to that face's centroid.
+  // d_bot = depth from top fibre to the bottom-steel centroid (bottom in
+  // tension); d_top = h − top-steel centroid (top in tension). Both are
+  // direction-independent — they describe the section, not the current ±M case.
+  const AsBot = layout.bottom.area
+  const AsTop = layout.top.area
+  const dBot = layout.bottom.centroid
+  const dTop = h - layout.top.centroid
+  const rhoBot = dBot > 0 ? AsBot / (b * dBot) : 0
+  const rhoTop = dTop > 0 ? AsTop / (b * dTop) : 0
   const AsTotal = levels.reduce((s, l) => s + l.As, 0)
-  const dEff =
-    AsTension > 0 ? tension.reduce((s, l) => s + l.As * l.d, 0) / AsTension : dt
-  const rho = dEff > 0 ? AsTension / (b * dEff) : 0
   const rhoMin = Math.max(0.25 * Math.sqrt(fc), 1.4) / fy
   const rhoMax = ((0.85 * b1 * fc) / fy) * (EPS_CU / (EPS_CU + EPS_T_MIN))
-  const rhoG = AsTotal / (b * h)
+  const rhoGross = AsTotal / (b * h)
   const steelWeight = (AsTotal * STEEL_DENSITY) / 1e6 // mm²·kg/m³ → kg/m
-  const cOverD = dEff > 0 ? c / dEff : 0
+  // c/d ductility for the current bending direction: tension face is bottom for
+  // +M, top for −M.
+  const dTension = direction === "pos" ? dBot : dTop
+  const cOverD = dTension > 0 ? c / dTension : 0
   const summary: SectionSummary = {
-    AsTension,
+    AsBot,
+    AsTop,
+    dBot,
+    dTop,
+    rhoBot,
+    rhoTop,
     AsTotal,
-    dEff,
-    rho,
     rhoMin,
     rhoMax,
-    rhoG,
+    rhoGross,
     steelWeight,
     cOverD,
   }
@@ -295,6 +315,7 @@ export function buildSectionCapacityReport(
     fits: layout.fits,
     shear: {
       d: dShear,
+      avS,
       Vc: VcUsed,
       Vs,
       Vn,

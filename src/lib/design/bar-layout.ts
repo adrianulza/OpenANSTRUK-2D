@@ -146,7 +146,12 @@ function buildFace(
   const y2 = n2 > 0 ? yFace + dir * (db + LAYER_CLEAR_MM) : null
 
   const xs1 = spread(n1, inset, b - inset)
-  const xs2 = y2 !== null ? pickAligned(xs1, Math.min(n2, nMax)) : []
+  // Place ALL n2 bars so geometry and group.area always agree. When the layer
+  // fits (n2 ≤ n1) the bars stay vertically aligned with layer 1 (25.2.2);
+  // beyond that (the unbuildable, fits = false case) they spread evenly so no
+  // bar is dropped from the layout.
+  const xs2 =
+    y2 !== null ? (n2 <= xs1.length ? pickAligned(xs1, n2) : spread(n2, inset, b - inset)) : []
 
   const bars: LayoutBar[] = [
     ...xs1.map<LayoutBar>((x) => ({ x, y: yFace, db, area: areaPerBar, role: face, layer: 1 })),
@@ -155,8 +160,8 @@ function buildFace(
 
   const clearSpacing = n1 >= 2 ? (bwClear - n1 * db) / (n1 - 1) : null
   const centerSpacing = n1 >= 2 ? (b - 2 * inset) / (n1 - 1) : null
-  const nTot = n1 + Math.min(n2, nMax)
-  const centroid = nTot > 0 ? (n1 * yFace + (nTot - n1) * (y2 ?? yFace)) / nTot : yFace
+  const nTot = n1 + n2
+  const centroid = nTot > 0 ? (n1 * yFace + n2 * (y2 ?? yFace)) / nTot : yFace
 
   return {
     group: {
