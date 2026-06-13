@@ -24,8 +24,11 @@ import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
 import { DesignCriteriaToolContent } from "@/tabs/design/tools/design-criteria-tool"
-import { SectionDesignToolContent } from "@/tabs/design/tools/section-design-tool"
-import type { DesignCriteria, DesignRunResult, SectionDesignInput, SectionDesignInputs } from "@/lib/design/types"
+import { SectionDesignToolContent } from "@/tabs/design/tools/rc/section-design-tool"
+import { SteelDesignToolContent } from "@/tabs/design/tools/steel/steel-design-tool"
+import type { DesignRunResult } from "@/lib/design/core/types"
+import type { DesignCriteria } from "@/lib/design/core/criteria"
+import type { SectionDesignInput, SectionDesignInputs } from "@/lib/design/core/section-input"
 import type {
   LoadCase,
   LoadCaseId,
@@ -373,6 +376,8 @@ function getToolTitle(tool: ToolType, activeTab?: TabType): string {
   if (tool === "SELECT") return "MODIFY SECTION"
   if (tool === "MOVE_NODE") return "MOVE NODE"
   if (tool === "DELETE") return activeTab === "Load" ? "DELETE LOAD" : "DELETE COMPONENT"
+  if (tool === "SECTION_DESIGN") return "REINFORCED CONCRETE"
+  if (tool === "STEEL_DESIGN") return "STEEL"
   return tool.replace(/_/g, " ")
 }
 
@@ -495,6 +500,8 @@ function FlyoutContent({
             designResult={designResult}
           />
         ) : null
+      case "STEEL_DESIGN":
+        return <SteelDesignToolContent />
       default:
         return null
     }

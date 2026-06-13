@@ -6,7 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import type { SectionId, StructureModel } from "@/lib/model"
-import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rebar"
+import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rc/rebar"
 import {
   AGG_SIZE_MM,
   checkArrangement,
@@ -15,22 +15,19 @@ import {
   maxSideBars,
   type ArrangementCheck,
   type TransverseChecks,
-} from "@/lib/design/bar-layout"
-import { checkColumnArrangement } from "@/lib/design/column-layout"
-import {
-  defaultSectionDesignInput,
-  ELEMENT_TYPES,
-  isSectionDesignable,
-  type BarLayer,
-  type ColumnArrangement,
-  type DesignCriteria,
-  type DesignMode,
-  type ElementType,
-  type RebarArrangement,
-  type SectionDesignInput,
-  type SectionDesignInputs,
-} from "@/lib/design/types"
-import type { DesignRunResult } from "@/lib/design/types"
+} from "@/lib/design/rc/bar-layout"
+import { checkColumnArrangement } from "@/lib/design/rc/column-layout"
+import { ELEMENT_TYPES, type DesignMode, type ElementType } from "@/lib/design/core/types"
+import type { DesignRunResult } from "@/lib/design/core/types"
+import { isSectionDesignable, materialOf } from "@/lib/design/core/designability"
+import type { DesignCriteria } from "@/lib/design/core/criteria"
+import { asRcInput, type SectionDesignInputs } from "@/lib/design/core/section-input"
+import type {
+  BarLayer,
+  ColumnArrangement,
+  RcSectionInput,
+  RebarArrangement,
+} from "@/lib/design/rc/types"
 import { RcSectionPreview } from "./rc-section-preview"
 import { RcColumnPreview } from "./rc-column-preview"
 import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
@@ -44,7 +41,7 @@ interface SectionDesignToolProps {
   selectedSectionId: SectionId | null
   onSelectSection: (id: SectionId) => void
   inputs: SectionDesignInputs
-  onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
+  onPatchInput: (id: SectionId, patch: Partial<RcSectionInput>) => void
   criteria: DesignCriteria
   /** Last design run — feeds the column advanced report's demand markers. */
   designResult?: DesignRunResult | null
@@ -65,7 +62,11 @@ export function SectionDesignToolContent({
   designResult,
 }: SectionDesignToolProps) {
   const sections = model?.sections ?? {}
-  const designableIds = Object.keys(sections).filter((id) => isSectionDesignable(sections[id]))
+  const rc = criteria.rc
+  // RC tool: only concrete sections are designable here (steel → Steel tool).
+  const designableIds = Object.keys(sections).filter(
+    (id) => isSectionDesignable(sections[id]) && materialOf(sections[id]) === "rc",
+  )
 
   // Auto-select the first designable section when nothing valid is selected.
   React.useEffect(() => {
@@ -79,29 +80,31 @@ export function SectionDesignToolContent({
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
 
   // Close the Advanced Report when leaving checked mode or losing the section.
-  const inputMode = selectedSectionId ? inputs[selectedSectionId]?.mode ?? "required" : null
+  const inputMode = selectedSectionId
+    ? asRcInput(inputs[selectedSectionId], selectedSectionId).mode
+    : null
   React.useEffect(() => {
     if (inputMode !== "checked") setAdvancedOpen(false)
   }, [inputMode, selectedSectionId])
 
   const sec = selectedSectionId ? sections[selectedSectionId] : undefined
   const designable = isSectionDesignable(sec)
-  const input: SectionDesignInput | null = selectedSectionId
-    ? inputs[selectedSectionId] ?? defaultSectionDesignInput(selectedSectionId)
+  const input: RcSectionInput | null = selectedSectionId
+    ? asRcInput(inputs[selectedSectionId], selectedSectionId)
     : null
 
-  const patch = (p: Partial<SectionDesignInput>) => {
+  const patch = (p: Partial<RcSectionInput>) => {
     if (selectedSectionId) onPatchInput(selectedSectionId, p)
   }
   const patchArrangement = (key: ZoneKey, p: Partial<RebarArrangement>) => {
     if (!input) return
-    patch({ [key]: { ...input[key], ...p } } as Partial<SectionDesignInput>)
+    patch({ [key]: { ...input[key], ...p } } as Partial<RcSectionInput>)
   }
   const patchColumnChecked = (p: Partial<ColumnArrangement>) => {
     if (!input) return
     patch({ column: { ...input.column, checked: { ...input.column.checked, ...p } } })
   }
-  const patchColumnReq = (p: Partial<SectionDesignInput["column"]["required"]>) => {
+  const patchColumnReq = (p: Partial<RcSectionInput["column"]["required"]>) => {
     if (!input) return
     patch({ column: { ...input.column, required: { ...input.column.required, ...p } } })
   }
@@ -148,17 +151,6 @@ export function SectionDesignToolContent({
 
   return (
     <div className="space-y-3">
-      {/* Material class — Reinforced Concrete only for now (steel later) */}
-      <div className="space-y-1.5">
-        <Label className="text-xs text-gray-600">Material Class</Label>
-        <Select value="rc" onValueChange={() => {}}>
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="rc">Reinforced Concrete</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Element type — beam vs column (auto = by orientation + axial gate) */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Element Type</Label>
@@ -280,14 +272,14 @@ export function SectionDesignToolContent({
 
               <DetailingChecksCard
                 longitudinal={checkArrangement(b, h, input.cover, input[zone], {
-                  fy: criteria.fy,
-                  frameType: criteria.frameType,
+                  fy: rc.fy,
+                  frameType: rc.frameType,
                 })}
                 transverse={checkTransverse(b, h, input.cover, input[zone], zone, {
-                  frameType: criteria.frameType,
-                  fyt: criteria.fyt,
+                  frameType: rc.frameType,
+                  fyt: rc.fyt,
                   fc: sec.strength?.fc ?? 0,
-                  legs: criteria.stirrupLegs,
+                  legs: rc.stirrupLegs,
                 })}
               />
 
@@ -301,7 +293,7 @@ export function SectionDesignToolContent({
                 arrangement={input[zone]}
                 zone={zone}
                 fc={sec.strength?.fc ?? 0}
-                criteria={criteria}
+                criteria={rc}
               />
             </>
           )
@@ -336,7 +328,7 @@ export function SectionDesignToolContent({
               <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={input.column.checked} />
               <ColumnDetailingCard
                 checks={checkColumnArrangement(b, h, input.cover, input.column.checked, {
-                  frameType: criteria.frameType,
+                  frameType: rc.frameType,
                 })}
               />
               <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
@@ -347,7 +339,7 @@ export function SectionDesignToolContent({
                 cover={input.cover}
                 arrangement={input.column.checked}
                 fc={sec.strength?.fc ?? 0}
-                criteria={criteria}
+                criteria={rc}
                 demandPairs={colDemand.pairs}
                 governing={colDemand.governing}
               />

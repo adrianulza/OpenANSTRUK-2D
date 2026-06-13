@@ -6,7 +6,7 @@
  * reference (book §5.4.2.1, Pers. 5-3 … 5-13).
  */
 
-import type { DesignCriteria } from "./types"
+import type { RcCriteria } from "./criteria"
 
 export const EPS_CU = 0.003 // concrete crushing strain (22.2.2.1)
 export const EPS_T_MIN = 0.005 // tension-controlled limit strain for beams (9.3.3.1 / 21.2.2)
@@ -53,7 +53,7 @@ export interface RequiredAsResult {
 export function requiredAs(
   Mu_kNm: number,
   g: FlexureGeometry,
-  cr: DesignCriteria,
+  cr: RcCriteria,
 ): RequiredAsResult {
   const { b, d, dPrimeC, fc } = g
   const { fy, Es } = cr
@@ -130,7 +130,7 @@ export function phiMnProvided(
   As: number,
   AsPrime: number,
   g: FlexureGeometry,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   fyOverride?: number,
 ): PhiMnResult {
   const { b, d, dPrimeC, fc } = g
@@ -219,7 +219,7 @@ export function phiMnBars(
   b: number,
   h: number,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   fyOverride?: number,
 ): PhiMnResult {
   const { Es } = cr

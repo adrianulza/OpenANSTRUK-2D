@@ -1,6 +1,6 @@
-import { barDia } from "@/lib/design/rebar"
-import { buildColumnBarLayout } from "@/lib/design/column-layout"
-import type { ColumnArrangement } from "@/lib/design/types"
+import { barDia } from "@/lib/design/rc/rebar"
+import { buildColumnBarLayout } from "@/lib/design/rc/column-layout"
+import type { ColumnArrangement } from "@/lib/design/rc/types"
 import {
   DIM_OFFSET,
   HDim,

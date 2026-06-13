@@ -82,16 +82,14 @@ import {
   newLoadComboId,
 } from "@/lib/load-cases"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
+import type { DesignReport, DesignRunResult } from "@/lib/design/core/types"
+import { defaultDesignCriteria, type DesignCriteria } from "@/lib/design/core/criteria"
 import {
-  defaultDesignCriteria,
   defaultSectionDesignInput,
-  type DesignCriteria,
-  type DesignReport,
-  type DesignRunResult,
   type SectionDesignInput,
   type SectionDesignInputs,
-} from "@/lib/design/types"
-import { runDesign } from "@/lib/design/run-design"
+} from "@/lib/design/core/section-input"
+import { runDesign } from "@/lib/design/core/run-design"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 import { useModelHistory } from "@/hooks/use-model-history"
 
@@ -172,12 +170,12 @@ export default function App() {
 
   const handlePatchSectionDesignInput = useCallback(
     (id: SectionId, patch: Partial<SectionDesignInput>) => {
-      setSectionDesignInputs((prev) => ({
-        ...prev,
-        [id]: { ...(prev[id] ?? defaultSectionDesignInput(id)), ...patch },
-      }))
+      setSectionDesignInputs((prev) => {
+        const base = prev[id] ?? defaultSectionDesignInput(id, model.sections[id])
+        return { ...prev, [id]: { ...base, ...patch } as SectionDesignInput }
+      })
     },
-    [],
+    [model],
   )
 
   // Design is manually triggered (no auto-compute): solves all cases itself,

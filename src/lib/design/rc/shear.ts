@@ -5,7 +5,7 @@
  */
 
 import { barArea, barDia, type RebarSize } from "./rebar"
-import type { DesignCriteria } from "./types"
+import type { RcCriteria } from "./criteria"
 
 /** Concrete shear capacity Vc = 0.17·λ·√f'c·bw·d (22.5.5.1). kN */
 export function vc(lambda: number, fc: number, bw: number, d: number): number {
@@ -31,7 +31,7 @@ export function avSRequired(
   phiVc: number, // kN
   fyt: number,
   d: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   fc: number,
   bw: number,
 ): number {
@@ -91,7 +91,7 @@ export function phiVnProvided(
   avS_per_m: number,
   fyt: number,
   d: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
 ): number {
   const Vs = ((avS_per_m / 1000) * fyt * d) / 1e3 // kN
   return cr.phiShear * (vcVal + Vs)

@@ -17,7 +17,8 @@ import { buildBarLayout, type BarLayout, type LayoutBar } from "./bar-layout"
 import { barArea } from "./rebar"
 import { beta1, EPS_CU, EPS_T_MIN } from "./flexure"
 import { avSProvided, vc, phiVnProvided } from "./shear"
-import type { DesignCriteria, RebarArrangement } from "./types"
+import type { RcCriteria } from "./criteria"
+import type { RebarArrangement } from "./types"
 
 export type BendingDirection = "pos" | "neg"
 
@@ -173,7 +174,7 @@ export function buildSectionCapacityReport(
   cover: number,
   arr: RebarArrangement,
   fc: number,
-  cr: DesignCriteria,
+  cr: RcCriteria,
   direction: BendingDirection,
   zone: "support" | "midspan",
 ): SectionCapacityReport {

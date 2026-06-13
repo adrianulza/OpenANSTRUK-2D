@@ -21,7 +21,8 @@ import {
   imfEndZoneSpacingMax,
   smfEndZoneSpacingMax,
 } from "./shear"
-import type { FrameType, RebarArrangement } from "./types"
+import type { FrameType } from "../core/types"
+import type { RebarArrangement } from "./types"
 
 /** Hard-coded clear spacing between bar layers, mm (≥ 25 mm of 25.2.2). */
 export const LAYER_CLEAR_MM = 50

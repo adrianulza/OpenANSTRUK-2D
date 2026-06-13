@@ -5,15 +5,18 @@ import { Label } from "@/components/ui/label"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import {
-  FRAME_TYPES,
-  type DesignCriteria,
-  type FrameType,
-} from "@/lib/design/types"
+import { FRAME_TYPES, type DesignMaterial, type FrameType } from "@/lib/design/core/types"
+import type { DesignCriteria } from "@/lib/design/core/criteria"
+import type { RcCriteria } from "@/lib/design/rc/criteria"
 
 interface DesignCriteriaToolProps {
   criteria: DesignCriteria
   onChange: (patch: Partial<DesignCriteria>) => void
+}
+
+interface RcCriteriaFieldsProps {
+  criteria: RcCriteria
+  onChange: (patch: Partial<RcCriteria>) => void
 }
 
 /**
@@ -23,6 +26,71 @@ interface DesignCriteriaToolProps {
 export function DesignCriteriaToolContent({ criteria, onChange }: DesignCriteriaToolProps) {
   return (
     <div className="space-y-3">
+      {/* Material family — left RC / right Steel */}
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Design Material</Label>
+        <div className="grid grid-cols-2 gap-1">
+          <MaterialButton
+            active={criteria.material === "rc"}
+            onClick={() => onChange({ material: "rc" as DesignMaterial })}
+            title="Reinforced concrete design (ACI 318-14 / SNI 2847:2019)"
+          >
+            Reinforced Concrete
+          </MaterialButton>
+          <MaterialButton
+            active={criteria.material === "steel"}
+            onClick={() => onChange({ material: "steel" as DesignMaterial })}
+            title="Structural steel design (AISC 360-16 / SNI 1729:2020)"
+          >
+            Steel
+          </MaterialButton>
+        </div>
+      </div>
+
+      {criteria.material === "steel" ? (
+        <div className="rounded bg-gray-50 border border-gray-200 px-2 py-3">
+          <p className="text-[10px] text-gray-500 leading-snug">
+            Steel design criteria (AISC 360-16 / SNI 1729:2020) coming soon.
+          </p>
+        </div>
+      ) : (
+        <RcCriteriaFields
+          criteria={criteria.rc}
+          onChange={(p) => onChange({ rc: { ...criteria.rc, ...p } })}
+        />
+      )}
+    </div>
+  )
+}
+
+function MaterialButton({
+  active, onClick, title, children,
+}: {
+  active: boolean
+  onClick: () => void
+  title?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={cn(
+        "h-8 rounded text-xs font-medium transition-colors px-1",
+        active
+          ? "border-2 border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]"
+          : "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** RC-specific criteria fields (code, frame type, rebar material, φ, params). */
+function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
+  return (
+    <>
       {/* Design code */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Design Code</Label>
@@ -79,7 +147,7 @@ export function DesignCriteriaToolContent({ criteria, onChange }: DesignCriteria
         <CriteriaInput label="Lightweight factor" symbol="λ" value={criteria.lambda} unit="" min={0.01} max={1} onCommit={(v) => onChange({ lambda: v })} />
         <CriteriaInput label="Stirrup legs" symbol="n" value={criteria.stirrupLegs} unit="" min={1} integer onCommit={(v) => onChange({ stirrupLegs: v })} />
       </div>
-    </div>
+    </>
   )
 }
 

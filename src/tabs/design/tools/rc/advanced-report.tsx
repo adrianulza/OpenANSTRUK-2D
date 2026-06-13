@@ -2,15 +2,16 @@ import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { COLOR_SFD_NEG, COLOR_SFD_POS } from "@/lib/constants"
-import { barDia } from "@/lib/design/rebar"
-import { buildBarLayout } from "@/lib/design/bar-layout"
+import { barDia } from "@/lib/design/rc/rebar"
+import { buildBarLayout } from "@/lib/design/rc/bar-layout"
 import {
   buildSectionCapacityReport,
   type BendingDirection,
   type ReportLevel,
   type SectionCapacityReport,
-} from "@/lib/design/section-report"
-import type { DesignCriteria, RebarArrangement } from "@/lib/design/types"
+} from "@/lib/design/rc/section-report"
+import type { RcCriteria } from "@/lib/design/rc/criteria"
+import type { RebarArrangement } from "@/lib/design/rc/types"
 import { PREVIEW_VIEW_W, sectionFitScale } from "./rc-section-preview"
 
 /**
@@ -40,7 +41,7 @@ interface Props {
   zone: "support" | "midspan"
   /** Concrete strength f'c, MPa */
   fc: number
-  criteria: DesignCriteria
+  criteria: RcCriteria
 }
 
 export function AdvancedReportDeck({
@@ -500,7 +501,7 @@ function FlexureReport({
   report, criteria,
 }: {
   report: SectionCapacityReport
-  criteria: DesignCriteria
+  criteria: RcCriteria
 }) {
   const { levels, c, a, epsT, phi, phiClass, Mn, phiMn, Cc } = report
   const active = levels.filter((l) => l.As > 0)
