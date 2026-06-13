@@ -118,8 +118,8 @@ export function AdvancedReportDeck({
         )}
 
         <FlexureReport report={report} criteria={criteria} />
-        <SummaryReport report={report} b={b} h={h} />
         <ShearReport report={report} />
+        <SummaryReport report={report} b={b} h={h} />
       </div>
     </div>
   )
@@ -563,7 +563,7 @@ function FlexureReport({
           φ-used = {phi.toFixed(3)} <span className="text-gray-400">({classLabel})</span>
         </p>
         <ParamRow main="M" sub="n" value={`${fmt1(Mn)} kN·m`} />
-        <ParamRow main="φM" sub="n" value={`${fmt1(phiMn)} kN·m`} bold />
+        <ParamRow main="φM" sub="n" value={`${fmt1(phiMn)} kN·m`} />
       </div>
 
       <p className="text-[10px] text-gray-400 leading-snug">
@@ -588,38 +588,49 @@ function SummaryReport({
   h: number
 }) {
   const s = report.summary
-  const belowMin = s.rho < s.rhoMin
-  const aboveMax = s.rho > s.rhoMax
-  const rhoNote =
-    belowMin ? "below ρₘᵢₙ"
-    : aboveMax ? "above ρₘₐₓ — not tension-controlled"
-    : "within limits"
-  const rhoColor = belowMin || aboveMax ? "text-red-600" : "text-gray-400"
+  const noteFor = (rho: number): { text: string; color: string } => {
+    if (rho > 0 && rho < s.rhoMin) return { text: "below ρₘᵢₙ", color: "text-red-600" }
+    if (rho > s.rhoMax) return { text: "above ρₘₐₓ — not tension-controlled", color: "text-red-600" }
+    return { text: "within limits", color: "text-gray-400" }
+  }
+  const topNote = noteFor(s.rhoTop)
+  const botNote = noteFor(s.rhoBot)
   return (
     <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
       <p className="text-[10px] font-semibold text-[#1a2f5e]">Section Summary</p>
       <div className="space-y-0.5">
         <p className="font-mono text-[10px] text-gray-700">
-          ρ = A<sub>s</sub>/b·d = {fmtRatio(s.rho)}{" "}
-          <span className={rhoColor}>({rhoNote})</span>
+          ρ<sub>min</sub> = {fmtRatio(s.rhoMin)}
         </p>
         <p className="font-mono text-[10px] text-gray-700">
-          ρ<sub>min</sub> = {fmtRatio(s.rhoMin)} · ρ<sub>max</sub> = {fmtRatio(s.rhoMax)}
+          ρ<sub>max</sub> = {fmtRatio(s.rhoMax)}
         </p>
         <p className="font-mono text-[10px] text-gray-700">
-          ρ<sub>g</sub> = A<sub>s,tot</sub>/b·h = {fmtRatio(s.rhoG)}
+          ρ<sub>top</sub> = A<sub>s,top</sub>/b·d<sub>top</sub> = {fmtRatio(s.rhoTop)}{" "}
+          <span className={topNote.color}>({topNote.text})</span>
+        </p>
+        <p className="font-mono text-[10px] text-gray-700">
+          ρ<sub>bot</sub> = A<sub>s,bot</sub>/b·d<sub>bot</sub> = {fmtRatio(s.rhoBot)}{" "}
+          <span className={botNote.color}>({botNote.text})</span>
+        </p>
+        <p className="font-mono text-[10px] text-gray-700">
+          ρ<sub>gross</sub> = A<sub>s,tot</sub>/b·h = {fmtRatio(s.rhoGross)}
         </p>
         <p className="font-mono text-[10px] text-gray-700">
           c/d = {Number.isFinite(s.cOverD) ? s.cOverD.toFixed(3) : "—"}{" "}
           <span className="text-gray-400">(ductility)</span>
         </p>
         <ParamRow main="A" sub="s,tot" value={`${Math.round(s.AsTotal)} mm²`} />
-        <ParamRow main="w" sub="s" value={`${s.steelWeight.toFixed(2)} kg/m`} bold />
+        <p className="font-mono text-[10px] text-gray-700">
+          steel-concrete weight = {s.steelWeight.toFixed(2)} kg/m
+        </p>
       </div>
       <p className="text-[10px] text-gray-400 leading-snug">
-        ρ on tension steel (d = {fmt1(s.dEff)} mm, incl. side bars in tension);
-        ρ<sub>min</sub> per 9.6.1.2, ρ<sub>max</sub> at ε<sub>t</sub> = 0.005;
-        w<sub>s</sub> at 7850 kg/m³ over b×h = {Math.round(b)}×{Math.round(h)} mm.
+        ρ<sub>top</sub> / ρ<sub>bot</sub> on each face's own steel (d<sub>top</sub> ={" "}
+        {fmt1(s.dTop)} mm, d<sub>bot</sub> = {fmt1(s.dBot)} mm, both layers as
+        drawn); ρ<sub>min</sub> per 9.6.1.2, ρ<sub>max</sub> at ε<sub>t</sub> =
+        0.005; steel-concrete weight = longitudinal steel mass at 7850 kg/m³ over
+        b×h = {Math.round(b)}×{Math.round(h)} mm.
       </p>
     </div>
   )
@@ -635,13 +646,26 @@ function ShearReport({ report }: { report: SectionCapacityReport }) {
       <div className="space-y-0.5">
         <p className="font-mono text-[10px] text-gray-700">φ-used = {s.phi.toFixed(2)}</p>
         <p className="font-mono text-[10px] text-gray-700">
-          V<sub>c</sub> = {fmt1(s.Vc)} kN
+          V<sub>c</sub> = 0.17·λ·√f′<sub>c</sub>·b<sub>w</sub>·d = {fmt1(s.Vc)} kN
           {s.vcZeroed && <span className="text-amber-600"> (= 0, SMF end zone)</span>}
         </p>
-        <ParamRow main="V" sub="s" value={`${fmt1(s.Vs)} kN`} />
-        <ParamRow main="V" sub="n" value={`${fmt1(s.Vn)} kN`} />
-        <ParamRow main="φV" sub="n" value={`${fmt1(s.phiVn)} kN`} bold />
+        <p className="font-mono text-[10px] text-gray-700">
+          A<sub>v</sub>/s = n<sub>legs</sub>·A<sub>b</sub>/s = {fmt1(s.avS)} mm²/m
+        </p>
+        <p className="font-mono text-[10px] text-gray-700">
+          V<sub>s</sub> = (A<sub>v</sub>/s)·f<sub>yt</sub>·d = {fmt1(s.Vs)} kN
+        </p>
+        <p className="font-mono text-[10px] text-gray-700">
+          V<sub>n</sub> = V<sub>c</sub> + V<sub>s</sub> = {fmt1(s.Vn)} kN
+        </p>
+        <p className="font-mono text-[10px] text-gray-700">
+          φV<sub>n</sub> = φ(V<sub>c</sub> + V<sub>s</sub>) = {fmt1(s.phiVn)} kN
+        </p>
       </div>
+      <p className="text-[10px] text-gray-400 leading-snug">
+        V<sub>c</sub> per 22.5.5.1, V<sub>s</sub> per 22.5.10.5.3, V<sub>n</sub>{" "}
+        per 22.5.1.1 (d = {fmt1(s.d)} mm = tension-steel centroid).
+      </p>
     </div>
   )
 }
