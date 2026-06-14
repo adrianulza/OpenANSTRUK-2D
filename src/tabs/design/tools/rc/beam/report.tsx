@@ -12,6 +12,7 @@ import type {
 } from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { RebarArrangement } from "@/lib/design/rc/types"
+import { FONT, NAVY, SubText } from "../chart-text"
 import { PREVIEW_VIEW_W, sectionFitScale } from "./preview"
 
 /**
@@ -93,10 +94,7 @@ export function AdvancedReportDeck({
       <div className="pl-7 pr-3 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <span className="text-xs font-semibold text-[#1a2f5e] block">
-            Advanced Capacity Report
-          </span>
-          <span className="text-[10px] text-gray-500">
-            {zone === "support" ? "Support zone (2h)" : "Midspan"} · f′<sub>c</sub> = {fc} MPa
+            Advanced Report: Beam
           </span>
         </div>
         <div className="grid grid-cols-2 gap-1 shrink-0">
@@ -157,7 +155,6 @@ function DirButton({
 
 // ── Chart ─────────────────────────────────────────────────────────────────────
 
-const NAVY = "#1a2f5e"
 const TENSION = COLOR_SFD_POS // blue — matches AFD tension
 const COMPRESSION = COLOR_SFD_NEG // red — matches AFD compression
 const GRAY = "#9ca3af"
@@ -169,8 +166,7 @@ const STIRRUP = "#5a6f96"
 const VW = 556
 const M_TOP = 18 // room for εcu / 0.85f'c labels (+M: they sit above the figure)
 const GH_MAX = 262 // cap on the drawn section height
-const FONT = 10 // app text-[10px]
-const FONT_SUB = 7.5
+// FONT / FONT_SUB / NAVY / SubText now live in ../chart-text (shared with column).
 
 // Panel x-budget. The Section panel is drawn at the TRUE b:h ratio (same as
 // RcSectionPreview): one scale serves both axes, capped by height (GH) and by
@@ -193,28 +189,6 @@ function fmtEps(e: number): string {
 }
 function fmt1(n: number): string {
   return Number.isFinite(n) ? n.toFixed(1) : "—"
-}
-
-/** SVG text with a subscript and optional normal-size suffix: main_sub suffix */
-function SubText({
-  x, y, main, sub, suffix, fill, anchor = "start", weight,
-}: {
-  x: number
-  y: number
-  main: string
-  sub: string
-  suffix?: string
-  fill: string
-  anchor?: "start" | "middle" | "end"
-  weight?: number
-}) {
-  return (
-    <text x={x} y={y} fontSize={FONT} fill={fill} textAnchor={anchor} fontWeight={weight}>
-      {main}
-      <tspan dy={2.5} fontSize={FONT_SUB}>{sub}</tspan>
-      {suffix !== undefined && <tspan dy={-2.5} fontSize={FONT}>{suffix}</tspan>}
-    </text>
-  )
 }
 
 function CompatibilityChart({
@@ -323,7 +297,7 @@ function CompatibilityChart({
             fill={NAVY}
           />
         ))}
-        <text x={SEC_X + secW / 2} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
+        <text className="font-mono" x={SEC_X + secW / 2} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
           Section
         </text>
 
@@ -380,13 +354,14 @@ function CompatibilityChart({
         <line x1={STRAIN_X - 14} y1={yCompFibre} x2={STRAIN_X - 6} y2={yCompFibre} stroke={NAVY} strokeWidth={0.8} />
         <line x1={STRAIN_X - 14} y1={yNA} x2={STRAIN_X - 6} y2={yNA} stroke={NAVY} strokeWidth={0.8} />
         <text
+          className="font-mono"
           x={STRAIN_X - 16} y={(yCompFibre + yNA) / 2}
           fontSize={FONT} fill={NAVY} textAnchor="middle"
           transform={`rotate(-90 ${STRAIN_X - 16} ${(yCompFibre + yNA) / 2})`}
         >
           c = {fmt1(c)}
         </text>
-        <text x={X0} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
+        <text className="font-mono" x={X0} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
           Strain
         </text>
 
@@ -417,7 +392,7 @@ function CompatibilityChart({
             fill={NAVY} anchor="middle"
           />
         </g>
-        <text x={STRESS_X + STRESS_W / 2} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
+        <text className="font-mono" x={STRESS_X + STRESS_W / 2} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
           Stress
         </text>
 
@@ -432,7 +407,7 @@ function CompatibilityChart({
             name={l.force >= 0 ? "C" : "T"} sub={`s,${l.label}`}
           />
         ))}
-        <text x={FX0} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
+        <text className="font-mono" x={FX0} y={VH - 8} fontSize={FONT} fill={NAVY} textAnchor="middle" fontWeight={600}>
           Compatibility
         </text>
       </svg>

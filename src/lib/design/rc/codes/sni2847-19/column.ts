@@ -66,16 +66,35 @@ export interface AxialCapacities {
   phiPnt: number
 }
 
+/** Key identifying a spColumn-style interaction control point. */
+export type ColumnPointKey =
+  | "maxComp"
+  | "allowComp"
+  | "fs0"
+  | "fs05"
+  | "balanced"
+  | "tensionControl"
+  | "pureBending"
+  | "maxTension"
+
+/** A named control point on the curve (the vertices spColumn tabulates). */
+export interface NamedColumnPoint {
+  key: ColumnPointKey
+  /** Short chart tag (e.g. "fs=0"). */
+  label: string
+  /** Longer table note. */
+  note: string
+  pt: PMPoint
+}
+
 export interface ColumnInteractionCurve {
-  /** +M edge (compression at the "top" face), ordered tension → compression. */
-  posSide: PMPoint[]
-  /** −M edge (compression at the "bottom" face), ordered tension → compression. */
-  negSide: PMPoint[]
+  /** Ordered spColumn-style control points, +M side, compression → tension. */
+  controlPoints: NamedColumnPoint[]
   /** Closed φ-space polygon (M, P) used for the radial D/C check + the chart. */
   phiPolygon: { M: number; P: number }[]
   /** Closed nominal-space polygon (M, P) for the chart. */
   nominalPolygon: { M: number; P: number }[]
-  /** Named book points A–E (+M side for B/C/D). */
+  /** Named book points A–E (+M side for B/C/D) — kept for validation anchors. */
   named: { A: PMPoint; B: PMPoint; C: PMPoint; D: PMPoint; E: PMPoint }
   caps: AxialCapacities
   /** Total longitudinal steel, mm². */
@@ -180,27 +199,80 @@ function pointAtC(
   const Pn = -f.axialCompPos / 1e3 // kN, tension +
   const Mn = sign * Math.max(0, f.Mn_Nmm) / 1e6 // kN·m, signed
   const phi = phiFor(f.epsT, cr)
-  // Cap the compression side (Pn < 0) at the nominal / reduced ceilings.
-  const PnCapped = Math.max(Pn, -caps.PnMax)
+  // Nominal Pn left uncapped (the dash-dot rises to a pointed Po apex); only the
+  // φ design value carries the 0.80 compression cap (22.4.2.1 / 25.7.2).
   const phiPn = Math.max(phi * Pn, -caps.phiPnMax)
-  return { Pn: PnCapped, Mn, phiPn, phiMn: phi * Mn, phi, epsT: f.epsT, c }
+  return { Pn, Mn, phiPn, phiMn: phi * Mn, phi, epsT: f.epsT, c }
+}
+
+/**
+ * Neutral-axis depth `c` at which the **uncapped** φPn first reaches the −φPn,max
+ * cap — the "Allowable comp." control point where the flat top meets the curve.
+ * Bisects between c = dt (below cap) and a = h (above cap). φ is constant (0.65)
+ * through this compression-controlled range, so φPn is monotone in c.
+ */
+function capCrossC(
+  bars: ColumnBar[],
+  b: number,
+  h: number,
+  fc: number,
+  cr: RcCriteria,
+  caps: AxialCapacities,
+): number {
+  const phiPnAt = (c: number) => {
+    const f = sectionForcesAtC(bars, b, h, fc, cr, c)
+    return phiFor(f.epsT, cr) * (-f.axialCompPos / 1e3) // kN, < 0 in compression
+  }
+  const active = bars.filter((p) => p.area > 0)
+  let lo = active.length ? Math.max(...active.map((p) => p.d)) : h // c = dt
+  let hi = (1.05 * h) / beta1(fc) // a ≈ h → near pure compression
+  if (phiPnAt(hi) > -caps.phiPnMax) return hi // never reaches the cap
+  for (let i = 0; i < 60; i++) {
+    const mid = 0.5 * (lo + hi)
+    if (phiPnAt(mid) <= -caps.phiPnMax) hi = mid
+    else lo = mid
+  }
+  return 0.5 * (lo + hi)
+}
+
+/** Build the six interior control points (cap → pure bending) for one bend sign. */
+function sideControlPoints(
+  bars: ColumnBar[],
+  b: number,
+  h: number,
+  fc: number,
+  cr: RcCriteria,
+  sign: 1 | -1,
+  caps: AxialCapacities,
+): {
+  allowComp: PMPoint
+  fs0: PMPoint
+  fs05: PMPoint
+  balanced: PMPoint
+  tensionControl: PMPoint
+  pureBending: PMPoint
+} {
+  const active = bars.filter((p) => p.area > 0)
+  const dt = active.length ? Math.max(...active.map((p) => p.d)) : h
+  const epsY = cr.fy / cr.Es
+  const cFs0 = dt // fs = 0 at the extreme tension bar
+  const cFs05 = (EPS_CU * dt) / (EPS_CU + 0.5 * epsY)
+  const cBal = (EPS_CU * dt) / (EPS_CU + epsY) // εs = εy
+  const cTC = (EPS_CU * dt) / (EPS_CU + EPS_T_MIN) // εt = 0.005
+  const cPure = pureMomentC(bars, b, h, fc, cr)
+  const cAllow = capCrossC(bars, b, h, fc, cr, caps)
+  const at = (c: number) => pointAtC(bars, b, h, fc, cr, c, sign, caps)
+  return {
+    allowComp: at(cAllow),
+    fs0: at(cFs0),
+    fs05: at(cFs05),
+    balanced: at(cBal),
+    tensionControl: at(cTC),
+    pureBending: at(cPure),
+  }
 }
 
 // ── Curve assembly ─────────────────────────────────────────────────────────────
-
-/** Geometric-ish c sampling, denser near small c (where the curve bends most). */
-function sampleCs(dt: number, h: number, fc: number, n: number): number[] {
-  const cMin = Math.max(0.02 * dt, 1)
-  const cMax = (1.05 * h) / beta1(fc) // a = β₁·c ≈ h → essentially pure compression
-  const out: number[] = []
-  for (let i = 0; i <= n; i++) {
-    const u = i / n
-    // sqrt easing → more points at the low-c (tension-controlled) end
-    const c = cMin + (cMax - cMin) * (u * u)
-    out.push(c)
-  }
-  return out
-}
 
 /** Pure-moment depth (Pn = 0) by bisection on net axial — the beam solve. */
 function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: RcCriteria): number {
@@ -219,10 +291,16 @@ function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: Rc
 }
 
 /**
- * Full P–M interaction curve for an explicit bar layout. Bars are given as
- * depths from the TOP fibre; the posSide measures from the top (compression at
- * top, +M) and the negSide mirrors to the bottom (−M). For a symmetric layout
- * the two sides are mirror images; for nx ≠ ny (or top ≠ bottom) they differ.
+ * P–M interaction curve for an explicit bar layout, built spColumn-style as a
+ * piecewise-linear polygon through named control points rather than a dense
+ * sweep. The +M side measures compression from the top fibre; the −M side
+ * mirrors to the bottom. For a symmetric layout the two sides are mirror images;
+ * for nx ≠ ny (or top ≠ bottom) they differ.
+ *
+ * Vertices, compression → tension: max-compression apex (Po, nominal only),
+ * allowable-compression cap (0.80φPo), fs = 0, fs = 0.5fy, balanced, tension
+ * control, pure bending, max tension. The φ design loop is flat-topped at the
+ * cap; the nominal loop rises to a pointed Po apex (the dash-dot).
  */
 export function buildInteractionCurve(
   barsTop: ColumnBar[], // d = depth from TOP fibre
@@ -238,50 +316,63 @@ export function buildInteractionCurve(
   const posBars = barsTop // compression at top → depth = d
   const negBars = barsTop.map((p) => ({ d: h - p.d, area: p.area })) // compression at bottom
 
-  const dtPos = posBars.length ? Math.max(...posBars.map((p) => p.d)) : h
-  const cs = sampleCs(dtPos, h, fc, 60)
+  const pos = sideControlPoints(posBars, b, h, fc, cr, 1, caps)
+  const neg = sideControlPoints(negBars, b, h, fc, cr, -1, caps)
 
-  const posSide = cs.map((c) => pointAtC(posBars, b, h, fc, cr, c, 1, caps))
-  const negSide = cs.map((c) => pointAtC(negBars, b, h, fc, cr, c, -1, caps))
-
-  // Endpoints E (pure tension) and A (pure compression, capped) — shared.
-  const E: PMPoint = {
+  // Shared endpoints (M = 0). maxComp is the uncapped squash apex (nominal Po);
+  // maxTension is pure tension fy·Ast.
+  const maxComp: PMPoint = {
+    Pn: -caps.Po, Mn: 0, phiPn: -caps.phiPnMax, phiMn: 0,
+    phi: cr.phiCompression, epsT: -Infinity, c: Infinity,
+  }
+  const maxTension: PMPoint = {
     Pn: caps.Pnt, Mn: 0, phiPn: caps.phiPnt, phiMn: 0,
     phi: cr.phiTension, epsT: Infinity, c: 0,
   }
+
+  // spColumn control points (+M side), compression → tension.
+  const controlPoints: NamedColumnPoint[] = [
+    { key: "maxComp", label: "Pₒ", note: "pure compression", pt: maxComp },
+    { key: "allowComp", label: "Pₙ,ₘₐₓ", note: "design compression (φPn,max)", pt: pos.allowComp },
+    { key: "fs0", label: "fₛ=0", note: "tension bar at zero strain (c = dₜ)", pt: pos.fs0 },
+    { key: "fs05", label: "fₛ=0.5fy", note: "tension bar at half yield strength", pt: pos.fs05 },
+    { key: "balanced", label: "εy", note: "balanced condition (εₜ = εy, φ = 0.65)", pt: pos.balanced },
+    { key: "tensionControl", label: "εₜ", note: "tension-controlled (εₜ = 0.005, φ = 0.90)", pt: pos.tensionControl },
+    { key: "pureBending", label: "Mₒ", note: "pure bending (P = 0)", pt: pos.pureBending },
+    { key: "maxTension", label: "Pₙₜ,ₘₐₓ", note: "design tension (φfy·Ast)", pt: maxTension },
+  ]
+
+  // φ loop: flat-topped at the cap. allowComp.phiPn = −φPn,max on both sides, so
+  // the edge neg.allowComp → pos.allowComp is the horizontal cap.
+  const phiInner = [
+    pos.allowComp, pos.fs0, pos.fs05, pos.balanced, pos.tensionControl, pos.pureBending,
+    maxTension,
+    neg.pureBending, neg.tensionControl, neg.balanced, neg.fs05, neg.fs0, neg.allowComp,
+  ]
+  const phiPolygon = phiInner.map((p) => ({ M: p.phiMn, P: p.phiPn }))
+
+  // Nominal loop: pointed apex at Pₒ (no cap), through the same interior points.
+  const nomInner = [
+    maxComp, pos.fs0, pos.fs05, pos.balanced, pos.tensionControl, pos.pureBending,
+    maxTension,
+    neg.pureBending, neg.tensionControl, neg.balanced, neg.fs05, neg.fs0,
+  ]
+  const nominalPolygon = nomInner.map((p) => ({ M: p.Mn, P: p.Pn }))
+
+  // Named book points A–E kept for validation/back-compat (A = cap apex at M=0).
   const A: PMPoint = {
     Pn: -caps.PnMax, Mn: 0, phiPn: -caps.phiPnMax, phiMn: 0,
     phi: cr.phiCompression, epsT: -Infinity, c: Infinity,
   }
-
-  // Named book points (B/C/D on the +M side, per the symmetric example).
-  const epsY = cr.fy / cr.Es
-  const cB = (EPS_CU / (epsY + EPS_CU)) * dtPos // balanced (εs = εy)
-  const cC = (EPS_CU / (EPS_T_MIN + EPS_CU)) * dtPos // tension-control (εt = 0.005)
-  const cD = pureMomentC(posBars, b, h, fc, cr) // pure moment (Pn = 0)
   const named = {
     A,
-    B: pointAtC(posBars, b, h, fc, cr, cB, 1, caps),
-    C: pointAtC(posBars, b, h, fc, cr, cC, 1, caps),
-    D: pointAtC(posBars, b, h, fc, cr, cD, 1, caps),
-    E,
+    B: pos.balanced,
+    C: pos.tensionControl,
+    D: pos.pureBending,
+    E: maxTension,
   }
 
-  // Closed polygons: E → posSide(asc) → A → reverse(negSide) → E.
-  const phiPolygon = [
-    { M: E.phiMn, P: E.phiPn },
-    ...posSide.map((p) => ({ M: p.phiMn, P: p.phiPn })),
-    { M: A.phiMn, P: A.phiPn },
-    ...[...negSide].reverse().map((p) => ({ M: p.phiMn, P: p.phiPn })),
-  ]
-  const nominalPolygon = [
-    { M: E.Mn, P: E.Pn },
-    ...posSide.map((p) => ({ M: p.Mn, P: p.Pn })),
-    { M: A.Mn, P: A.Pn },
-    ...[...negSide].reverse().map((p) => ({ M: p.Mn, P: p.Pn })),
-  ]
-
-  return { posSide, negSide, phiPolygon, nominalPolygon, named, caps, Ast }
+  return { controlPoints, phiPolygon, nominalPolygon, named, caps, Ast }
 }
 
 // ── Radial demand/capacity ratio ──────────────────────────────────────────────
