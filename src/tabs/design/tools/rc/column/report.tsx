@@ -2,11 +2,12 @@ import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { COLOR_DESIGN_FAIL } from "@/lib/constants"
-import { buildColumnBarLayout, layoutToColumnBars } from "@/lib/design/rc/column-layout"
-import { buildInteractionCurve, type PMPoint } from "@/lib/design/rc/column"
+import { buildColumnBarLayout, layoutToColumnBars } from "@/lib/design/rc/shared/column-grid"
+import { getRcCode } from "@/lib/design/rc/codes"
+import type { PMPoint, ColumnInteractionCurve } from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { ColumnArrangement } from "@/lib/design/rc/types"
-import { RcColumnPreview } from "./rc-column-preview"
+import { RcColumnPreview } from "./preview"
 
 /**
  * Advanced Capacity Report deck — column. Replaces the beam deck's
@@ -71,7 +72,7 @@ export function ColumnAdvancedReportDeck({
 
   const curve = React.useMemo(() => {
     const layout = buildColumnBarLayout(b, h, cover, arrangement)
-    return buildInteractionCurve(layoutToColumnBars(layout), b, h, fc, criteria)
+    return getRcCode(criteria.code).buildInteractionCurve(layoutToColumnBars(layout), b, h, fc, criteria)
   }, [b, h, cover, arrangement, fc, criteria])
 
   if (!open || typeof document === "undefined" || !pos) return null
@@ -133,7 +134,7 @@ function fmt0(n: number): string {
 function InteractionChart({
   curve, demandPairs, governing,
 }: {
-  curve: ReturnType<typeof buildInteractionCurve>
+  curve: ColumnInteractionCurve
   demandPairs?: DemandPair[]
   governing?: { P: number; M: number; dc: number }
 }) {
@@ -243,7 +244,7 @@ function InteractionChart({
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
-function CoordinateTable({ curve }: { curve: ReturnType<typeof buildInteractionCurve> }) {
+function CoordinateTable({ curve }: { curve: ColumnInteractionCurve }) {
   const rows: { label: string; pt: PMPoint; note: string }[] = [
     { label: "A", pt: curve.named.A, note: "pure compression (cap)" },
     { label: "B", pt: curve.named.B, note: "balanced (εs = εy)" },
@@ -291,7 +292,7 @@ function CoordinateTable({ curve }: { curve: ReturnType<typeof buildInteractionC
 function SummaryCard({
   curve, rhoG, governing, b, h,
 }: {
-  curve: ReturnType<typeof buildInteractionCurve>
+  curve: ColumnInteractionCurve
   rhoG: number
   governing?: { P: number; M: number; dc: number }
   b: number

@@ -4,11 +4,10 @@
  */
 
 import type { FrameType } from "../core/types"
-
-export type RcDesignCode = "ACI318-14_SNI2847-2019"
+import type { RcCode } from "./codes"
 
 export interface RcCriteria {
-  code: RcDesignCode
+  code: RcCode
   frameType: FrameType
   /** Main (longitudinal) bar yield strength, MPa */
   fy: number
@@ -30,7 +29,7 @@ export interface RcCriteria {
 
 export function defaultRcCriteria(): RcCriteria {
   return {
-    code: "ACI318-14_SNI2847-2019",
+    code: "ACI318-25",
     frameType: "OMF",
     fy: 420,
     fyt: 420,

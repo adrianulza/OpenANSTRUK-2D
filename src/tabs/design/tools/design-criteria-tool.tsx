@@ -8,6 +8,7 @@ import {
 import { FRAME_TYPES, type DesignMaterial, type FrameType } from "@/lib/design/core/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
+import { RC_CODE_LABELS, type RcCode } from "@/lib/design/rc/codes"
 
 interface DesignCriteriaToolProps {
   criteria: DesignCriteria
@@ -94,10 +95,15 @@ function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
       {/* Design code */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Design Code</Label>
-        <Select value={criteria.code} onValueChange={() => {}}>
+        <Select
+          value={criteria.code}
+          onValueChange={(v) => onChange({ code: v as RcCode })}
+        >
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ACI318-14_SNI2847-2019">ACI 318-14 / SNI 2847:2019</SelectItem>
+            {(Object.keys(RC_CODE_LABELS) as RcCode[]).map((c) => (
+              <SelectItem key={c} value={c}>{RC_CODE_LABELS[c]}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

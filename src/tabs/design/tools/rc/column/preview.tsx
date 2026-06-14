@@ -1,5 +1,5 @@
-import { barDia } from "@/lib/design/rc/rebar"
-import { buildColumnBarLayout } from "@/lib/design/rc/column-layout"
+import { barDia } from "@/lib/design/rc/shared/rebar"
+import { buildColumnBarLayout } from "@/lib/design/rc/shared/column-grid"
 import type { ColumnArrangement } from "@/lib/design/rc/types"
 import {
   DIM_OFFSET,
@@ -12,7 +12,7 @@ import {
   VDim,
   VIEW_H,
   VIEW_W,
-} from "./rc-section-preview"
+} from "../beam/preview"
 
 /**
  * Live RC column cross-section: an nx × ny perimeter bar grid with the tie,

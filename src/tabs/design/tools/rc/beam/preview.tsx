@@ -1,5 +1,5 @@
-import { barDia } from "@/lib/design/rc/rebar"
-import { buildBarLayout } from "@/lib/design/rc/bar-layout"
+import { barDia } from "@/lib/design/rc/shared/rebar"
+import { buildBarLayout } from "@/lib/design/rc/shared/bar-geometry"
 import type { RebarArrangement } from "@/lib/design/rc/types"
 
 // Mirrors the Model-tab ShapePreview: fixed square frame, fixed viewBox, auto-fit

@@ -50,11 +50,12 @@ OpenAnstruk-2D/
 │   │   │   ├── compute.ts             # buildParametricSection, computeSectionFromParametric
 │   │   │   ├── materials/             # types, concrete, steel, index
 │   │   │   └── shapes/                # types + rect, circle, iwf, tee, angle, chs, rhs
-│   │   └── design/                    # RC beam design engine (pure) — see docs/DESIGN_RULES.md
-│   │       ├── flexure.ts, shear.ts   # capacity + detailing math (ACI 318-14)
-│   │       ├── bar-layout.ts          # shared bar geometry + live ACI checks
-│   │       ├── demands.ts             # analytic zone extremes, envelope, frame minimums
-│   │       └── run-design.ts          # orchestrator (solves cases itself)
+│   │   └── design/                    # Design engine (pure) — see docs/DESIGN_RULES.md
+│   │       ├── core/                  # material-agnostic: run-design, demands, designability, criteria, types
+│   │       ├── rc/                    # RC strategy: criteria, types, strategy
+│   │       │   ├── shared/            #   code-agnostic geometry (rebar, bar-geometry, column-grid)
+│   │       │   └── codes/<code>/      #   per-code math (rules, beam, column, report) — aci318-25, sni2847-19
+│   │       └── steel/                 # steel strategy — stub (AISC 360 / SNI 1729)
 │   │
 │   ├── canvas/                        # Canvas shell + tab-agnostic draw primitives
 │   │   ├── structural-canvas.tsx      # Viewport, pan/zoom, event routing, draw() loop
@@ -66,7 +67,7 @@ OpenAnstruk-2D/
 │   │   ├── model/tools/               # select, delete, move-node, node, member, support + material/
 │   │   ├── load/tools/                # point-load, dist-load, modify-load, delete-load
 │   │   ├── analyze/tools/             # select, reaction, diagram, deformation
-│   │   └── design/tools/              # design-criteria, section-design (+ rc-section-preview)
+│   │   └── design/tools/              # design-criteria + rc/ (rc-design-tool, beam/, column/) + steel/
 │   │
 │   ├── components/                    # Shared, tab-agnostic UI
 │   │   ├── nav-bar.tsx                # Tab switcher + file/template menus
@@ -404,7 +405,7 @@ tabs/
 │   └── material/       material-tool (entry) + parametric/manual forms, shape-preview, …
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
 ├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
-└── design/tools/       design-criteria, section-design (+ rc-section-preview)
+└── design/tools/       design-criteria + rc/ (rc-design-tool, beam/, column/) + steel/
 ```
 
 **Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
@@ -413,9 +414,14 @@ tabs/
 
 ## Design Engine (`src/lib/design/`)
 
-A pure-domain layer that consumes analysis results to perform **RC beam design checks** (flexure + shear, ACI 318-14 / SNI 2847:2019). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then runs flexure → shear → detailing per member. Capacity in "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
+A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` (in `design/core/`) solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
 
-The engine is structured so **steel members, new section shapes, and columns** slot in as material/shape strategies behind the same pipeline.
+The engine is split along two axes so new work is additive, not invasive (v1.1.2):
+- **`design/core/`** — material-agnostic orchestrator, demands, designability matrix, result types, and `DesignCriteria { material, rc, steel }`.
+- **`design/rc/`** — the RC strategy, itself split into **`shared/`** (code-agnostic bar/grid geometry, single-sourced) and **`codes/<code>/`** (the clause math — `aci318-25`, `sni2847-19` — duplicated per code edition, resolved at runtime via `getRcCode(criteria.rc.code)`).
+- **`design/steel/`** — stub strategy (AISC 360 / SNI 1729) returning `not-implemented`.
+
+A `DESIGN_SUPPORT` registry (material × geometry × element, with an `implemented` flag) gates which combinations run, so **steel members, RC circular columns, and T-beams** slot in by flipping a flag and adding a strategy branch. Full plan: `docs/DESIGN_P4_PLAN.md`.
 
 > The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** — read it before touching `src/lib/design/`.
 

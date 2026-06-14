@@ -2,17 +2,17 @@ import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { COLOR_SFD_NEG, COLOR_SFD_POS } from "@/lib/constants"
-import { barDia } from "@/lib/design/rc/rebar"
-import { buildBarLayout } from "@/lib/design/rc/bar-layout"
-import {
-  buildSectionCapacityReport,
-  type BendingDirection,
-  type ReportLevel,
-  type SectionCapacityReport,
-} from "@/lib/design/rc/section-report"
+import { barDia } from "@/lib/design/rc/shared/rebar"
+import { buildBarLayout } from "@/lib/design/rc/shared/bar-geometry"
+import { getRcCode } from "@/lib/design/rc/codes"
+import type {
+  BendingDirection,
+  ReportLevel,
+  SectionCapacityReport,
+} from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { RebarArrangement } from "@/lib/design/rc/types"
-import { PREVIEW_VIEW_W, sectionFitScale } from "./rc-section-preview"
+import { PREVIEW_VIEW_W, sectionFitScale } from "./preview"
 
 /**
  * Advanced Capacity Report deck — textbook Section / Strain / Stress /
@@ -71,7 +71,10 @@ export function AdvancedReportDeck({
   const [direction, setDirection] = React.useState<BendingDirection>("pos")
 
   const report = React.useMemo(
-    () => buildSectionCapacityReport(b, h, cover, arrangement, fc, criteria, direction, zone),
+    () =>
+      getRcCode(criteria.code).buildSectionCapacityReport(
+        b, h, cover, arrangement, fc, criteria, direction, zone,
+      ),
     [b, h, cover, arrangement, fc, criteria, direction, zone],
   )
 
