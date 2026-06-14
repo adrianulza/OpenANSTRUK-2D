@@ -6,17 +6,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import type { SectionId, StructureModel } from "@/lib/model"
-import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rc/rebar"
+import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rc/shared/rebar"
 import {
   AGG_SIZE_MM,
-  checkArrangement,
-  checkTransverse,
   maxBarsTwoLayers,
   maxSideBars,
-  type ArrangementCheck,
-  type TransverseChecks,
-} from "@/lib/design/rc/bar-layout"
-import { checkColumnArrangement } from "@/lib/design/rc/column-layout"
+} from "@/lib/design/rc/shared/bar-geometry"
+import type { ArrangementCheck, TransverseChecks } from "@/lib/design/rc/shared/types"
+import { getRcCode } from "@/lib/design/rc/codes"
 import { ELEMENT_TYPES, type DesignMode, type ElementType } from "@/lib/design/core/types"
 import type { DesignRunResult } from "@/lib/design/core/types"
 import { isSectionDesignable, materialOf } from "@/lib/design/core/designability"
@@ -28,11 +25,11 @@ import type {
   RcSectionInput,
   RebarArrangement,
 } from "@/lib/design/rc/types"
-import { RcSectionPreview } from "./rc-section-preview"
-import { RcColumnPreview } from "./rc-column-preview"
+import { RcSectionPreview } from "./beam/preview"
+import { RcColumnPreview } from "./column/preview"
 import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
-import { AdvancedReportDeck } from "./advanced-report"
-import { ColumnAdvancedReportDeck } from "./column-advanced-report"
+import { AdvancedReportDeck } from "./beam/report"
+import { ColumnAdvancedReportDeck } from "./column/report"
 
 type ZoneKey = "support" | "midspan"
 
@@ -63,6 +60,7 @@ export function SectionDesignToolContent({
 }: SectionDesignToolProps) {
   const sections = model?.sections ?? {}
   const rc = criteria.rc
+  const code = getRcCode(rc.code)
   // RC tool: only concrete sections are designable here (steel → Steel tool).
   const designableIds = Object.keys(sections).filter(
     (id) => isSectionDesignable(sections[id]) && materialOf(sections[id]) === "rc",
@@ -271,11 +269,11 @@ export function SectionDesignToolContent({
               <RcSectionPreview b={b} h={h} cover={input.cover} arrangement={input[zone]} />
 
               <DetailingChecksCard
-                longitudinal={checkArrangement(b, h, input.cover, input[zone], {
+                longitudinal={code.checkArrangement(b, h, input.cover, input[zone], {
                   fy: rc.fy,
                   frameType: rc.frameType,
                 })}
-                transverse={checkTransverse(b, h, input.cover, input[zone], zone, {
+                transverse={code.checkTransverse(b, h, input.cover, input[zone], zone, {
                   frameType: rc.frameType,
                   fyt: rc.fyt,
                   fc: sec.strength?.fc ?? 0,
@@ -327,7 +325,7 @@ export function SectionDesignToolContent({
               <ColumnGridEditor arr={input.column.checked} onPatch={patchColumnChecked} />
               <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={input.column.checked} />
               <ColumnDetailingCard
-                checks={checkColumnArrangement(b, h, input.cover, input.column.checked, {
+                checks={code.checkColumnArrangement(b, h, input.cover, input.column.checked, {
                   frameType: rc.frameType,
                 })}
               />

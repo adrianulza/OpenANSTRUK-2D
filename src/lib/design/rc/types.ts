@@ -4,7 +4,7 @@
 
 import type { SectionId } from "@/lib/model"
 import type { DesignMode, ElementType } from "../core/types"
-import type { RebarSize } from "./rebar"
+import type { RebarSize } from "./shared/rebar"
 
 export interface BarLayer {
   count: number

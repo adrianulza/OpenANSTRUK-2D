@@ -32,30 +32,15 @@ import {
 } from "../core/demands"
 import type { RcCriteria } from "./criteria"
 import type { RcSectionInput, RebarArrangement } from "./types"
-import { buildInteractionCurve, interactionDC, type ColumnInteractionCurve } from "./column"
+import { getRcCode, type RcCodeModule } from "./codes"
+import type { ColumnInteractionCurve, BarPoint, FlexureGeometry } from "./codes/aci318-25"
 import {
   buildColumnBarLayout,
   layoutToColumnBars,
   representativeColumnBars,
-  RHO_G_MAX,
-  RHO_G_MIN,
-} from "./column-layout"
-import { phiMnBars, phiMnProvided, requiredAs, type BarPoint, type FlexureGeometry } from "./flexure"
-import { buildBarLayout, type BarLayout } from "./bar-layout"
-import {
-  avMinPerS,
-  avSProvided,
-  avSRequired,
-  generalSpacingMax,
-  imfEndZoneSpacingMax,
-  phiVnProvided,
-  smfEndZoneSpacingMax,
-  suggestStirrup,
-  vc,
-  vMaxLimit,
-  vsSpacingThreshold,
-} from "./shear"
-import { barArea, barDia } from "./rebar"
+} from "./shared/column-grid"
+import { buildBarLayout, type BarLayout } from "./shared/bar-geometry"
+import { barArea, barDia } from "./shared/rebar"
 
 // "As required" mode no longer asks for assumed bars — these defaults drive the
 // SMF hinge-zone spacing cap (6·db) and the stirrup-size suggestion only.
@@ -136,9 +121,10 @@ function designZoneFlexure(
   input: RcSectionInput,
   cr: RcCriteria,
 ): ZoneFlexureResult {
+  const code = getRcCode(cr.code)
   if (input.mode === "required") {
-    const bot = requiredAs(MuPos, flexGeomPos(g), cr)
-    const top = requiredAs(Math.abs(MuNeg), flexGeomNeg(g), cr)
+    const bot = code.requiredAs(MuPos, flexGeomPos(g), cr)
+    const top = code.requiredAs(Math.abs(MuNeg), flexGeomNeg(g), cr)
     const adequate = bot.adequate && top.adequate
     return {
       MuPos, MuNeg,
@@ -159,8 +145,8 @@ function designZoneFlexure(
     // Bars don't fit in 2 layers (25.2.1) — arrangement is unbuildable.
     return { MuPos, MuNeg, dcPos: Infinity, dcNeg: Infinity, dc: Infinity, adequate: false }
   }
-  const pos = phiMnBars(barsCompressionTop(layout), g.b, g.h, g.fc, cr)
-  const neg = phiMnBars(barsCompressionBottom(layout, g.h), g.b, g.h, g.fc, cr)
+  const pos = code.phiMnBars(barsCompressionTop(layout), g.b, g.h, g.fc, cr)
+  const neg = code.phiMnBars(barsCompressionBottom(layout, g.h), g.b, g.h, g.fc, cr)
   const dcPos = MuPos > 0 ? (pos.phiMn > 0 ? MuPos / pos.phiMn : Infinity) : 0
   const dcNeg = MuNeg < 0 ? (neg.phiMn > 0 ? Math.abs(MuNeg) / neg.phiMn : Infinity) : 0
   const dc = Math.max(dcPos, dcNeg)
@@ -188,18 +174,19 @@ function capacityEndMoments(
   cr: RcCriteria,
   fyFactor: number, // 1.0 for Mn (IMF), 1.25 for Mpr (SMF)
 ): EndMoments {
+  const code = getRcCode(cr.code)
   const fyOver = fyFactor * cr.fy
   if (input.mode === "checked" && g.layout) {
     // Same strain-compatibility solver as the capacity check (all bars).
     return {
-      pos: phiMnBars(barsCompressionTop(g.layout), g.b, g.h, g.fc, cr, fyOver).Mn,
-      neg: phiMnBars(barsCompressionBottom(g.layout, g.h), g.b, g.h, g.fc, cr, fyOver).Mn,
+      pos: code.phiMnBars(barsCompressionTop(g.layout), g.b, g.h, g.fc, cr, fyOver).Mn,
+      neg: code.phiMnBars(barsCompressionBottom(g.layout, g.h), g.b, g.h, g.fc, cr, fyOver).Mn,
     }
   }
   // Required mode — book/SAP convention: tension steel only (AsPrime = 0).
   return {
-    pos: phiMnProvided(zone.AsReqBottom ?? 0, 0, flexGeomPos(g), cr, fyOver).Mn,
-    neg: phiMnProvided(zone.AsReqTop ?? 0, 0, flexGeomNeg(g), cr, fyOver).Mn,
+    pos: code.phiMnProvided(zone.AsReqBottom ?? 0, 0, flexGeomPos(g), cr, fyOver).Mn,
+    neg: code.phiMnProvided(zone.AsReqTop ?? 0, 0, flexGeomNeg(g), cr, fyOver).Mn,
   }
 }
 
@@ -222,9 +209,10 @@ function governingSpacingMax(
   fc: number,
   bw: number,
 ): number {
-  if (cr.frameType === "SMF" && isEndZone) return smfEndZoneSpacingMax(d, dbLong)
-  if (cr.frameType === "IMF" && isEndZone) return imfEndZoneSpacingMax(d, dbLong, dbHoop)
-  return generalSpacingMax(d, VsReq > vsSpacingThreshold(fc, bw, d))
+  const code = getRcCode(cr.code)
+  if (cr.frameType === "SMF" && isEndZone) return code.smfEndZoneSpacingMax(d, dbLong)
+  if (cr.frameType === "IMF" && isEndZone) return code.imfEndZoneSpacingMax(d, dbLong, dbHoop)
+  return code.generalSpacingMax(d, VsReq > code.vsSpacingThreshold(fc, bw, d))
 }
 
 function designZoneShear(
@@ -236,13 +224,14 @@ function designZoneShear(
   arr: RebarArrangement,
   cr: RcCriteria,
 ): ZoneShearResult {
+  const code = getRcCode(cr.code)
   const d = Math.min(g.dPos, g.dNeg)
   const isEndZone = zoneId !== "midspan"
-  const VcFull = vc(cr.lambda, g.fc, g.b, d)
+  const VcFull = code.vc(cr.lambda, g.fc, g.b, d)
   // SMF: ignore concrete shear capacity in the hinge (end) zones — 18.6.5.2.
   const VcZone = cr.frameType === "SMF" && isEndZone ? 0 : VcFull
   const phiVc = cr.phiShear * VcZone
-  const phiVmax = cr.phiShear * vMaxLimit(VcZone, g.fc, g.b, d)
+  const phiVmax = cr.phiShear * code.vMaxLimit(VcZone, g.fc, g.b, d)
   const Vdesign = Math.max(Vu, Ve ?? 0)
   const crossSectionOk = Vdesign <= phiVmax
 
@@ -256,8 +245,8 @@ function designZoneShear(
   const sMaxGov = governingSpacingMax(cr, isEndZone, d, dbLong, dbHoop, VsReq, g.fc, g.b)
 
   if (input.mode === "required") {
-    const AvSReq = avSRequired(Vdesign, phiVc, cr.fyt, d, cr, g.fc, g.b)
-    const suggested = suggestStirrup(AvSReq, cr.stirrupLegs, REQUIRED_STIRRUP_BAR, sMaxGov)
+    const AvSReq = code.avSRequired(Vdesign, phiVc, cr.fyt, d, cr, g.fc, g.b)
+    const suggested = code.suggestStirrup(AvSReq, cr.stirrupLegs, REQUIRED_STIRRUP_BAR, sMaxGov)
     return {
       Vu, Ve, Vdesign, phiVc, phiVmax,
       AvSReq, suggested,
@@ -267,12 +256,12 @@ function designZoneShear(
   }
 
   // Checked mode
-  const avS = avSProvided(cr.stirrupLegs, arr.stirrup.size, arr.stirrup.spacing)
-  const phiVn = phiVnProvided(VcZone, avS, cr.fyt, d, cr)
+  const avS = code.avSProvided(cr.stirrupLegs, arr.stirrup.size, arr.stirrup.spacing)
+  const phiVn = code.phiVnProvided(VcZone, avS, cr.fyt, d, cr)
   const dc = Vdesign > 0 ? (phiVn > 0 ? Vdesign / phiVn : Infinity) : 0
   // Minimum stirrups required where Vu > ½φVc (9.6.3.1).
   const stirrupsRequired = Vdesign > 0.5 * phiVc
-  const avMinOk = !stirrupsRequired || avS >= avMinPerS(g.fc, cr.fyt, g.b) * 1000 - 1e-9
+  const avMinOk = !stirrupsRequired || avS >= code.avMinPerS(g.fc, cr.fyt, g.b) * 1000 - 1e-9
   // Spacing limit: seismic hinge zones (SMF/IMF) always apply their detailing
   // cap; elsewhere the general 9.7.6.2.2 cap applies where stirrups are required.
   const seismicHinge = isEndZone && cr.frameType !== "OMF"
@@ -312,6 +301,7 @@ function resolveElementType(
 
 /** Worst radial interaction D/C over every combo × candidate (P,M) station. */
 function worstInteraction(
+  code: RcCodeModule,
   curve: ColumnInteractionCurve,
   efByCombo: Record<LoadComboId, MemberEndForces>,
   L: number,
@@ -326,7 +316,7 @@ function worstInteraction(
   for (const [comboId, ef] of Object.entries(efByCombo)) {
     for (const p of collectPMPairs(ef, L)) {
       pairs.push({ P: p.P, M: p.M, combo: comboId })
-      const { dc } = interactionDC(curve, p.P, p.M)
+      const { dc } = code.interactionDC(curve, p.P, p.M)
       if (dc > worstDC) {
         worstDC = dc
         governing = { combo: comboId, Pu: p.P, Mu: p.M }
@@ -352,12 +342,13 @@ function designColumn(
   efByCombo: Record<LoadComboId, MemberEndForces>,
   Pu: number,
 ): MemberDesignResult {
+  const code = getRcCode(cr.code)
   const Ag = bMm * hMm
 
   if (di.mode === "checked") {
     const layout = buildColumnBarLayout(bMm, hMm, di.cover, di.column.checked)
-    const curve = buildInteractionCurve(layoutToColumnBars(layout), bMm, hMm, fc, cr)
-    const { worstDC, governing, pairs } = worstInteraction(curve, efByCombo, L)
+    const curve = code.buildInteractionCurve(layoutToColumnBars(layout), bMm, hMm, fc, cr)
+    const { worstDC, governing, pairs } = worstInteraction(code, curve, efByCombo, L)
     const rhoG = Ag > 0 ? layout.Ast / Ag : 0
     const column: ColumnDesignResult = {
       rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
@@ -374,14 +365,15 @@ function designColumn(
       barSize: di.column.required.barSize,
       tieSize: di.column.required.tieSize,
     })
-    return worstInteraction(buildInteractionCurve(bars, bMm, hMm, fc, cr), efByCombo, L).worstDC
+    return worstInteraction(code, code.buildInteractionCurve(bars, bMm, hMm, fc, cr), efByCombo, L)
+      .worstDC
   }
   let rhoGRequired: number | undefined
-  if (dcAt(RHO_G_MAX) > 1) rhoGRequired = undefined // even 8% can't carry it
-  else if (dcAt(RHO_G_MIN) <= 1) rhoGRequired = RHO_G_MIN
+  if (dcAt(code.RHO_G_MAX) > 1) rhoGRequired = undefined // even 8% can't carry it
+  else if (dcAt(code.RHO_G_MIN) <= 1) rhoGRequired = code.RHO_G_MIN
   else {
-    let lo = RHO_G_MIN
-    let hi = RHO_G_MAX
+    let lo = code.RHO_G_MIN
+    let hi = code.RHO_G_MAX
     for (let i = 0; i < 40; i++) {
       const mid = 0.5 * (lo + hi)
       if (dcAt(mid) <= 1) hi = mid
@@ -390,10 +382,10 @@ function designColumn(
     rhoGRequired = hi
   }
   const adequate = rhoGRequired !== undefined
-  const rhoG = rhoGRequired ?? RHO_G_MAX
+  const rhoG = rhoGRequired ?? code.RHO_G_MAX
   const column: ColumnDesignResult = {
     rhoG, Ast: rhoG * Ag, rhoGRequired,
-    worstDC: adequate ? 1 : dcAt(RHO_G_MAX), adequate,
+    worstDC: adequate ? 1 : dcAt(code.RHO_G_MAX), adequate,
   }
   return {
     memberId, status: "designed", material: "rc", kind: "column", mode: "required", Pu,

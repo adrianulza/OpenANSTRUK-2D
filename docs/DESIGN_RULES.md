@@ -5,8 +5,9 @@ logic, the governing code clauses, and the assumptions behind every number it
 produces. It is the authoritative reference for the `src/lib/design/` domain
 modules.
 
-> **Scope today (v1.1.1):** Reinforced-concrete (RC) **rectangular** sections, per
-> **ACI 318-14** (≡ **SNI 2847:2019**), for Ordinary / Intermediate / Special
+> **Scope today (v1.1.2):** Reinforced-concrete (RC) **rectangular** sections, per
+> a **selectable code** (`RcCriteria.code` → `ACI318-25` | `SNI2847-19`; the two
+> ship byte-identical and diverge later), for Ordinary / Intermediate / Special
 > moment frames (OMF / IMF / SMF):
 > - **Beams** — flexure + shear.
 > - **Columns** — axial-flexure **P–M interaction** capacity ([§5b](#5b-columns--pm-interaction)).
@@ -17,8 +18,10 @@ modules.
 > deliberately structured so these slot in as new *material/shape strategies*
 > behind the same pipeline — see [§12 Extending the engine](#12-extending-the-engine).
 
-All code clause numbers below are **ACI 318-14**. SNI 2847:2019 adopts the same
-numbering and equations; where the two diverge the ACI value is used.
+All code clause numbers below are **ACI 318-14/19** numbering (carried into the
+`aci318-25` module). SNI 2847:2019 adopts the same numbering and equations; the
+two code modules are byte-identical today, so edition-specific deltas (true
+318-25 vs 2847:2019) are future work in their respective `codes/<code>/` folders.
 
 ---
 
@@ -67,17 +70,20 @@ src/lib/design/
 │   │                           frame moment minimums, collectPMPairs, buildGravityCombo
 │   └── run-design.ts           runDesign() orchestrator — solve → combine →
 │                               envelope → dispatch per member to a strategy
-├── rc/                         reinforced concrete (ACI 318-14 / SNI 2847:2019)
-│   ├── criteria.ts             RcCriteria + defaultRcCriteria
+├── rc/                         reinforced concrete (code-selectable per RcCriteria.code)
+│   ├── criteria.ts             RcCriteria { code, … } + defaultRcCriteria
 │   ├── types.ts                RebarArrangement, ColumnArrangement, RcSectionInput
-│   ├── rebar.ts                Metric bar catalogue D10–D32 (db, area)
-│   ├── bar-layout.ts           buildBarLayout(); checkArrangement()/checkTransverse()
-│   ├── flexure.ts              beta1, asMin, requiredAs, phiMnProvided/phiMnBars, φ ramp
-│   ├── shear.ts                vc, vMaxLimit, avMinPerS, avSRequired, spacing caps, …
-│   ├── column.ts               P–M interaction (sectionForcesAtC, buildInteractionCurve)
-│   ├── column-layout.ts        nx×ny grid, checkColumnArrangement
-│   ├── section-report.ts       per-level strain-compat detail for the Advanced Report
-│   └── strategy.ts             designMemberRc() — beam (flexure+shear) or column (P–M)
+│   ├── strategy.ts             designMemberRc() — resolves code module, runs beam/column
+│   ├── shared/                 GEOMETRY + DATA — code-agnostic, single-sourced
+│   │   ├── rebar.ts            Metric bar catalogue D10–D32 (db, area)
+│   │   ├── bar-geometry.ts     buildBarLayout(), layering, maxSideBars (where bars sit)
+│   │   ├── column-grid.ts      nx×ny perimeter grid, layoutToColumnBars, representativeColumnBars
+│   │   └── types.ts            ColumnBar, ArrangementCheck, TransverseChecks
+│   └── codes/                  THE MATH — duplicated per code edition
+│       ├── index.ts            getRcCode(code) registry, RcCode, RC_CODE_LABELS
+│       ├── aci318-25/          rules (β1, asMin, …), beam (flexure+shear+detailing),
+│       │                       column (P–M + detailing), report, index
+│       └── sni2847-19/         byte-identical copy of aci318-25 (diverge later)
 └── steel/                      structural steel (AISC 360-16 / SNI 1729:2020) — STUB
     ├── criteria.ts             SteelCriteria + defaultSteelCriteria
     ├── types.ts                SteelSectionInput (Lb, Cb)
@@ -225,7 +231,7 @@ This combo is never shown to the user — it exists only to feed `Ve`.
 
 ---
 
-## 5. Flexure (`flexure.ts`)
+## 5. Flexure (`rc/codes/<code>/beam.ts`)
 
 All flexure math is internal in **N, mm, MPa**; moments cross the API boundary in
 **kN·m**. Constants: `εcu = 0.003` (22.2.2.1), tension-controlled limit
@@ -284,12 +290,12 @@ tension steel (AsPrime = 0), preserving the validation anchor.
 
 ---
 
-## 5b. Columns — P–M interaction (`column.ts`, `column-layout.ts`)
+## 5b. Columns — P–M interaction (`rc/codes/<code>/column.ts`, `rc/shared/column-grid.ts`)
 
 Columns are designed by a **P–M interaction** capacity surface, the same
 strain-compatibility mechanic as [§5.3](#53-as-checked-mode--per-bar-strain-compatibility-phimnbars)
 generalised so the net axial is no longer forced to zero. `column.ts` reuses
-`beta1`, `εcu`, `εt` from `flexure.ts`; flexure.ts itself is untouched
+`beta1`, `εcu`, `εt` from the same code's `rules.ts`; the rect beam path is untouched
 (byte-stable anchors). Sign convention matches the solver: **tension +,
 compression −**. Validated against book Contoh 5-C (`validation/rc_column_verify.mts`).
 
@@ -326,7 +332,7 @@ The origin lies inside the surface, so the ray O→(Mu, Pu) crosses the closed
 `collectPMPairs` (the actual (P, M) acting together at each candidate station —
 *not* independently enveloped); the worst across combos × stations governs.
 
-### 5b.4 Bar layout + modes (`column-layout.ts`)
+### 5b.4 Bar layout + modes (`rc/shared/column-grid.ts`)
 - **As-checked**: `nx × ny` perimeter grid (total `2nx + 2ny − 4`; bar inset =
   `cover + tie + ½db`). Live checks: ρg ∈ [1%, 8%] (10.6.1.1), ≥ 4 bars
   (25.7.2.1), 25.2.3 clear spacing, cover.
@@ -339,7 +345,7 @@ The origin lies inside the surface, so the ray O→(Mu, Pu) crosses the closed
 
 ---
 
-## 6. Bar layout & layering (`bar-layout.ts`)
+## 6. Bar layout & layering (geometry `rc/shared/bar-geometry.ts`; detailing checks `rc/codes/<code>/beam.ts`)
 
 `buildBarLayout(b, h, cover, arrangement)` is the **single source of truth** for
 every bar's `(x, depth, db, area, role, layer)`. Both the SVG preview and
@@ -384,7 +390,7 @@ user cannot enter an unbuildable arrangement:
 
 ---
 
-## 7. Shear (`shear.ts`, `run-design.ts`)
+## 7. Shear (`rc/codes/<code>/beam.ts`, `rc/strategy.ts`)
 
 Flexure runs **before** shear because the capacity-design shear needs the
 flexural steel.
@@ -519,9 +525,10 @@ not rewriting the orchestrator.
 
 ### 12.2 Columns (axial + in-plane flexure) — implemented (capacity)
 The P–M interaction capacity path is implemented in **v1.1.1** ([§5b](#5b-columns--pm-interaction)):
-`column.ts` (`sectionForcesAtC` / `buildInteractionCurve` / `interactionDC`),
-`column-layout.ts` (perimeter grid + ρg checks), the Element-Type resolver in
-`run-design.ts`, and the section + P–M Advanced Report. **Still open:**
+`rc/codes/<code>/column.ts` (`sectionForcesAtC` / `buildInteractionCurve` /
+`interactionDC` + ρg checks), `rc/shared/column-grid.ts` (perimeter grid), the
+Element-Type resolver in `rc/strategy.ts`, and the section + P–M Advanced Report.
+**Still open:**
 - **Column shear** — `Ve` from column-end `Mpr`, `Vc = 0` seismic; and the
   **SRPMK `Ash` confinement** table (Tabel 5-20, Pers. a/b/c with `Ach`, `bc`,
   `kf`, `kn`, cross-tie spacing) — Contoh 5-D.
@@ -549,11 +556,12 @@ spacing limits) behind a `codeProfile` object selected by `DesignCriteria.code`,
 rather than branching inline. The clause *structure* is shared across ACI/SNI;
 Eurocode 2 / others would add a profile + a few formula overrides.
 
-> **Guiding rule for contributors:** keep `run-design.ts` as a thin orchestrator.
-> Material- and shape-specific physics belong in strategy modules
-> (`flexure.ts` / `shear.ts` / future `steel/…`), and *every* engineering formula
-> must cite its clause in a comment and, where it anchors a known example, gain a
-> `validation/` assertion.
+> **Guiding rule for contributors:** keep `core/run-design.ts` and `rc/strategy.ts`
+> as thin orchestrators. Material- and shape-specific physics belong in the
+> strategy modules — code clause math in `rc/codes/<code>/{beam,column}.ts`,
+> code-agnostic geometry in `rc/shared/`, future steel in `steel/…` — and *every*
+> engineering formula must cite its clause in a comment and, where it anchors a
+> known example, gain a `validation/` assertion.
 
 ---
 

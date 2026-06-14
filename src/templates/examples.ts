@@ -1,9 +1,17 @@
 import type { StructureModel } from "@/lib/model"
 import { newNodeId, newMemberId, newLoadId, defaultSections } from "@/lib/model"
+import { buildParametricSection } from "@/lib/sections/compute"
 
 const SECTION_DEFAULT: StructureModel["sections"][string] = {
   id: "section", name: "section", E: 23500, I33: 3125000, A: 150000,
 }
+
+/** RC 500×500 column — parametric concrete, used by the portal-frame examples (T3/T4). */
+const SECTION_COL500: StructureModel["sections"][string] = buildParametricSection({
+  id: "rc500x500", name: "Column 500x500",
+  materialClass: "concrete", shape: "rect",
+  dims: { b: 500, h: 500 }, strength: { fc: 25 },
+})
 
 const SECTION_C30: StructureModel["sections"][string] = {
   id: "section", name: "section", E: 30000, I33: 480000000, A: 75000,
@@ -90,10 +98,10 @@ export function template3Portal(): StructureModel {
   const mBL = newMemberId()  // beam left segment  (nTL → nLP, 2 m)
   const mBR = newMemberId()  // beam right segment (nLP → nTR, 3 m)
 
-  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "section" }
-  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "section" }
-  members[mBL] = { id: mBL, a: nTL, b: nLP, section: "section" }
-  members[mBR] = { id: mBR, a: nLP, b: nTR, section: "section" }
+  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "rc500x500" }
+  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "rc500x500" }
+  members[mBL] = { id: mBL, a: nTL, b: nLP, section: "rc300x500" }
+  members[mBR] = { id: mBR, a: nLP, b: nTR, section: "rc300x500" }
 
   supports[nBL] = { nodeId: nBL, type: "fixed" }
   supports[nBR] = { nodeId: nBR, type: "fixed" }
@@ -108,7 +116,7 @@ export function template3Portal(): StructureModel {
   // Downward point load at 2 m from beam left
   loads[lPt] = { id: lPt, type: "point", nodeId: nLP, loadCaseId: "dead", fx: 0, fy: -10 }
 
-  const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
+  const sections = { ...defaultSections, [SECTION_COL500.id]: SECTION_COL500 }
   return { nodes, members, supports, sections, loads }
 }
 
@@ -188,9 +196,9 @@ export function template4PortalLateral(): StructureModel {
   const mRC = newMemberId()  // right column
   const mB  = newMemberId()  // beam
 
-  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "section" }
-  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "section" }
-  members[mB]  = { id: mB,  a: nTL, b: nTR, section: "section" }
+  members[mLC] = { id: mLC, a: nBL, b: nTL, section: "rc500x500" }
+  members[mRC] = { id: mRC, a: nBR, b: nTR, section: "rc500x500" }
+  members[mB]  = { id: mB,  a: nTL, b: nTR, section: "rc300x500" }
 
   supports[nBL] = { nodeId: nBL, type: "fixed" }
   supports[nBR] = { nodeId: nBR, type: "fixed" }
@@ -202,6 +210,6 @@ export function template4PortalLateral(): StructureModel {
   // Rightward lateral point load at joint A
   loads[lPt]   = { id: lPt,   type: "point", nodeId: nTL, loadCaseId: "dead", fx: 10, fy: 0 }
 
-  const sections = { ...defaultSections, [SECTION_DEFAULT.id]: SECTION_DEFAULT }
+  const sections = { ...defaultSections, [SECTION_COL500.id]: SECTION_COL500 }
   return { nodes, members, supports, sections, loads }
 }

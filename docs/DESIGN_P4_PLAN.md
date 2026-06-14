@@ -96,22 +96,23 @@ Currently RC is **rectangular only**. The target matrix already lists:
 
 ### 2.1 Circular column
 - Interaction by integrating the circular concrete stress block + a polar bar
-  ring. `column.ts` is currently rectangular (`b·a` Whitney block, Cartesian bar
-  depths) — add a `circle` branch to `sectionForcesAtC` / `buildInteractionCurve`
-  that uses the circular segment area + centroid as a function of `c`, with bars
-  on a bolt-circle. Spiral option → `φ` and `Pn,max` factors per 21.2.2 / 22.4.2.
-- `column-layout.ts`: bars equi-spaced on a circle (count + cover) instead of the
-  nx×ny grid. New `RcSectionInput` circular column sub-shape (or reuse `column`
-  with a `pattern: "rect" | "circle"` discriminant).
-- Preview: `rc-column-preview.tsx` gains a circular section render.
+  ring. `rc/codes/<code>/column.ts` is currently rectangular (`b·a` Whitney block,
+  Cartesian bar depths) — add a `circle` branch to `sectionForcesAtC` /
+  `buildInteractionCurve` that uses the circular segment area + centroid as a
+  function of `c`, with bars on a bolt-circle. Spiral option → `φ` and `Pn,max`
+  factors per 21.2.2 / 22.4.2.
+- `rc/shared/column-grid.ts`: bars equi-spaced on a circle (count + cover) instead
+  of the nx×ny grid. New `RcSectionInput` circular column sub-shape (or reuse
+  `column` with a `pattern: "rect" | "circle"` discriminant).
+- Preview: `rc/column/preview.tsx` gains a circular section render.
 
 ### 2.2 T-beam
 - Flexure: effective flange width (`6.3.2`), then the strain-compat solver
   (`phiMnBars`) already handles an arbitrary compression-block **shape** if the
   block-area/centroid function accounts for the flange step (compression in flange
   vs. web when `a` crosses `hf`). Extend the displaced-concrete + `Cc` terms in
-  `flexure.ts` to a piecewise flange/web width; bar layout reuses `bar-layout.ts`
-  with the web width for stirrups and spacing.
+  `rc/codes/<code>/beam.ts` to a piecewise flange/web width; bar layout reuses
+  `rc/shared/bar-geometry.ts` with the web width for stirrups and spacing.
 - `isSectionDesignable` / `DESIGN_SUPPORT`: flip `{rc, tee, beam}` and add the
   flange dims (`bf`, `hf`) read from `section.shape.dims`.
 
@@ -140,9 +141,9 @@ neutral axis both cases).
 
 Invariants to preserve at every step:
 
-- **RC byte-stability**: `rc/flexure.ts`, `rc/shear.ts`, end-force extraction stay
-  untouched; new geometry adds branches, never edits the rect path. Re-run all
-  `validation/rc_*` after each change.
+- **RC byte-stability**: the rect path in `rc/codes/<code>/{beam,column}.ts` and
+  the shared geometry in `rc/shared/` stay untouched; new geometry adds branches,
+  never edits the rect path. Re-run all `validation/rc_*` after each change.
 - **Orchestrator stays material-agnostic** — no shape/material `if`s leak into
   `core/run-design.ts`; they live in the strategy.
 - **Every formula cites its clause + gains a `validation/` assertion** at the
