@@ -109,7 +109,7 @@ export default function App() {
   const [showLocalAxes, setShowLocalAxes] = useState(false)
   const [cursorX, setCursorX] = useState(0)
   const [cursorY, setCursorY] = useState(0)
-  const [model, setModel] = useState<StructureModel>(template1SimpleBeam)
+  const [model, setModel] = useState<StructureModel>(template3Portal)
   const [activeSection, setActiveSection] = useState<SectionId>("section")
   const [activeMemberType, setActiveMemberType] = useState<MemberType>("frame")
   const [activeSupportType, setActiveSupportType] = useState<SupportPick>("pin")
