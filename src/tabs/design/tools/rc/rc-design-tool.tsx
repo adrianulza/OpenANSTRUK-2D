@@ -14,7 +14,7 @@ import {
 } from "@/lib/design/rc/shared/bar-geometry"
 import type { ArrangementCheck, TransverseChecks } from "@/lib/design/rc/shared/types"
 import { getRcCode } from "@/lib/design/rc/codes"
-import { ELEMENT_TYPES, type DesignMode, type ElementType } from "@/lib/design/core/types"
+import { type DesignMode, type ElementType } from "@/lib/design/core/types"
 import type { DesignRunResult } from "@/lib/design/core/types"
 import { isSectionDesignable, materialOf } from "@/lib/design/core/designability"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
@@ -110,23 +110,9 @@ export function SectionDesignToolContent({
   const b = sec?.shape?.dims.b ?? 0
   const h = sec?.shape?.dims.h ?? 0
 
-  // "auto" can't know per-member axial here, but orientation is known: show the
-  // column editor when any member using this section is vertical (the run still
-  // resolves each member, incl. axial promotion).
-  const autoLooksColumn = React.useMemo(() => {
-    if (!selectedSectionId || !model) return false
-    return Object.values(model.members).some((m) => {
-      if (m.section !== selectedSectionId) return false
-      const na = model.nodes[m.a]
-      const nb = model.nodes[m.b]
-      return na && nb && Math.abs(nb.y - na.y) > Math.abs(nb.x - na.x)
-    })
-  }, [model, selectedSectionId])
-
+  // The user explicitly picks beam vs column. Legacy "auto" inputs fall back to beam.
   const effectiveType: "beam" | "column" =
-    input?.elementType === "column" ? "column"
-    : input?.elementType === "beam" ? "beam"
-    : autoLooksColumn ? "column" : "beam"
+    input?.elementType === "column" ? "column" : "beam"
 
   // Demand (P,M) markers + governing for the column advanced report: gather every
   // column member that uses this section from the last run.
@@ -149,30 +135,7 @@ export function SectionDesignToolContent({
 
   return (
     <div className="space-y-3">
-      {/* Element type — beam vs column (auto = by orientation + axial gate) */}
-      <div className="space-y-1.5">
-        <Label className="text-xs text-gray-600">Element Type</Label>
-        <Select
-          value={input?.elementType ?? "auto"}
-          onValueChange={(v) => patch({ elementType: v as ElementType })}
-          disabled={!input}
-        >
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {ELEMENT_TYPES.map((e) => (
-              <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {input?.elementType === "auto" && (
-          <p className="text-[10px] text-gray-500 leading-snug">
-            Vertical members & any member with Pu ≥ 0.1·f′c·Ag are designed as columns;
-            others as beams. Showing the {effectiveType} editor.
-          </p>
-        )}
-      </div>
-
-      {/* Section picker — non-RC/rect sections are listed but disabled */}
+      {/* Section picker — only RC-designable sections are listed */}
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Section</Label>
         <Select
@@ -181,14 +144,9 @@ export function SectionDesignToolContent({
         >
           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select section…" /></SelectTrigger>
           <SelectContent>
-            {Object.values(sections).map((s) => {
-              const ok = isSectionDesignable(s)
-              return (
-                <SelectItem key={s.id} value={s.id} disabled={!ok}>
-                  {s.name}{ok ? "" : " — N.A."}
-                </SelectItem>
-              )
-            })}
+            {designableIds.map((id) => (
+              <SelectItem key={id} value={id}>{sections[id].name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         {designableIds.length === 0 && (
@@ -198,6 +156,29 @@ export function SectionDesignToolContent({
           </p>
         )}
       </div>
+
+      {/* Element type — user picks beam vs column */}
+      {designable && input && (
+        <div className="space-y-1.5">
+          <Label className="text-xs text-gray-600">Element Type</Label>
+          <div className="grid grid-cols-2 gap-1">
+            <ModeButton
+              active={effectiveType === "beam"}
+              onClick={() => patch({ elementType: "beam" as ElementType })}
+              title="Design this section as a flexural beam"
+            >
+              Beam
+            </ModeButton>
+            <ModeButton
+              active={effectiveType === "column"}
+              onClick={() => patch({ elementType: "column" as ElementType })}
+              title="Design this section as an axial-flexure column"
+            >
+              Column
+            </ModeButton>
+          </div>
+        </div>
+      )}
 
       {designable && input && sec && (
         <>

@@ -73,7 +73,7 @@ export function defaultRcSectionInput(sectionId: SectionId): RcSectionInput {
   return {
     material: "rc",
     sectionId,
-    elementType: "auto",
+    elementType: "beam",
     mode: "required",
     cover: 40,
     dPrime: 50,

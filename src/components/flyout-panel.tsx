@@ -24,6 +24,7 @@ import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
 import { DesignCriteriaToolContent } from "@/tabs/design/tools/design-criteria-tool"
+import { DesignScheduleToolContent } from "@/tabs/design/tools/design-schedule-tool"
 import { SectionDesignToolContent } from "@/tabs/design/tools/rc/rc-design-tool"
 import { SteelDesignToolContent } from "@/tabs/design/tools/steel/steel-design-tool"
 import type { DesignRunResult } from "@/lib/design/core/types"
@@ -244,7 +245,7 @@ export function FlyoutPanel({
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
-  const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
+  const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION" || activeTool === "DESIGN_SCHEDULE"
   const medium = activeTool === "SECTION_DESIGN"
   const criteria = activeTool === "DESIGN_CRITERIA"
 
@@ -253,7 +254,7 @@ export function FlyoutPanel({
       data-flyout-root
       className={cn(
         "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-20",
-        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[355px]" : criteria ? "sm:right-auto sm:w-[355px]" : "sm:right-auto sm:w-[215px]",
+        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[355px]" : criteria ? "sm:right-auto sm:w-[215px]" : "sm:right-auto sm:w-[215px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}
@@ -378,6 +379,7 @@ function getToolTitle(tool: ToolType, activeTab?: TabType): string {
   if (tool === "DELETE") return activeTab === "Load" ? "DELETE LOAD" : "DELETE COMPONENT"
   if (tool === "SECTION_DESIGN") return "REINFORCED CONCRETE"
   if (tool === "STEEL_DESIGN") return "STEEL"
+  if (tool === "DESIGN_SCHEDULE") return "DESIGN SCHEDULE"
   return tool.replace(/_/g, " ")
 }
 
@@ -502,6 +504,16 @@ function FlyoutContent({
         ) : null
       case "STEEL_DESIGN":
         return <SteelDesignToolContent />
+      case "DESIGN_SCHEDULE":
+        return designCriteria && onPatchSectionDesignInput ? (
+          <DesignScheduleToolContent
+            model={model}
+            inputs={sectionDesignInputs ?? {}}
+            onPatchInput={onPatchSectionDesignInput}
+            criteria={designCriteria}
+            designResult={designResult}
+          />
+        ) : null
       default:
         return null
     }
