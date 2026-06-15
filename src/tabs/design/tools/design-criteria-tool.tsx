@@ -10,6 +10,16 @@ import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import { RC_CODE_LABELS, type RcCode } from "@/lib/design/rc/codes"
 
+/**
+ * Framing-type labels — show both the ACI 318-25 (OMF/IMF/SMF) and the
+ * SNI 2847:2019 (SRPMB/SRPMM/SRPMK) abbreviations together.
+ */
+const FRAME_TYPE_LABELS: Record<FrameType, string> = {
+  OMF: "OMF / SRPMB",
+  IMF: "IMF / SRPMM",
+  SMF: "SMF / SRPMK",
+}
+
 interface DesignCriteriaToolProps {
   criteria: DesignCriteria
   onChange: (patch: Partial<DesignCriteria>) => void
@@ -118,7 +128,9 @@ function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {FRAME_TYPES.map((f) => (
-              <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
+              <SelectItem key={f.id} value={f.id}>
+                {FRAME_TYPE_LABELS[f.id]}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

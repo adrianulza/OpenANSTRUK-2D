@@ -16,6 +16,7 @@ import {
   ListChecks,
   Combine,
   SlidersHorizontal,
+  Table2,
 } from "lucide-react"
 
 export type TabType = "Model" | "Load" | "Analyze" | "Design"
@@ -38,6 +39,7 @@ export type ToolType =
   | "MOMENT"
   | "DEFORMATION"
   | "DESIGN_CRITERIA"
+  | "DESIGN_SCHEDULE"
   | "SECTION_DESIGN"
   | "STEEL_DESIGN"
   | null
@@ -107,6 +109,7 @@ const designTools: Tool[] = [
   { id: "DESIGN_CRITERIA", label: "DESIGN\nCRITERIA", icon: <SlidersHorizontal size={20} /> },
   { id: "SECTION_DESIGN", label: "REINFORCED\nCONCRETE", icon: rcSectionIcon },
   { id: "STEEL_DESIGN", label: "STEEL", icon: steelSectionIcon },
+  { id: "DESIGN_SCHEDULE", label: "DESIGN\nSCHEDULE", icon: <Table2 size={20} /> },
 ]
 
 interface ToolSidebarProps {
