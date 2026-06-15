@@ -21,25 +21,21 @@ export interface ExampleDefinition {
 const SVG_SIMPLE_BEAM = `
   <svg viewBox="0 0 420 190" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Arial, sans-serif">
 
-    <!-- Dimension lines (blue dashed extensions + solid span lines) -->
-    <!-- Left extension: x=58 -->
-    <line x1="58" y1="112" x2="58" y2="50" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
-    <!-- Middle extension: x=182 -->
-    <line x1="182" y1="112" x2="182" y2="38" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
-    <!-- Right extension: x=368 -->
-    <line x1="368" y1="112" x2="368" y2="50" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
+    <!-- Dimension lines (blue dashed extensions + solid span lines, aligned to one level) -->
+    <line x1="58" y1="112" x2="58" y2="45" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
+    <line x1="182" y1="112" x2="182" y2="45" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
+    <line x1="368" y1="112" x2="368" y2="45" stroke="#2563eb" stroke-width="1" stroke-dasharray="3,2"/>
 
     <!-- Left span line: 2.00 m -->
-    <line x1="58" y1="54" x2="182" y2="54" stroke="#2563eb" stroke-width="1"/>
-    <line x1="58" y1="49" x2="58" y2="59" stroke="#2563eb" stroke-width="1.5"/>
-    <line x1="182" y1="49" x2="182" y2="59" stroke="#2563eb" stroke-width="1.5"/>
-    <text x="120" y="46" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="500">2.00 m</text>
+    <line x1="58" y1="50" x2="182" y2="50" stroke="#2563eb" stroke-width="1"/>
+    <line x1="58" y1="45" x2="58" y2="55" stroke="#2563eb" stroke-width="1.5"/>
+    <line x1="182" y1="45" x2="182" y2="55" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="120" y="42" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="500">2.00 m</text>
 
     <!-- Right span line: 3.00 m -->
-    <line x1="182" y1="42" x2="368" y2="42" stroke="#2563eb" stroke-width="1"/>
-    <line x1="182" y1="37" x2="182" y2="47" stroke="#2563eb" stroke-width="1.5"/>
-    <line x1="368" y1="37" x2="368" y2="47" stroke="#2563eb" stroke-width="1.5"/>
-    <text x="275" y="34" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="500">3.00 m</text>
+    <line x1="182" y1="50" x2="368" y2="50" stroke="#2563eb" stroke-width="1"/>
+    <line x1="368" y1="45" x2="368" y2="55" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="275" y="42" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="500">3.00 m</text>
 
     <!-- Point load: 10 kN downward at x=182 -->
     <line x1="182" y1="68" x2="182" y2="109" stroke="#0BE77E" stroke-width="3" stroke-linecap="round"/>
@@ -73,9 +69,6 @@ const SVG_SIMPLE_BEAM = `
     <line x1="369" y1="159" x2="376" y2="169" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
     <line x1="379" y1="159" x2="386" y2="169" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
 
-    <!-- Labels -->
-    <text x="58"  y="182" font-size="10" fill="#6b7280" text-anchor="middle">pin</text>
-    <text x="368" y="182" font-size="10" fill="#6b7280" text-anchor="middle">roller</text>
   </svg>
 `
 
@@ -93,23 +86,23 @@ const SVG_CANTILEVER = `
     <!-- Distributed load fill region (light green) -->
     <rect x="58" y="75" width="310" height="37" fill="#D7FDEB" opacity="0.6"/>
 
-    <!-- Distributed load arrows (green downward, uniform across span) -->
-    <line x1="80" y1="76" x2="80" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="80,115 75,104 85,104" fill="#0BE77E"/>
-    <line x1="120" y1="76" x2="120" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="120,115 115,104 125,104" fill="#0BE77E"/>
-    <line x1="160" y1="76" x2="160" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="160,115 155,104 165,104" fill="#0BE77E"/>
-    <line x1="200" y1="76" x2="200" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="200,115 195,104 205,104" fill="#0BE77E"/>
-    <line x1="240" y1="76" x2="240" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="240,115 235,104 245,104" fill="#0BE77E"/>
-    <line x1="280" y1="76" x2="280" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="280,115 275,104 285,104" fill="#0BE77E"/>
-    <line x1="320" y1="76" x2="320" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="320,115 315,104 325,104" fill="#0BE77E"/>
-    <line x1="360" y1="76" x2="360" y2="109" stroke="#0BE77E" stroke-width="2"/>
-    <polygon points="360,115 355,104 365,104" fill="#0BE77E"/>
+    <!-- Distributed load arrows (green downward, uniform; arrows land on both edges of the load) -->
+    <line x1="58" y1="76" x2="58" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="58,115 53,104 63,104" fill="#0BE77E"/>
+    <line x1="103" y1="76" x2="103" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="103,115 98,104 108,104" fill="#0BE77E"/>
+    <line x1="147" y1="76" x2="147" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="147,115 142,104 152,104" fill="#0BE77E"/>
+    <line x1="191" y1="76" x2="191" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="191,115 186,104 196,104" fill="#0BE77E"/>
+    <line x1="235" y1="76" x2="235" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="235,115 230,104 240,104" fill="#0BE77E"/>
+    <line x1="279" y1="76" x2="279" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="279,115 274,104 284,104" fill="#0BE77E"/>
+    <line x1="324" y1="76" x2="324" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="324,115 319,104 329,104" fill="#0BE77E"/>
+    <line x1="368" y1="76" x2="368" y2="109" stroke="#0BE77E" stroke-width="2"/>
+    <polygon points="368,115 363,104 373,104" fill="#0BE77E"/>
     <!-- Baseline -->
     <line x1="58" y1="76" x2="368" y2="76" stroke="#0BE77E" stroke-width="1.5"/>
     <!-- Label -->
@@ -122,14 +115,14 @@ const SVG_CANTILEVER = `
     <circle cx="58"  cy="116" r="5.5" fill="white" stroke="#1a2f5e" stroke-width="2"/>
     <circle cx="368" cy="116" r="5.5" fill="white" stroke="#1a2f5e" stroke-width="2"/>
 
-    <!-- Fixed support (left) -->
-    <rect x="42" y="119" width="32" height="32" fill="none" stroke="#1a2f5e" stroke-width="2"/>
-    <line x1="45" y1="125" x2="71" y2="149" stroke="#1a2f5e" stroke-width="1.2"/>
-    <line x1="45" y1="135" x2="71" y2="135" stroke="#1a2f5e" stroke-width="1.2"/>
-    <line x1="45" y1="145" x2="71" y2="121" stroke="#1a2f5e" stroke-width="1.2"/>
-
-    <!-- Label -->
-    <text x="58" y="175" font-size="10" fill="#6b7280" text-anchor="middle">fixed</text>
+    <!-- Fixed support (left) — vertical wall (rotated fixed glyph) for a theoretical cantilever fixed end -->
+    <rect x="46" y="98" width="8" height="36" fill="#1a2f5e"/>
+    <line x1="40" y1="96" x2="40" y2="136" stroke="#1a2f5e" stroke-width="1.5"/>
+    <line x1="46" y1="100" x2="40" y2="106" stroke="#1a2f5e" stroke-width="1.2"/>
+    <line x1="46" y1="107" x2="40" y2="113" stroke="#1a2f5e" stroke-width="1.2"/>
+    <line x1="46" y1="114" x2="40" y2="120" stroke="#1a2f5e" stroke-width="1.2"/>
+    <line x1="46" y1="121" x2="40" y2="127" stroke="#1a2f5e" stroke-width="1.2"/>
+    <line x1="46" y1="128" x2="40" y2="134" stroke="#1a2f5e" stroke-width="1.2"/>
   </svg>
 `
 
@@ -359,27 +352,6 @@ const SVG_ASYMMETRIC_RAFTER = `
     <line x1="47"  y1="340" x2="57"  y2="340" stroke="#2563eb" stroke-width="1.5"/>
     <text x="38" y="268" font-size="10" fill="#1e293b" text-anchor="middle" font-weight="500" transform="rotate(-90 38 268)">6.00 m</text>
 
-    <!-- === DISTRIBUTED LOAD on rafter (perpendicular, +local-2 = up-right) === -->
-    <!-- Rafter: nTL(80,40) → nTR(380,190). Load q=+12 acts in +local-2 (up-right, screen ≈ (0.45,−0.89)).
-         Baseline sits ~22px on the lower-left side of the rafter; arrows point up-right, heads on the rafter. -->
-    <!-- Light fill region between the rafter and the lower-left baseline -->
-    <polygon points="80,40 380,190 370,210 70,60" fill="#D7FDEB" opacity="0.6"/>
-    <!-- Baseline (parallel to rafter, offset to the lower-left) -->
-    <line x1="70" y1="60" x2="370" y2="210" stroke="#0BE77E" stroke-width="1.5"/>
-    <!-- Perpendicular load arrows (tail on baseline, head on rafter, pointing up-right) -->
-    <line x1="106" y1="78"  x2="116" y2="58"  stroke="#0BE77E" stroke-width="1.8"/>
-    <polygon points="116,58 116,68 108,64" fill="#0BE77E"/>
-    <line x1="160" y1="105" x2="170" y2="85"  stroke="#0BE77E" stroke-width="1.8"/>
-    <polygon points="170,85 170,95 162,91" fill="#0BE77E"/>
-    <line x1="214" y1="132" x2="224" y2="112" stroke="#0BE77E" stroke-width="1.8"/>
-    <polygon points="224,112 224,122 216,118" fill="#0BE77E"/>
-    <line x1="268" y1="159" x2="278" y2="139" stroke="#0BE77E" stroke-width="1.8"/>
-    <polygon points="278,139 278,149 270,145" fill="#0BE77E"/>
-    <line x1="322" y1="186" x2="332" y2="166" stroke="#0BE77E" stroke-width="1.8"/>
-    <polygon points="332,166 332,176 324,172" fill="#0BE77E"/>
-    <!-- Load label (below the rafter) -->
-    <text x="245" y="162" font-size="10" fill="#107343" text-anchor="middle" font-weight="600" transform="rotate(26.6 245 162)">12 kN/m</text>
-
     <!-- === POINT LOAD: 40 kN rightward at nTL (80,40) — head at node, tail to the left === -->
     <line x1="30" y1="40" x2="68" y2="40" stroke="#0BE77E" stroke-width="3" stroke-linecap="round"/>
     <polygon points="74,40 67,35 67,45" fill="#0BE77E"/>
@@ -406,6 +378,30 @@ const SVG_ASYMMETRIC_RAFTER = `
 
     <!-- Inclined rafter: nTL(80,40) → nTR(380,190) -->
     <line x1="80" y1="40" x2="380" y2="190" stroke="#1a2f5e" stroke-width="8" stroke-linecap="round"/>
+
+    <!-- === DISTRIBUTED LOAD on rafter (drawn ON TOP of the rafter, transparent fill so the beam shows through) === -->
+    <!-- Rafter: nTL(80,40) → nTR(380,190). Load q=+12 acts in +local-2 (up-right, screen ≈ (0.45,−0.89)).
+         Baseline sits ~22px on the lower-left side of the rafter; arrows point up-right, heads on the rafter. -->
+    <!-- Light fill region between the rafter and the lower-left baseline -->
+    <polygon points="80,40 380,190 370,210 70,60" fill="#D7FDEB" opacity="0.35"/>
+    <!-- Baseline (parallel to rafter, offset to the lower-left) -->
+    <line x1="70" y1="60" x2="370" y2="210" stroke="#0BE77E" stroke-width="1.5"/>
+    <!-- End caps closing the load region onto the rafter -->
+    <line x1="80" y1="40" x2="70" y2="60" stroke="#0BE77E" stroke-width="1.5"/>
+    <line x1="380" y1="190" x2="370" y2="210" stroke="#0BE77E" stroke-width="1.5"/>
+    <!-- Perpendicular load arrows (tail on baseline, head on rafter, pointing up-right) -->
+    <line x1="106" y1="78"  x2="116" y2="58"  stroke="#0BE77E" stroke-width="1.8"/>
+    <polygon points="116,58 116,68 108,64" fill="#0BE77E"/>
+    <line x1="160" y1="105" x2="170" y2="85"  stroke="#0BE77E" stroke-width="1.8"/>
+    <polygon points="170,85 170,95 162,91" fill="#0BE77E"/>
+    <line x1="214" y1="132" x2="224" y2="112" stroke="#0BE77E" stroke-width="1.8"/>
+    <polygon points="224,112 224,122 216,118" fill="#0BE77E"/>
+    <line x1="268" y1="159" x2="278" y2="139" stroke="#0BE77E" stroke-width="1.8"/>
+    <polygon points="278,139 278,149 270,145" fill="#0BE77E"/>
+    <line x1="322" y1="186" x2="332" y2="166" stroke="#0BE77E" stroke-width="1.8"/>
+    <polygon points="332,166 332,176 324,172" fill="#0BE77E"/>
+    <!-- Load label (below the rafter) -->
+    <text x="245" y="162" font-size="10" fill="#107343" text-anchor="middle" font-weight="600" transform="rotate(26.6 245 162)">12 kN/m</text>
 
     <!-- === NODES === -->
     <circle cx="80"  cy="340" r="5.5" fill="white" stroke="#1a2f5e" stroke-width="2"/>
