@@ -1,6 +1,7 @@
 import { barDia } from "@/lib/design/rc/shared/rebar"
 import { buildColumnBarLayout } from "@/lib/design/rc/shared/column-grid"
-import type { ColumnArrangement } from "@/lib/design/rc/types"
+import type { ColumnGeom } from "@/lib/design/rc/shared/types"
+import { isCircle, type ColumnArrangement } from "@/lib/design/rc/types"
 import {
   DIM_OFFSET,
   HDim,
@@ -57,17 +58,16 @@ export function RcColumnPreview({ b, h, cover, arrangement }: Props) {
   const sw = Math.max(2, w - 2 * cv)
   const sh = Math.max(2, ht - 2 * cv)
 
-  const layout = buildColumnBarLayout(b, h, Math.max(0, cover), arrangement)
+  const circle = isCircle(arrangement)
+  const geom: ColumnGeom = circle ? { kind: "circle", D: h } : { kind: "rect", b, h }
+  const layout = buildColumnBarLayout(geom, Math.max(0, cover), arrangement)
   const tieW = Math.max(0.8, barDia(arrangement.tie.size) * scale)
-  const spiral = arrangement.confinement === "spiral"
 
-  // Spiral: a few concentric ellipses inset within the core hint at the helix.
-  const spiralRings = spiral
-    ? Array.from({ length: 4 }, (_, i) => {
-        const inset = (i * Math.min(sw, sh)) / 14
-        return { x: sx + inset, y: sy + inset, w: sw - 2 * inset, h: sh - 2 * inset }
-      })
-    : []
+  // Circle centre + radii (screen), used for the outline + tie/spiral ring.
+  const cxC = x + w / 2
+  const cyC = y + ht / 2
+  const rOuter = Math.min(w, ht) / 2
+  const rCore = Math.max(2, rOuter - cv)
 
   const yDimTop = y - DIM_OFFSET
   const xDimLeft = x - DIM_OFFSET
@@ -78,26 +78,22 @@ export function RcColumnPreview({ b, h, cover, arrangement }: Props) {
       style={{ width: "100%", aspectRatio: `${VIEW_W} / ${VIEW_H}`, borderColor: "#e5e7eb" }}
     >
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
-        {/* concrete outline */}
-        <rect x={x} y={y} width={w} height={ht} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
-        {/* transverse reinforcement: rectangular tie, or a spiral hint (concentric
-            rounded rings) when the column is spiral-confined */}
-        {spiral ? (
-          spiralRings.map((rg, i) => (
-            <rect
-              key={i}
-              x={rg.x} y={rg.y} width={rg.w} height={rg.h}
-              rx={Math.min(rg.w, rg.h) / 2} fill="none" stroke={TIE}
-              strokeWidth={tieW} opacity={0.6}
-            />
-          ))
+        {circle ? (
+          <>
+            {/* concrete outline */}
+            <circle cx={cxC} cy={cyC} r={rOuter} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+            {/* transverse reinforcement: single ring (spiral or circular hoop) */}
+            <circle cx={cxC} cy={cyC} r={rCore} fill="none" stroke={TIE} strokeWidth={tieW} opacity={0.85} />
+          </>
         ) : (
-          <rect
-            x={sx} y={sy} width={sw} height={sh}
-            rx={3} fill="none" stroke={TIE} strokeWidth={tieW} opacity={0.85}
-          />
+          <>
+            {/* concrete outline */}
+            <rect x={x} y={y} width={w} height={ht} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
+            {/* rectangular tie */}
+            <rect x={sx} y={sy} width={sw} height={sh} rx={3} fill="none" stroke={TIE} strokeWidth={tieW} opacity={0.85} />
+          </>
         )}
-        {/* perimeter bars from the shared layout */}
+        {/* bars from the shared layout */}
         {layout.bars.map((p, i) => (
           <circle
             key={i}
@@ -108,8 +104,14 @@ export function RcColumnPreview({ b, h, cover, arrangement }: Props) {
           />
         ))}
         {/* dimension lines */}
-        <HDim x1={x} x2={x + w} yDim={yDimTop} yShape={y} label={`b = ${Math.round(b)}`} />
-        <VDim y1={y} y2={y + ht} xDim={xDimLeft} xShape={x} label={`h = ${Math.round(h)}`} />
+        {circle ? (
+          <HDim x1={x} x2={x + w} yDim={yDimTop} yShape={y} label={`D = ${Math.round(h)}`} />
+        ) : (
+          <>
+            <HDim x1={x} x2={x + w} yDim={yDimTop} yShape={y} label={`b = ${Math.round(b)}`} />
+            <VDim y1={y} y2={y + ht} xDim={xDimLeft} xShape={x} label={`h = ${Math.round(h)}`} />
+          </>
+        )}
       </svg>
     </div>
   )

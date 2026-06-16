@@ -19,10 +19,21 @@
  */
 
 import { barArea, barDia } from "../../shared/rebar"
+import type { RebarSize } from "../../shared/rebar"
+import {
+  vMaxLimit,
+  avSProvided,
+  avMinPerS,
+  phiVnProvided,
+  generalSpacingMax,
+  imfEndZoneSpacingMax,
+  smfEndZoneSpacingMax,
+} from "./beam"
 import { buildColumnBarLayout } from "../../shared/column-grid"
-import type { ColumnBar, ArrangementCheck } from "../../shared/types"
+import type { ColumnBar, ArrangementCheck, ColumnGeom } from "../../shared/types"
+import { geomH, geomAg, geomLeastDim, geomAch, geomShear } from "../../shared/types"
 import type { FrameType } from "../../../core/types"
-import type { ColumnArrangement } from "../../types"
+import { isCircle, type ColumnArrangement } from "../../types"
 import type { RcCriteria } from "../../criteria"
 import {
   beta1,
@@ -143,14 +154,36 @@ interface SectionForces {
 }
 
 /**
+ * Concrete compression resultant Cc (N) and its centroid arm above the section
+ * centroid (mm) for a stress-block depth `a` from the compression fibre.
+ *  - rect:   Cc = 0.85·fc·b·a;  arm = h/2 − a/2.
+ *  - circle: the compression zone is a circular SEGMENT of depth `a` (closed
+ *    form): R = D/2, m = R − a, area A = R²·acos(m/R) − m·√(R²−m²), first moment
+ *    about centre Q = ⅔·(R²−m²)^{3/2}, arm = Q/A. Cc = 0.85·fc·A.
+ */
+function concreteBlock(g: ColumnGeom, a: number, fc: number): { Cc: number; arm: number } {
+  if (g.kind === "circle") {
+    const R = g.D / 2
+    const aa = Math.min(Math.max(a, 0), g.D)
+    const m = R - aa
+    const root = Math.max(0, R * R - m * m)
+    const A = R * R * Math.acos(Math.min(1, Math.max(-1, m / R))) - m * Math.sqrt(root)
+    const Q = (2 / 3) * root ** 1.5
+    const arm = A > 1e-9 ? Q / A : 0
+    return { Cc: 0.85 * fc * A, arm }
+  }
+  return { Cc: 0.85 * fc * g.b * a, arm: g.h / 2 - a / 2 }
+}
+
+/**
  * Concrete + bar resultants at neutral-axis depth `c`, taken about the section's
- * geometric centroid (h/2). Bars carry the displaced-concrete correction inside
- * the stress block. εcu = 0.003 (22.2.2.1); a = β₁·c capped at h.
+ * geometric centroid (geomH/2). Bars carry the displaced-concrete correction
+ * inside the stress block. εcu = 0.003 (22.2.2.1); a = β₁·c capped at the depth.
+ * The bar loop is shape-agnostic (depth-from-top); only the concrete block differs.
  */
 function sectionForcesAtC(
   bars: ColumnBar[],
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   c: number,
@@ -158,11 +191,12 @@ function sectionForcesAtC(
 ): SectionForces {
   const { Es } = cr
   const fy = fyOver
+  const h = geomH(geom)
   const b1 = beta1(fc)
   const a = Math.min(b1 * c, h)
-  const Cc = 0.85 * fc * b * a // N, compression +
-  let axial = Cc
-  let moment = Cc * (h / 2 - a / 2) // N·mm
+  const { Cc, arm } = concreteBlock(geom, a, fc)
+  let axial = Cc // N, compression +
+  let moment = Cc * arm // N·mm
 
   const active = bars.filter((p) => p.area > 0)
   const dt = active.length > 0 ? Math.max(...active.map((p) => p.d)) : 0
@@ -195,15 +229,14 @@ function phiFor(epsT: number, cr: RcCriteria): number {
  *  compression cap −φPnMax. */
 function pointAtC(
   bars: ColumnBar[],
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   c: number,
   sign: 1 | -1,
   caps: AxialCapacities,
 ): PMPoint {
-  const f = sectionForcesAtC(bars, b, h, fc, cr, c)
+  const f = sectionForcesAtC(bars, geom, fc, cr, c)
   const Pn = -f.axialCompPos / 1e3 // kN, tension +
   const Mn = sign * Math.max(0, f.Mn_Nmm) / 1e6 // kN·m, signed
   const phi = phiFor(f.epsT, cr)
@@ -221,14 +254,14 @@ function pointAtC(
  */
 function capCrossC(
   bars: ColumnBar[],
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   caps: AxialCapacities,
 ): number {
+  const h = geomH(geom)
   const phiPnAt = (c: number) => {
-    const f = sectionForcesAtC(bars, b, h, fc, cr, c)
+    const f = sectionForcesAtC(bars, geom, fc, cr, c)
     return phiFor(f.epsT, cr) * (-f.axialCompPos / 1e3) // kN, < 0 in compression
   }
   const active = bars.filter((p) => p.area > 0)
@@ -246,8 +279,7 @@ function capCrossC(
 /** Build the six interior control points (cap → pure bending) for one bend sign. */
 function sideControlPoints(
   bars: ColumnBar[],
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   sign: 1 | -1,
@@ -261,15 +293,15 @@ function sideControlPoints(
   pureBending: PMPoint
 } {
   const active = bars.filter((p) => p.area > 0)
-  const dt = active.length ? Math.max(...active.map((p) => p.d)) : h
+  const dt = active.length ? Math.max(...active.map((p) => p.d)) : geomH(geom)
   const epsY = cr.fy / cr.Es
   const cFs0 = dt // fs = 0 at the extreme tension bar
   const cFs05 = (EPS_CU * dt) / (EPS_CU + 0.5 * epsY)
   const cBal = (EPS_CU * dt) / (EPS_CU + epsY) // εs = εy
   const cTC = (EPS_CU * dt) / (EPS_CU + epsTC(cr)) // εt = εty+0.003 (318-25)
-  const cPure = pureMomentC(bars, b, h, fc, cr)
-  const cAllow = capCrossC(bars, b, h, fc, cr, caps)
-  const at = (c: number) => pointAtC(bars, b, h, fc, cr, c, sign, caps)
+  const cPure = pureMomentC(bars, geom, fc, cr)
+  const cAllow = capCrossC(bars, geom, fc, cr, caps)
+  const at = (c: number) => pointAtC(bars, geom, fc, cr, c, sign, caps)
   return {
     allowComp: at(cAllow),
     fs0: at(cFs0),
@@ -283,10 +315,10 @@ function sideControlPoints(
 // ── Curve assembly ─────────────────────────────────────────────────────────────
 
 /** Pure-moment depth (Pn = 0) by bisection on net axial — the beam solve. */
-function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: RcCriteria): number {
-  const axial = (c: number) => sectionForcesAtC(bars, b, h, fc, cr, c).axialCompPos
+function pureMomentC(bars: ColumnBar[], geom: ColumnGeom, fc: number, cr: RcCriteria): number {
+  const axial = (c: number) => sectionForcesAtC(bars, geom, fc, cr, c).axialCompPos
   let lo = 1e-3
-  let hi = h
+  let hi = geomH(geom)
   // axial(lo) < 0 (all tension), axial(hi) > 0 (concrete dominates) → root between.
   if (axial(hi) < 0) return hi
   if (axial(lo) > 0) return lo
@@ -312,8 +344,7 @@ function pureMomentC(bars: ColumnBar[], b: number, h: number, fc: number, cr: Rc
  */
 export function buildInteractionCurve(
   barsTop: ColumnBar[], // d = depth from TOP fibre
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   spiral = false,
@@ -322,14 +353,15 @@ export function buildInteractionCurve(
   // ramp/strain mechanic is unchanged. `crc` carries that override downstream.
   const crc: RcCriteria = spiral ? { ...cr, phiCompression: SPIRAL_PHI_COMP } : cr
   const Ast = barsTop.reduce((s, p) => s + p.area, 0)
-  const Ag = b * h
+  const Ag = geomAg(geom)
+  const h = geomH(geom)
   const caps = axialCapacities(Ast, Ag, fc, crc, spiral)
 
   const posBars = barsTop // compression at top → depth = d
   const negBars = barsTop.map((p) => ({ d: h - p.d, area: p.area })) // compression at bottom
 
-  const pos = sideControlPoints(posBars, b, h, fc, crc, 1, caps)
-  const neg = sideControlPoints(negBars, b, h, fc, crc, -1, caps)
+  const pos = sideControlPoints(posBars, geom, fc, crc, 1, caps)
+  const neg = sideControlPoints(negBars, geom, fc, crc, -1, caps)
 
   // Shared endpoints (M = 0). maxComp is the uncapped squash apex (nominal Po);
   // maxTension is pure tension fy·Ast.
@@ -448,17 +480,17 @@ export function interactionDC(
  */
 export function columnFlexuralStrengthAtP(
   barsTop: ColumnBar[],
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   fc: number,
   cr: RcCriteria,
   Pu: number, // kN, tension +
   fyFactor = 1,
 ): number {
   const fyOver = fyFactor * cr.fy
+  const h = geomH(geom)
   const hiC = (1.05 * h) / beta1(fc)
   const solveSide = (bars: ColumnBar[]): number => {
-    const PnAt = (c: number) => -sectionForcesAtC(bars, b, h, fc, cr, c, fyOver).axialCompPos / 1e3
+    const PnAt = (c: number) => -sectionForcesAtC(bars, geom, fc, cr, c, fyOver).axialCompPos / 1e3
     let lo = 1e-3
     let hi = hiC
     // Pn(c) is monotonically DECREASING in c (more compression as c grows). Clamp
@@ -470,7 +502,7 @@ export function columnFlexuralStrengthAtP(
       else lo = mid
     }
     const c = 0.5 * (lo + hi)
-    return Math.max(0, sectionForcesAtC(bars, b, h, fc, cr, c, fyOver).Mn_Nmm) / 1e6
+    return Math.max(0, sectionForcesAtC(bars, geom, fc, cr, c, fyOver).Mn_Nmm) / 1e6
   }
   const negBars = barsTop.map((p) => ({ d: h - p.d, area: p.area }))
   return Math.max(solveSide(barsTop), solveSide(negBars))
@@ -496,6 +528,65 @@ export function columnShearVc(
   const axial = Math.max(0, 1 + (NuComp * 1e3) / (14 * Ag))
   const sizeEff = hasMinTies ? 1 : lambdaS(d) // 318-25 only; SNI module overrides to 1
   return (0.17 * sizeEff * axial * lambda * sqrtFc(fc) * bw * d) / 1e3
+}
+
+/** Demand-free column shear capacity track. */
+export interface ColumnShearCapacity {
+  Vc: number // kN — nominal concrete shear (Nu = 0 baseline)
+  Vs: number // kN — nominal steel shear from the provided tie
+  phiVc: number // kN — conservative Nu = 0 (no axial benefit, no hinge zeroing)
+  phiVn: number // kN — φ(Vc + Vs) from the provided tie
+  phiVmax: number // kN — cross-section ceiling
+  avS: number // mm²/m — provided Av/s
+  avSMin: number // mm²/m — minimum shear reinforcement floor (9.6.3.4)
+  spacing: number // mm — provided tie spacing
+  spacingMax: number // mm — governing hoop/tie cap for the frame type
+  spacingPass: boolean
+  avSPass: boolean // provided Av/s ≥ Av,min/s
+  d: number // mm — effective depth used
+}
+
+/**
+ * Column shear **capacity** track, computed from section + tie arrangement +
+ * criteria alone — no structural demands, so it can render live in the Advanced
+ * Report before Run Design (the φVn capacity analogue of the P–M curve).
+ *
+ * Conservative no-axial baseline: Nu = 0, so Vc (22.5.6.1) carries no axial
+ * enhancement and no SMF hinge-zone zeroing (18.7.6.2.1) — both are
+ * demand-driven and overlaid only after a run. Spacing cap uses the demand-free
+ * (Vs ≤ threshold) general limit.
+ */
+export function columnShearCapacity(
+  bars: ColumnBar[],
+  geom: ColumnGeom,
+  fc: number,
+  cr: RcCriteria,
+  tie: { size: RebarSize; spacing: number },
+  dbLong: number,
+): ColumnShearCapacity {
+  const Ag = geomAg(geom)
+  const dMaxBar = bars.length > 0 ? Math.max(...bars.map((p) => p.d)) : geomH(geom) - 65
+  const { bw, d } = geomShear(geom, dMaxBar)
+  const dbHoop = barDia(tie.size)
+  const Vc = columnShearVc(cr.lambda, fc, bw, d, 0, Ag, true)
+  const phiVc = cr.phiShear * Vc
+  const phiVmax = cr.phiShear * vMaxLimit(Vc, fc, bw, d)
+  const avS = avSProvided(cr.stirrupLegs, tie.size, tie.spacing)
+  const avSMin = avMinPerS(fc, cr.fyt, bw) * 1000 // mm²/m
+  const phiVn = phiVnProvided(Vc, avS, cr.fyt, d, cr)
+  const Vs = phiVn / cr.phiShear - Vc // nominal steel shear, kN
+  const spacingMax =
+    cr.frameType === "SMF"
+      ? smfEndZoneSpacingMax(d, dbLong)
+      : cr.frameType === "IMF"
+        ? imfEndZoneSpacingMax(d, dbLong, dbHoop)
+        : generalSpacingMax(d, false)
+  const spacingPass = tie.spacing > 0 ? tie.spacing <= spacingMax + 1e-9 : true
+  const avSPass = avS >= avSMin - 1e-6
+  return {
+    Vc, Vs, phiVc, phiVn, phiVmax, avS, avSMin,
+    spacing: tie.spacing, spacingMax, spacingPass, avSPass, d,
+  }
 }
 
 // ── Slenderness (non-sway moment magnification, in-plane) ─────────────────────
@@ -548,21 +639,20 @@ export function slendernessMagnifier(
 export { RHO_G_MIN, RHO_G_MAX, minColumnClearSpacing }
 
 export function checkColumnArrangement(
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   cover: number,
   arr: ColumnArrangement,
   opts: { frameType: FrameType },
 ): ArrangementCheck[] {
-  const layout = buildColumnBarLayout(b, h, cover, arr)
+  const layout = buildColumnBarLayout(geom, cover, arr)
   const checks: ArrangementCheck[] = []
   const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
-  const nx = Math.max(2, Math.round(arr.nx))
-  const ny = Math.max(2, Math.round(arr.ny))
+  const circle = isCircle(arr)
+  const nBars = layout.bars.length
   const db = barDia(arr.size)
 
   // ρg within limits.
-  const Ag = b * h
+  const Ag = geomAg(geom)
   const rho = Ag > 0 ? layout.Ast / Ag : 0
   if (rho < RHO_G_MIN) {
     checks.push({
@@ -587,21 +677,25 @@ export function checkColumnArrangement(
     })
   }
 
-  // Minimum bar count (rectangular ties → ≥ 4).
-  const ok4 = nx >= 2 && ny >= 2
+  // Minimum bar count: circular spiral ≥ 6 (10.7.3.1), tied (rect or circular) ≥ 4.
+  const spiral = arr.confinement === "spiral"
+  const minBars = circle && spiral ? 6 : 4
+  const okMin = nBars >= minBars
   checks.push({
-    status: ok4 ? "pass" : "fail",
-    text: ok4 ? `${layout.bars.length} bars (≥ 4)` : "≥ 4 bars required for tied columns",
-    clause: "25.7.2.1",
+    status: okMin ? "pass" : "fail",
+    text: okMin
+      ? `${nBars} bars (≥ ${minBars})`
+      : `≥ ${minBars} bars required (${circle && spiral ? "circular spiral" : "tied"})`,
+    clause: circle && spiral ? "10.7.3.1" : "25.7.2.1",
   })
 
-  // Clear spacing on the densest (top/bottom) row.
-  if (nx >= 2 && layout.rowSpacing !== null) {
+  // Clear spacing between adjacent bars (rect: densest row; circle: ring chord).
+  if (layout.rowSpacing !== null) {
     const clear = layout.rowSpacing - db
     const sMin = minColumnClearSpacing(db)
     checks.push({
       status: clear >= sMin - 1e-9 ? "pass" : "fail",
-      text: `Row bar clear spacing ${f(clear)} mm ≥ ${f(sMin)} mm`,
+      text: `${circle ? "Ring" : "Row"} bar clear spacing ${f(clear)} mm ≥ ${f(sMin)} mm`,
       clause: "25.2.3",
     })
   }
@@ -651,8 +745,7 @@ function spacingRow(
  * provided `Ash/s` (checked mode) approximates the legs from `legs` × tie area.
  */
 export function columnConfinement(
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   cover: number,
   arr: ColumnArrangement,
   fc: number,
@@ -667,32 +760,14 @@ export function columnConfinement(
   const dbLong = barDia(arr.size)
   const dbTie = barDia(arr.tie.size)
   const s = arr.tie.spacing
-  const leastDim = Math.min(b, h)
+  const leastDim = geomLeastDim(geom)
+  const circleSpiral = isCircle(arr) && arr.confinement === "spiral"
 
-  if (frameType === "OMF") {
-    checks.push(spacingRow("Tie spacing", s, Math.min(16 * dbLong, 48 * dbTie, leastDim), "25.7.2.3"))
-    return checks
-  }
-
-  const lo = Math.max(Math.max(b, h), (lu * 1000) / 6, 450)
-  checks.push({
-    status: "pass",
-    text: `Confinement length lo = ${f(lo)} mm from each end`,
-    clause: frameType === "SMF" ? "18.7.5.1" : "18.4.3.2",
-  })
-
-  if (frameType === "IMF") {
-    checks.push(
-      spacingRow("Hoop spacing over lo", s, Math.min(8 * dbLong, 24 * dbTie, leastDim / 2, 300), "18.4.3.2"),
-    )
-    return checks
-  }
-
-  // SMF/SRPMK — full confinement.
-  // Spiral columns: report the spiral ρs requirement instead of the Ash table.
-  if (arr.confinement === "spiral") {
-    const Ach = (b - 2 * cover) * (h - 2 * cover)
-    const Ag = b * h
+  // Spiral confinement (circular only): volumetric ρs governs in place of the
+  // rectilinear Ash table; the spiral itself confines continuously.
+  const spiralChecks = (): void => {
+    const Ag = geomAg(geom)
+    const Ach = geomAch(geom, cover)
     const rhoSReq = Math.max(
       0.45 * (Ag / Ach - 1) * (fc / cr.fyt), // 25.7.3.3
       0.12 * (fc / cr.fyt), // 18.7.5.4 (spiral, SMF)
@@ -702,9 +777,43 @@ export function columnConfinement(
       text: `Spiral ρs ≥ ${(rhoSReq * 100).toFixed(2)}% (volumetric)`,
       clause: "18.7.5.4 / 25.7.3.3",
     })
+    // Spiral clear pitch 25–75 mm (25.7.3.1).
+    if (s > 0) {
+      checks.push({
+        status: s >= 25 - 1e-9 && s <= 75 + 1e-9 ? "pass" : "fail",
+        text: `Spiral pitch ${f(s)} mm (25–75 mm)`,
+        clause: "25.7.3.1",
+      })
+    }
+  }
+
+  if (frameType === "OMF") {
+    if (circleSpiral) spiralChecks()
+    else checks.push(spacingRow("Tie spacing", s, Math.min(16 * dbLong, 48 * dbTie, leastDim), "25.7.2.3"))
     return checks
   }
-  const layout = buildColumnBarLayout(b, h, cover, arr)
+
+  const lo = Math.max(geomH(geom), (lu * 1000) / 6, 450)
+  checks.push({
+    status: "pass",
+    text: `Confinement length lo = ${f(lo)} mm from each end`,
+    clause: frameType === "SMF" ? "18.7.5.1" : "18.4.3.2",
+  })
+
+  if (circleSpiral) {
+    spiralChecks()
+    return checks
+  }
+
+  if (frameType === "IMF") {
+    checks.push(
+      spacingRow("Hoop spacing over lo", s, Math.min(8 * dbLong, 24 * dbTie, leastDim / 2, 300), "18.4.3.2"),
+    )
+    return checks
+  }
+
+  // SMF/SRPMK — full confinement (rectangular ties or circular hoops).
+  const layout = buildColumnBarLayout(geom, cover, arr)
   const hx = layout.rowSpacing ?? leastDim
   checks.push({
     status: hx <= 350 ? "pass" : "fail",
@@ -715,12 +824,12 @@ export function columnConfinement(
   const so0 = Math.min(150, Math.max(100, 100 + (350 - hx) / 3))
   checks.push(spacingRow("Hoop spacing over lo (so)", s, Math.min(leastDim / 4, 6 * dbLong, so0), "18.7.5.3"))
 
-  // Ash/(s·bc) — rectilinear. ACI 318-25: max of THREE equations.
-  const Ag = b * h
-  const Ach = (b - 2 * cover) * (h - 2 * cover)
-  const bcMax = Math.max(b - 2 * cover, h - 2 * cover)
+  // Ash/(s·bc) — rectilinear ties. ACI 318-25: max of THREE equations.
+  const Ag = geomAg(geom)
+  const Ach = geomAch(geom, cover)
+  const bcMax = leastDim - 2 * cover // core dimension to the tie centreline
   const fyt = cr.fyt
-  const nl = 2 * Math.max(2, Math.round(arr.nx)) + 2 * Math.max(2, Math.round(arr.ny)) - 4
+  const nl = layout.bars.length
   const kf = Math.max(1, fc / 175 + 0.6)
   const kn = nl > 2 ? nl / (nl - 2) : 1
   const ratio = Math.max(

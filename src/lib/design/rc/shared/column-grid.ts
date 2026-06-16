@@ -13,8 +13,9 @@
  */
 
 import { barArea, barDia, type RebarSize } from "./rebar"
-import type { ColumnBar } from "./types"
-import type { ColumnArrangement } from "../types"
+import type { ColumnBar, ColumnGeom } from "./types"
+import { geomH } from "./types"
+import { isCircle, type ColumnArrangement } from "../types"
 
 export interface ColumnLayoutBar {
   /** Centre x from the left face, mm. */
@@ -44,16 +45,35 @@ function spread(n: number, from: number, to: number): number[] {
 }
 
 export function buildColumnBarLayout(
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   cover: number,
   arr: ColumnArrangement,
 ): ColumnLayout {
-  const nx = Math.max(2, Math.round(arr.nx))
-  const ny = Math.max(2, Math.round(arr.ny))
   const db = barDia(arr.size)
   const dbTie = barDia(arr.tie.size)
   const area = barArea(arr.size)
+
+  // Circular: a single circumferential ring of n bars.
+  if (geom.kind === "circle" && isCircle(arr)) {
+    const n = Math.max(4, Math.round(arr.n))
+    const R = geom.D / 2
+    const rs = Math.max(0, R - Math.max(0, cover) - dbTie - db / 2)
+    const bars: ColumnLayoutBar[] = []
+    for (let i = 0; i < n; i++) {
+      const theta = (2 * Math.PI * i) / n // measured from the top fibre
+      bars.push({ x: R + rs * Math.sin(theta), y: R - rs * Math.cos(theta), db, area })
+    }
+    // rowSpacing is repurposed as the ring CHORD between adjacent bars (clear
+    // spacing / hx checks); inset is the bar-centre offset from the surface.
+    const chord = n >= 2 ? 2 * rs * Math.sin(Math.PI / n) : null
+    return { bars, Ast: n * area, inset: R - rs, rowSpacing: chord }
+  }
+
+  // Rectangular nx × ny perimeter grid.
+  const b = geom.kind === "rect" ? geom.b : geom.D
+  const h = geomH(geom)
+  const nx = Math.max(2, Math.round(isCircle(arr) ? 2 : arr.nx))
+  const ny = Math.max(2, Math.round(isCircle(arr) ? 2 : arr.ny))
   const inset = Math.max(0, cover) + dbTie + db / 2
 
   const xs = spread(nx, inset, b - inset)
@@ -87,19 +107,24 @@ export function layoutToColumnBars(layout: ColumnLayout): ColumnBar[] {
  * the bisection while keeping realistic bar placement.
  */
 export function representativeColumnBars(
-  b: number,
-  h: number,
+  geom: ColumnGeom,
   cover: number,
   targetAst: number,
   opts: { barSize: RebarSize; tieSize: RebarSize },
 ): ColumnBar[] {
-  // Default grid scales mildly with the section so steel isn't bunched at the
-  // corners of a large column; clamped to a sensible perimeter.
-  const nx = Math.min(8, Math.max(3, Math.round(b / 150)))
-  const ny = Math.min(8, Math.max(3, Math.round(h / 150)))
-  const layout = buildColumnBarLayout(b, h, cover, {
-    nx, ny, size: opts.barSize, tie: { size: opts.tieSize, spacing: 100 },
-  })
+  const tie = { size: opts.tieSize, spacing: 100 }
+  let layout: ColumnLayout
+  if (geom.kind === "circle") {
+    // Ring scaled mildly with the diameter, clamped to a sensible bar count.
+    const n = Math.min(12, Math.max(6, Math.round((Math.PI * geom.D) / 200)))
+    layout = buildColumnBarLayout(geom, cover, { shape: "circle", n, size: opts.barSize, tie })
+  } else {
+    // Default grid scales mildly with the section so steel isn't bunched at the
+    // corners of a large column; clamped to a sensible perimeter.
+    const nx = Math.min(8, Math.max(3, Math.round(geom.b / 150)))
+    const ny = Math.min(8, Math.max(3, Math.round(geom.h / 150)))
+    layout = buildColumnBarLayout(geom, cover, { shape: "rect", nx, ny, size: opts.barSize, tie })
+  }
   const n = layout.bars.length
   const areaEach = n > 0 ? targetAst / n : 0
   return layout.bars.map((p) => ({ d: p.y, area: areaEach }))

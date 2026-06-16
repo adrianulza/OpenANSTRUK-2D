@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.3] — 2026-06-16
+
+**Circular RC column design; spiral confinement moved off rectangular sections.** Reinforced-concrete column design now accepts **circular sections** (P–M interaction, capacity-design shear, spiral / circular-tie confinement, detailing, slenderness — both As-checked and As-required). Spiral confinement, which was previously (and incorrectly) offered on rectangular columns with a rectangular core, is **dropped for rectangles** (now tied-only) and lives where it belongs — circular sections. The validated rectangular beam/column capacity anchors are **byte-stable**; this is additive (the `(b, h)` → `ColumnGeom` refactor reduces to the original rectangular math).
+
+### Added — engine
+- **`ColumnGeom`** (`rc/shared/types.ts`) — a `{ kind:"rect", b, h } | { kind:"circle", D }` discriminator threaded through the whole column engine, plus scalar helpers `geomAg` (πD²/4), `geomIg` (πD⁴/64), `geomLeastDim`, `geomAch` (π(D/2−cover)²), `geomShear` (circle ⇒ `bw=D, d=0.8D`, ACI 22.5.2.2).
+- **`concreteBlock`** (`rc/codes/<code>/column.ts`) — the only shape-specific mechanic in `sectionForcesAtC`: for a circle the compression zone is a **circular segment** of depth `a`, computed in closed form (segment area `R²·acos(m/R) − m·√(R²−m²)`, centroid `⅔·(R²−m²)^{3/2}/A`, with `m = R − a`). The per-bar strain-compatibility loop is unchanged, so the full interaction curve, `columnFlexuralStrengthAtP`, shear, and detailing inherit circular support automatically.
+- **Circular bar layout** (`rc/shared/column-grid.ts`) — `buildColumnBarLayout(geom, …)` places `n` bars on a single circumferential ring (`d = R − rs·cosθ`); `rowSpacing` is repurposed as the ring chord for clear-spacing checks. `representativeColumnBars` gains a ring branch for As-required ρg sizing.
+- **Circular confinement / detailing** — spiral ρs `max(0.45(Ag/Ach−1)f'c/fyt, 0.12 f'c/fyt)` (25.7.3.3 / 18.7.5.4) + spiral clear pitch 25–75 mm (25.7.3.1); circular-tie path uses the hoop spacing caps with `leastDim = D`; min bars ≥ 6 for spiral (10.7.3.1) / ≥ 4 tied.
+
+### Changed
+- **`ColumnArrangement` is now a discriminated union** (`rc/types.ts`): `RectColumnArrangement { shape?:"rect"; nx; ny }` | `CircleColumnArrangement { shape:"circle"; n }`, with `isCircle` + `defaultCircleColumnArrangement` (spiral, D19, D10@75). `shape` is optional/defaulting to `"rect"` so existing inputs keep working.
+- **Rectangular columns are tied-only** — the rectangular spiral ρs branch (which used a rectangular core, not code-correct) is removed; the tied/spiral toggle no longer appears in the rectangular editor.
+- **Designability** (`core/designability.ts`) — `rc / circle / column` flipped to `implemented: true`; `hasValidGeometry` validates `dims.d > 0` for circles. `designMemberRc` always designs a circular section as a column (no circular-beam strategy); `run-design.ts` passes the diameter safely (rect `dims.b` is undefined for a circle).
+- **Column engine signatures** — `sectionForcesAtC`, `pointAtC`, `capCrossC`, `sideControlPoints`, `pureMomentC`, `buildInteractionCurve`, `columnFlexuralStrengthAtP`, `columnShearCapacity`, `columnConfinement`, `checkColumnArrangement`, and `designColumnShear`/`designColumn` take a `ColumnGeom` in place of the bare `(b, h)` pair (both code modules, identical edits).
+
+### Added — UI
+- **`ColumnRingEditor`** (`rc/rc-design-tool.tsx`) — single ring-count `n` + bar size + spiral/tie toggle, shown for circular sections; the rectangular `ColumnGridEditor` drops its spiral toggle.
+- **Circular preview + report** (`rc/column/{preview,report}.tsx`) — circle outline, single transverse ring (spiral and circular tie draw identically), ring of bars, and a `D` diameter dimension. The P–M chart and checklists are unchanged.
+
+### Validation
+- **`validation/rc_column_circular.mts`** (new) — cross-checks the closed-form circular-segment concrete block against an **independent strip numerical integration** at three neutral-axis depths (`Mn` matches to <2%), plus `Po`, spiral ρs, `d = 0.8·D` shear depth, and the ≥6-bar rule.
+- Rectangular anchors **byte-stable** after the `ColumnGeom` refactor: `rc_column_verify.mts` (26), `rc_column_phases.mts`, `rc_column_aci_deltas.mts`, `rc_beam_verify.mjs` (25), `rc_beam_aci31825.mts`, `rc_column_scwb.mts` (call sites updated to pass `{ kind:"rect", b, h }`).
+
+---
+
 ## [1.1.2] — 2026-06-16
 
 **Material-strategy + per-code restructure, real ACI 318-25 ↔ SNI 2847:2019 differentiation, full RC column design, and design-output UI.** The design engine is split along two axes — **material** (RC / Steel) and, within RC, **code edition** — the two RC code modules now genuinely **diverge** (they were byte-identical), and the column path is completed from capacity-only to a full design: **capacity-design shear, transverse confinement, strong-column-weak-beam, non-sway slenderness, and spiral columns**. Every new column check is surfaced on the canvas, in the Advanced Report, and (newly) in required mode. **SNI 2847:2019 (≡ ACI 318-14) is now the default code.** Engine math for the validated beam/column capacity anchors is byte-stable; this is additive.

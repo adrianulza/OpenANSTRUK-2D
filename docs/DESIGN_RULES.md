@@ -15,13 +15,15 @@ modules.
 > Frame types are **SRPMB / SRPMM / SRPMK** under SNI 2847:2019 and
 > **OMF / IMF / SMF** under ACI 318-25 (they map 1:1, [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference)):
 > - **Beams** — flexure + shear.
-> - **Columns** — axial-flexure **P–M interaction** capacity, **capacity-design shear**
->   (Ve from Mn/Mpr, Vc = 0 in the SMF hinge zone), **transverse confinement**
->   (SRPMK `Ash` / SRPMM ties / SRPMB ties), **strong-column-weak-beam** (18.7.3.2),
->   **non-sway slenderness** (δns, in-plane), and **spiral** columns ([§5b](#5b-columns--pm-interaction)).
+> - **Columns** — **rectangular and circular** sections: axial-flexure **P–M
+>   interaction** capacity, **capacity-design shear** (Ve from Mn/Mpr, Vc = 0 in
+>   the SMF hinge zone), **transverse confinement** (SRPMK `Ash` / SRPMM ties /
+>   SRPMB ties; circular **spiral** ρs or circular ties), **strong-column-weak-beam**
+>   (18.7.3.2), **non-sway slenderness** (δns, in-plane), and **spiral** columns
+>   ([§5b](#5b-columns--pm-interaction), [§12.1b](#121b-circular-columns-v113)).
 >
 > **Scope tomorrow:** structural **steel** members, and
-> additional concrete **section shapes** (T, L, circular, hollow…). The engine is
+> additional concrete **section shapes** (T, L, hollow…). The engine is
 > deliberately structured so these slot in as new *material/shape strategies*
 > behind the same pipeline — see [§12 Extending the engine](#12-extending-the-engine).
 
@@ -135,12 +137,13 @@ active.
 `isSectionDesignable()` consults the **`DESIGN_SUPPORT`** registry — the target
 matrix of (material × geometry × element type), each row flagged `implemented`.
 A section is designable when its material + geometry maps to an **implemented**
-entry whose strength/dims check out. Today only `{rc, rect, beam+column}` is
-implemented, so the live gate is exactly:
-- `materialClass === "concrete"`, `shape.kind === "rect"`
-- `strength.fc > 0`, `dims.b > 0`, `dims.h > 0`
+entry whose strength/dims check out. Today `{rc, rect, beam+column}` and
+`{rc, circle, column}` are implemented, so the live gate is:
+- `materialClass === "concrete"` and `strength.fc > 0`, and
+- `shape.kind === "rect"` with `dims.b > 0`, `dims.h > 0`, **or**
+- `shape.kind === "circle"` with `dims.d > 0` (column-only)
 
-Planned-but-unbuilt combinations (RC circle/tee, all steel — see
+Planned-but-unbuilt combinations (RC tee, all steel — see
 [`DESIGN_P4_PLAN.md`](DESIGN_P4_PLAN.md)) are listed in the registry but render
 `status: "not-designable"` and show as "N.A." in the picker. Enabling one is a
 data edit (flip `implemented`) plus its strategy branch. `materialOf(section)`
@@ -679,6 +682,7 @@ module's `vc` / `governingSpacingMax`.
 | `validation/rc_column_phases.mts` | Column shear/confinement/slenderness/spiral engine (SNI module): `columnFlexuralStrengthAtP(P=0)` ≡ pure-bending Mn, Mpr > Mn, Vc axial benefit, OMF/IMF/SMF confinement check-sets distinct, δns = 1 below the 6.2.5 gate and = `Cm/(1−Pu/0.75Pc)` above, spiral cap 0.85 / φc 0.75 lift. Run via tsx. |
 | `validation/rc_column_aci_deltas.mts` | Column ACI 318-25 ↔ SNI deltas: `columnShearVc` λs (no ties, ratio = λs; equal with ties), confinement **3-eq vs 2-eq** `Ash` (ACI > SNI when the 0.2·kf·kn·Pu term governs; equal at low axial), εt control-point `c` (εty+0.003 vs 0.005 at fy 550; ≈ at fy 420). Run via tsx. |
 | `validation/rc_column_scwb.mts` | Strong-column-weak-beam + frame distinctness end-to-end (`runDesign` on the portal): SMF emits joint checks with ΣMnc/1.2ΣMnb ratios, OMF/IMF emit none; SMF columns carry Ve + confinement, OMF columns design for Vu only. Run via tsx with the **root** tsconfig. |
+| `validation/rc_column_circular.mts` | Circular column engine (SNI module, D 500, f'c 30, 8·D25 spiral): closed-form `concreteBlock` ≡ **independent strip numerical integration** of `Mn` at three neutral-axis depths (<2%), `Po = 0.85f'c(Ag−Ast)+fy·Ast` with `Ag=πD²/4`, spiral `Pn,max = 0.85·Po`, shear `d = 0.8·D`, spiral ρs row (25.7.3.3), and ≥6-bar detailing (10.7.3.1). Run via tsx with the **root** tsconfig. |
 
 Required-mode flexure and the SMF shear path are **byte-stable** against the book
 anchors (now bound to the `sni2847-19` module) — changes to the strain-compat /
@@ -692,17 +696,41 @@ The pipeline (`runDesign` → demands → flexure → shear → detailing) is
 material-agnostic in its *shape*. Adding new capability means adding strategies,
 not rewriting the orchestrator.
 
-### 12.1 New concrete section shapes (T, L, hollow, circular)
+### 12.1 New concrete section shapes (T, L, hollow)
+**Circular columns are implemented** (v1.1.3) — see §12.2 — and serve as the
+worked template for this pattern. To add another shape:
 1. The section must already exist as a parametric shape (`lib/sections/`).
-2. Broaden `isSectionDesignable` to admit the new `shape.kind`.
-3. Generalise the geometry resolver in `run-design.ts` and the flexural
-   compression-zone model: the Whitney block and `phiMnBars` currently assume a
-   **rectangular** compression area `0.85f'c·b·a`. A flanged/circular section
-   needs a shape-aware `compressionResultant(c)` (area + centroid of concrete
-   above the neutral axis). Factor this into a per-shape strategy and keep
-   `phiMnBars` consuming `{ Cc(c), yc(c) }` instead of `b` directly.
-4. Bar layout (`buildBarLayout`) is already position-based; extend it to place
-   bars on the actual section outline.
+2. Broaden `isSectionDesignable` / `DESIGN_SUPPORT` to admit the new `shape.kind`.
+3. Generalise the compression-zone model. The **column** path already does this:
+   `sectionForcesAtC` consumes a `ColumnGeom` discriminator and delegates the
+   concrete resultant to `concreteBlock(geom, a, fc)` → `{ Cc, arm }` (rect =
+   `0.85f'c·b·a`, circle = a closed-form circular segment). A new shape adds a
+   `ColumnGeom` variant + a `concreteBlock` branch (and `geomAg/geomIg/geomAch/
+   geomLeastDim/geomShear` cases) — the rest of the interaction engine is
+   shape-agnostic. The **beam** path's `phiMnBars` still assumes a rectangular
+   block; factor it the same way (`{ Cc(c), yc(c) }`) when a non-rectangular
+   *beam* is needed.
+4. Bar layout (`buildBarLayout` / `buildColumnBarLayout`) is position-based;
+   extend it to place bars on the actual outline (circular columns use a single
+   circumferential ring).
+
+### 12.1b Circular columns (v1.1.3)
+Reinforced-concrete **circular columns** are designed via the same engine as
+rectangular, keyed by `ColumnGeom = { kind:"circle", D }`:
+- **Concrete block** — the compression zone is a **circular segment** of depth
+  `a = β₁c`: area `A = R²·acos(m/R) − m·√(R²−m²)`, centroid above the section
+  centre `arm = ⅔(R²−m²)^{3/2}/A`, with `R = D/2`, `m = R − a`. `Cc = 0.85f'c·A`.
+  Validated against independent strip integration (`rc_column_circular.mts`).
+- **Geometry** — `Ag = πD²/4`, `Ig = πD⁴/64`, `Ach = π(D/2−cover)²`,
+  `leastDim = D`; **shear** uses `bw = D`, `d = 0.8D` (22.5.2.2).
+- **Bars** — a single circumferential ring of `n` bars (`d = R − rs·cosθ`).
+- **Confinement** — spiral ρs `max(0.45(Ag/Ach−1)f'c/fyt, 0.12 f'c/fyt)`
+  (25.7.3.3 / 18.7.5.4) + pitch 25–75 mm (25.7.3.1); circular ties use the hoop
+  caps; min bars ≥ 6 spiral (10.7.3.1) / ≥ 4 tied. **Spiral** raises `Pn,max` to
+  `0.85·Po` and φc to 0.75 (22.4.2.1 / 21.2.2).
+- **Boundaries** — circular sections are **column-only** (no circular-beam
+  strategy); a single bar ring (no inner rings). Rectangular columns are now
+  **tied-only** — spiral on a rectangular core was removed (not code-correct).
 
 ### 12.2 Columns (axial + in-plane flexure) — implemented
 The P–M interaction capacity (v1.1.1) plus, in the current pass, **capacity-design

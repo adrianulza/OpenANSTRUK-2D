@@ -173,10 +173,12 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     }
 
     // RC path
+    const rcShape = sec!.shape!.kind === "circle" ? "circle" : "rect"
     members[m.id] = designMemberRc({
       memberId: m.id,
-      b: dims.b,
+      b: dims.b ?? hMm, // undefined for a circle → fall back to D (column-only)
       h: hMm,
+      shape: rcShape,
       fc: sec!.strength!.fc!,
       L,
       di: asRcInput(di, m.section),
@@ -191,7 +193,7 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
 
   const anyDesigned = Object.values(members).some((r) => r.status === "designed")
   if (!anyDesigned) {
-    issues.push("No designable members found — RC design requires concrete rectangular sections.")
+    issues.push("No designable members found — RC design requires concrete rectangular or circular sections.")
   }
 
   // Surface column shear / confinement failures as issues (never silent, even if

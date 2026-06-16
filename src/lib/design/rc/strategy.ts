@@ -25,7 +25,8 @@ import type {
   ZoneId,
   ZoneShearResult,
 } from "../core/types"
-import type { ColumnBar } from "./shared/types"
+import type { ColumnBar, ColumnGeom } from "./shared/types"
+import { geomH, geomAg, geomIg, geomShear } from "./shared/types"
 import type { RebarSize } from "./shared/rebar"
 import { ZONE_IDS } from "../core/types"
 import {
@@ -34,7 +35,7 @@ import {
   type MemberZoneDemands,
 } from "../core/demands"
 import type { RcCriteria } from "./criteria"
-import type { RcSectionInput, RebarArrangement } from "./types"
+import type { RcSectionInput, RebarArrangement, ColumnArrangement } from "./types"
 import { getRcCode, type RcCodeModule } from "./codes"
 import type { ColumnInteractionCurve, BarPoint, FlexureGeometry } from "./codes/aci318-25"
 import {
@@ -382,8 +383,7 @@ function worstInteraction(
  */
 function designColumnShear(
   bars: ColumnBar[],
-  bMm: number,
-  hMm: number,
+  geom: ColumnGeom,
   fc: number,
   L: number,
   cr: RcCriteria,
@@ -394,8 +394,9 @@ function designColumnShear(
   tie: { size: RebarSize; spacing: number },
 ): ColumnShearResult {
   const code = getRcCode(cr.code)
-  const Ag = bMm * hMm
-  const d = bars.length > 0 ? Math.max(...bars.map((p) => p.d)) : hMm - 65
+  const Ag = geomAg(geom)
+  const dMaxBar = bars.length > 0 ? Math.max(...bars.map((p) => p.d)) : geomH(geom) - 65
+  const { bw, d } = geomShear(geom, dMaxBar)
   const dbHoop = barDia(tie.size)
 
   // Capacity-design shear demand Ve (IMF: Mn; SMF: Mpr). PuComp (compression +) →
@@ -403,7 +404,7 @@ function designColumnShear(
   let Ve: number | undefined
   if (cr.frameType !== "OMF") {
     const fyFactor = cr.frameType === "SMF" ? 1.25 : 1.0
-    const M = code.columnFlexuralStrengthAtP(bars, bMm, hMm, fc, cr, -PuComp, fyFactor)
+    const M = code.columnFlexuralStrengthAtP(bars, geom, fc, cr, -PuComp, fyFactor)
     Ve = L > 0 ? (2 * M) / L : 0
   }
   const Vdesign = Math.max(Vu, Ve ?? 0)
@@ -411,10 +412,10 @@ function designColumnShear(
   // SMF/SRPMK: Vc = 0 in the confinement region when Pu < Ag·f'c/20 (18.7.6.2.1).
   const lowAxial = PuComp < (Ag * fc) / 20 / 1e3
   const vcZeroed = cr.frameType === "SMF" && lowAxial
-  const VcFull = code.columnShearVc(cr.lambda, fc, bMm, d, PuComp, Ag, true)
+  const VcFull = code.columnShearVc(cr.lambda, fc, bw, d, PuComp, Ag, true)
   const VcZone = vcZeroed ? 0 : VcFull
   const phiVc = cr.phiShear * VcZone
-  const phiVmax = cr.phiShear * code.vMaxLimit(VcZone, fc, bMm, d)
+  const phiVmax = cr.phiShear * code.vMaxLimit(VcZone, fc, bw, d)
   const crossSectionOk = Vdesign <= phiVmax
 
   // Hoop/tie spacing cap: SMF hinge min(d/4, 6db, 150); IMF min(d/4, 8db,long,
@@ -425,10 +426,10 @@ function designColumnShear(
       ? code.smfEndZoneSpacingMax(d, dbLong)
       : cr.frameType === "IMF"
         ? code.imfEndZoneSpacingMax(d, dbLong, dbHoop)
-        : code.generalSpacingMax(d, VsReq > code.vsSpacingThreshold(fc, bMm, d))
+        : code.generalSpacingMax(d, VsReq > code.vsSpacingThreshold(fc, bw, d))
 
   if (mode === "required") {
-    const AvSReq = code.avSRequired(Vdesign, phiVc, cr.fyt, d, cr, fc, bMm)
+    const AvSReq = code.avSRequired(Vdesign, phiVc, cr.fyt, d, cr, fc, bw)
     const suggested = code.suggestStirrup(AvSReq, cr.stirrupLegs, tie.size, sMax)
     return {
       Vu, Ve, Vdesign, phiVc, phiVmax, vcZeroed,
@@ -457,8 +458,7 @@ function designColumnShear(
  */
 function designColumn(
   memberId: MemberId,
-  bMm: number,
-  hMm: number,
+  geom: ColumnGeom,
   fc: number,
   L: number,
   di: RcSectionInput,
@@ -468,27 +468,27 @@ function designColumn(
   Vu: number,
 ): MemberDesignResult {
   const code = getRcCode(cr.code)
-  const Ag = bMm * hMm
+  const Ag = geomAg(geom)
   // In-plane non-sway slenderness inputs (k = 1.0 braced). Ec ≈ 4700√f'c.
-  const slender = { Ec: 4700 * Math.sqrt(fc), Ig: (bMm * hMm ** 3) / 12, Ag }
+  const slender = { Ec: 4700 * Math.sqrt(fc), Ig: geomIg(geom), Ag }
 
   if (di.mode === "checked") {
-    const layout = buildColumnBarLayout(bMm, hMm, di.cover, di.column.checked)
+    const layout = buildColumnBarLayout(geom, di.cover, di.column.checked)
     const bars = layoutToColumnBars(layout)
     const spiral = di.column.checked.confinement === "spiral"
-    const curve = code.buildInteractionCurve(bars, bMm, hMm, fc, cr, spiral)
+    const curve = code.buildInteractionCurve(bars, geom, fc, cr, spiral)
     const { worstDC, governing, pairs, deltaNs, slenderness } = worstInteraction(
       code, curve, efByCombo, L, slender,
     )
     const rhoG = Ag > 0 ? layout.Ast / Ag : 0
     const shear = designColumnShear(
-      bars, bMm, hMm, fc, L, cr, Pu, Vu, "checked",
+      bars, geom, fc, L, cr, Pu, Vu, "checked",
       barDia(di.column.checked.size), di.column.checked.tie,
     )
     const confinement = code.columnConfinement(
-      bMm, hMm, di.cover, di.column.checked, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
+      geom, di.cover, di.column.checked, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
     )
-    const Mn = code.columnFlexuralStrengthAtP(bars, bMm, hMm, fc, cr, -Pu, 1.0)
+    const Mn = code.columnFlexuralStrengthAtP(bars, geom, fc, cr, -Pu, 1.0)
     const column: ColumnDesignResult = {
       rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
       shear, confinement, deltaNs, slenderness, Mn,
@@ -511,12 +511,12 @@ function designColumn(
 
   // Required: smallest ρg bringing the worst demand onto the curve.
   const ringBars = (rhoG: number): ColumnBar[] =>
-    representativeColumnBars(bMm, hMm, di.cover, rhoG * Ag, {
+    representativeColumnBars(geom, di.cover, rhoG * Ag, {
       barSize: di.column.required.barSize,
       tieSize: di.column.required.tieSize,
     })
   const dcAt = (rhoG: number): number =>
-    worstInteraction(code, code.buildInteractionCurve(ringBars(rhoG), bMm, hMm, fc, cr), efByCombo, L, slender)
+    worstInteraction(code, code.buildInteractionCurve(ringBars(rhoG), geom, fc, cr), efByCombo, L, slender)
       .worstDC
   let rhoGRequired: number | undefined
   if (dcAt(code.RHO_G_MAX) > 1) rhoGRequired = undefined // even 8% can't carry it
@@ -534,22 +534,31 @@ function designColumn(
   const adequate = rhoGRequired !== undefined
   const rhoG = rhoGRequired ?? code.RHO_G_MAX
   const shear = designColumnShear(
-    ringBars(rhoG), bMm, hMm, fc, L, cr, Pu, Vu, "required",
+    ringBars(rhoG), geom, fc, L, cr, Pu, Vu, "required",
     barDia(di.column.required.barSize),
     { size: di.column.required.tieSize, spacing: 0 },
   )
-  const reqArr = {
-    nx: 3, ny: 3,
-    size: di.column.required.barSize,
-    tie: { size: di.column.required.tieSize, spacing: 0 },
-  }
+  const reqArr: ColumnArrangement =
+    geom.kind === "circle"
+      ? {
+          shape: "circle", n: 8,
+          size: di.column.required.barSize,
+          confinement: di.column.checked.confinement ?? "spiral",
+          tie: { size: di.column.required.tieSize, spacing: 0 },
+        }
+      : {
+          shape: "rect", nx: 3, ny: 3,
+          size: di.column.required.barSize,
+          confinement: "tied",
+          tie: { size: di.column.required.tieSize, spacing: 0 },
+        }
   const confinement = code.columnConfinement(
-    bMm, hMm, di.cover, reqArr, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
+    geom, di.cover, reqArr, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
   )
   const finalEval = worstInteraction(
-    code, code.buildInteractionCurve(ringBars(rhoG), bMm, hMm, fc, cr), efByCombo, L, slender,
+    code, code.buildInteractionCurve(ringBars(rhoG), geom, fc, cr), efByCombo, L, slender,
   )
-  const Mn = code.columnFlexuralStrengthAtP(ringBars(rhoG), bMm, hMm, fc, cr, -Pu, 1.0)
+  const Mn = code.columnFlexuralStrengthAtP(ringBars(rhoG), geom, fc, cr, -Pu, 1.0)
   const column: ColumnDesignResult = {
     rhoG, Ast: rhoG * Ag, rhoGRequired,
     worstDC: adequate ? 1 : dcAt(code.RHO_G_MAX), adequate,
@@ -573,6 +582,8 @@ export interface RcMemberInput {
   memberId: MemberId
   b: number
   h: number
+  /** Section shape. Circular columns carry their diameter in `h` (b unused). */
+  shape: "rect" | "circle"
   fc: number
   L: number
   di: RcSectionInput
@@ -589,17 +600,20 @@ export interface RcMemberInput {
 
 /** Design one RC member (beam or column). */
 export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
-  const { memberId, b: bMm, h: hMm, fc, L, di, cr, efByCombo, gravityEf, raw, Pu, isVertical } = inp
-  const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN (beam axial gate, Pers. 5-2)
+  const { memberId, b: bMm, h: hMm, shape, fc, L, di, cr, efByCombo, gravityEf, raw, Pu, isVertical } = inp
+  const geom: ColumnGeom = shape === "circle" ? { kind: "circle", D: hMm } : { kind: "rect", b: bMm, h: hMm }
+  const PuLimit = (0.1 * fc * geomAg(geom)) / 1e3 // kN (beam axial gate, Pers. 5-2)
 
-  if (resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
+  // Circular sections are column-only (no circular-beam strategy): always design
+  // as a column regardless of orientation or the element-type selector.
+  if (shape === "circle" || resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
     // Column shear demand Vu = worst zone |V| (already enveloped across combos).
     const colVu = Math.max(
       raw.zones["end-i"].Vu,
       raw.zones["midspan"].Vu,
       raw.zones["end-j"].Vu,
     )
-    return designColumn(memberId, bMm, hMm, fc, L, di, cr, efByCombo, Pu, colVu)
+    return designColumn(memberId, geom, fc, L, di, cr, efByCombo, Pu, colVu)
   }
 
   // ── Beam path ──

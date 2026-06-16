@@ -23,9 +23,13 @@ import { asRcInput, type SectionDesignInputs } from "@/lib/design/core/section-i
 import type {
   BarLayer,
   ColumnArrangement,
+  RectColumnArrangement,
+  CircleColumnArrangement,
   RcSectionInput,
   RebarArrangement,
 } from "@/lib/design/rc/types"
+import { isCircle } from "@/lib/design/rc/types"
+import type { ColumnGeom } from "@/lib/design/rc/shared/types"
 import { RcSectionPreview } from "./beam/preview"
 import { RcColumnPreview } from "./column/preview"
 import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
@@ -101,15 +105,33 @@ export function SectionDesignToolContent({
   }
   const patchColumnChecked = (p: Partial<ColumnArrangement>) => {
     if (!input) return
-    patch({ column: { ...input.column, checked: { ...input.column.checked, ...p } } })
+    patch({ column: { ...input.column, checked: { ...colArr, ...p } as ColumnArrangement } })
   }
   const patchColumnReq = (p: Partial<RcSectionInput["column"]["required"]>) => {
     if (!input) return
     patch({ column: { ...input.column, required: { ...input.column.required, ...p } } })
   }
 
-  const b = sec?.shape?.dims.b ?? 0
-  const h = sec?.shape?.dims.h ?? 0
+  const circle = sec?.shape?.kind === "circle"
+  const D = sec?.shape?.dims.d ?? 0
+  // For circular sections the preview/report take the diameter in both b & h.
+  const b = circle ? D : (sec?.shape?.dims.b ?? 0)
+  const h = circle ? D : (sec?.shape?.dims.h ?? 0)
+  const colGeom: ColumnGeom = circle ? { kind: "circle", D } : { kind: "rect", b, h }
+
+  // The stored checked arrangement, normalized to the section's shape so the
+  // editor/preview/checks always agree with the geometry (a rect arrangement on
+  // a circular section is coerced to a ring, and vice-versa).
+  const rawChecked = input?.column.checked
+  const colArr: ColumnArrangement | null = !rawChecked
+    ? null
+    : circle
+      ? isCircle(rawChecked)
+        ? rawChecked
+        : { shape: "circle", n: 8, size: rawChecked.size, confinement: "spiral", tie: rawChecked.tie }
+      : isCircle(rawChecked)
+        ? { shape: "rect", nx: 3, ny: 3, size: rawChecked.size, confinement: "tied", tie: rawChecked.tie }
+        : rawChecked
 
   // The user explicitly picks beam vs column. Legacy "auto" inputs fall back to beam.
   const effectiveType: "beam" | "column" =
@@ -337,22 +359,31 @@ export function SectionDesignToolContent({
             </>
           ) : (
             <>
-              {/* Column As-checked: nx × ny grid + preview + checks + P–M report */}
+              {/* Column As-checked: bar grid/ring + preview + checks + P–M report */}
               <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
-              <ColumnGridEditor arr={input.column.checked} onPatch={patchColumnChecked} />
-              <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={input.column.checked} />
-              <ColumnDetailingCard
-                checks={code.checkColumnArrangement(b, h, input.cover, input.column.checked, {
-                  frameType: rc.frameType,
-                })}
-              />
+              {colArr && isCircle(colArr) ? (
+                <ColumnRingEditor arr={colArr} onPatch={patchColumnChecked} />
+              ) : (
+                colArr && <ColumnGridEditor arr={colArr} onPatch={patchColumnChecked} />
+              )}
+              {colArr && (
+                <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={colArr} />
+              )}
+              {colArr && (
+                <ColumnDetailingCard
+                  checks={code.checkColumnArrangement(colGeom, input.cover, colArr, {
+                    frameType: rc.frameType,
+                  })}
+                />
+              )}
               <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
+              {colArr && (
               <ColumnAdvancedReportDeck
                 open={advancedOpen}
                 b={b}
                 h={h}
                 cover={input.cover}
-                arrangement={input.column.checked}
+                arrangement={colArr}
                 fc={sec.strength?.fc ?? 0}
                 criteria={rc}
                 demandPairs={colDemand.pairs}
@@ -360,6 +391,7 @@ export function SectionDesignToolContent({
                 result={colDemand.result}
                 joint={colDemand.joint}
               />
+              )}
             </>
           )}
         </>
@@ -642,30 +674,49 @@ function StirrupRow({
 function ColumnGridEditor({
   arr, onPatch,
 }: {
-  arr: ColumnArrangement
-  onPatch: (p: Partial<ColumnArrangement>) => void
+  arr: RectColumnArrangement
+  onPatch: (p: Partial<RectColumnArrangement>) => void
 }) {
   const total = 2 * arr.nx + 2 * arr.ny - 4
-  const confinement = arr.confinement ?? "tied"
+  // Rectangular columns are tied-only (spiral belongs to circular sections).
   return (
     <div className="space-y-1.5">
       <CountInputRow label="Bars across width (nₓ)" value={arr.nx} min={2} onChange={(n) => onPatch({ nx: n })} />
       <CountInputRow label="Bars up height (n_y)" value={arr.ny} min={2} onChange={(n) => onPatch({ ny: n })} />
       <SizeSelectRow label="Bar size" value={arr.size} options={REBAR_SIZES} onChange={(s) => onPatch({ size: s })} />
+      <TieRow tie={arr.tie} onChange={(t) => onPatch({ tie: t })} />
+      <p className="text-[10px] text-gray-500">
+        Tied column · Total = 2·nₓ + 2·n_y − 4 = <span className="font-mono">{total}</span> bars
+      </p>
+    </div>
+  )
+}
+
+function ColumnRingEditor({
+  arr, onPatch,
+}: {
+  arr: CircleColumnArrangement
+  onPatch: (p: Partial<CircleColumnArrangement>) => void
+}) {
+  const confinement = arr.confinement ?? "spiral"
+  return (
+    <div className="space-y-1.5">
+      <CountInputRow label="Bars on ring (n)" value={arr.n} min={4} onChange={(n) => onPatch({ n })} />
+      <SizeSelectRow label="Bar size" value={arr.size} options={REBAR_SIZES} onChange={(s) => onPatch({ size: s })} />
       <div className="flex items-center gap-1.5">
         <Label className="text-xs text-gray-600 flex-1">Confinement</Label>
         <div className="grid grid-cols-2 gap-1 w-32">
-          <ModeButton active={confinement === "tied"} onClick={() => onPatch({ confinement: "tied" })} title="Tied: Pn,max = 0.80·Po, φc 0.65">
-            Tied
-          </ModeButton>
           <ModeButton active={confinement === "spiral"} onClick={() => onPatch({ confinement: "spiral" })} title="Spiral: Pn,max = 0.85·Po, φc 0.75">
             Spiral
           </ModeButton>
+          <ModeButton active={confinement === "tied"} onClick={() => onPatch({ confinement: "tied" })} title="Circular tie: Pn,max = 0.80·Po, φc 0.65">
+            Tie
+          </ModeButton>
         </div>
       </div>
-      <TieRow tie={arr.tie} onChange={(t) => onPatch({ tie: t })} />
+      <TieRow tie={arr.tie} onChange={(t) => onPatch({ tie: t })} label={confinement === "spiral" ? "Spiral" : "Hoop"} />
       <p className="text-[10px] text-gray-500">
-        Total = 2·nₓ + 2·n_y − 4 = <span className="font-mono">{total}</span> bars
+        {confinement === "spiral" ? "Spiral-confined" : "Circular-tied"} · <span className="font-mono">{Math.max(4, Math.round(arr.n))}</span> bars on one ring
       </p>
     </div>
   )
@@ -729,10 +780,11 @@ function SizeSelectRow({
 }
 
 function TieRow({
-  tie, onChange,
+  tie, onChange, label = "Tie",
 }: {
   tie: ColumnArrangement["tie"]
   onChange: (t: ColumnArrangement["tie"]) => void
+  label?: string
 }) {
   const [spacingText, setSpacingText] = React.useState(String(tie.spacing))
   React.useEffect(() => setSpacingText(String(tie.spacing)), [tie.spacing])
@@ -747,7 +799,7 @@ function TieRow({
   }
   return (
     <div className="flex items-center gap-1.5">
-      <Label className="text-xs text-gray-600 flex-1">Tie</Label>
+      <Label className="text-xs text-gray-600 flex-1">{label}</Label>
       <Select value={tie.size} onValueChange={(v) => onChange({ ...tie, size: v as RebarSize })}>
         <SelectTrigger className="h-7 text-xs w-20"><SelectValue /></SelectTrigger>
         <SelectContent>
