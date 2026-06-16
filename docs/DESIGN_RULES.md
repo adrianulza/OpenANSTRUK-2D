@@ -5,10 +5,15 @@ logic, the governing code clauses, and the assumptions behind every number it
 produces. It is the authoritative reference for the `src/lib/design/` domain
 modules.
 
-> **Scope today (v1.1.2):** Reinforced-concrete (RC) **rectangular** sections, per
-> a **selectable code** (`RcCriteria.code` → `ACI318-25` | `SNI2847-19`; the two
-> ship byte-identical and diverge later), for Ordinary / Intermediate / Special
-> moment frames (OMF / IMF / SMF):
+> **Scope today:** Reinforced-concrete (RC) **rectangular** sections, per a
+> **selectable code** (`RcCriteria.code` → `SNI2847-19` | `ACI318-25`).
+> **SNI 2847:2019 is the project's main/default code**; it was adopted from
+> **ACI 318-14**, so the two are one baseline. ACI 318-25 is the selectable
+> alternative and **diverges in exactly three rows** (the εty+0.003 tension limit
+> of Table 21.2.2, the cₘₐₓ it drives, and the λs size-effect Vc of 22.5.5.1.3) —
+> see [§5c](#5c-code-edition-deltas) for the diff and [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference) for the full per-code tables.
+> Frame types are **SRPMB / SRPMM / SRPMK** under SNI 2847:2019 and
+> **OMF / IMF / SMF** under ACI 318-25 (they map 1:1, [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference)):
 > - **Beams** — flexure + shear.
 > - **Columns** — axial-flexure **P–M interaction** capacity ([§5b](#5b-columns--pm-interaction)).
 >   Column **shear** and SRPMK `Ash` confinement are a follow-up pass.
@@ -18,10 +23,11 @@ modules.
 > deliberately structured so these slot in as new *material/shape strategies*
 > behind the same pipeline — see [§12 Extending the engine](#12-extending-the-engine).
 
-All code clause numbers below are **ACI 318-14/19** numbering (carried into the
-`aci318-25` module). SNI 2847:2019 adopts the same numbering and equations; the
-two code modules are byte-identical today, so edition-specific deltas (true
-318-25 vs 2847:2019) are future work in their respective `codes/<code>/` folders.
+All code clause numbers below are **ACI 318** Chapter-18/22 numbering (shared by
+SNI 2847:2019, which was adopted from ACI 318-14). SNI 2847:2019 ≡ the ACI
+318-14 baseline; the `aci318-25` module carries the two edition deltas documented
+in [§5c](#5c-code-edition-deltas). Frame-type detailing (OMF/IMF/SMF, Chapter 18)
+is edition-stable and identical in both `codes/<code>/` folders.
 
 ---
 
@@ -83,7 +89,7 @@ src/lib/design/
 │       ├── index.ts            getRcCode(code) registry, RcCode, RC_CODE_LABELS
 │       ├── aci318-25/          rules (β1, asMin, …), beam (flexure+shear+detailing),
 │       │                       column (P–M + detailing), report, index
-│       └── sni2847-19/         byte-identical copy of aci318-25 (diverge later)
+│       └── sni2847-19/         ACI 318-14 baseline (εt=0.005 fixed, no λs)
 └── steel/                      structural steel (AISC 360-16 / SNI 1729:2020) — STUB
     ├── criteria.ts             SteelCriteria + defaultSteelCriteria
     ├── types.ts                SteelSectionInput (Lb, Cb)
@@ -234,8 +240,10 @@ This combo is never shown to the user — it exists only to feed `Ve`.
 ## 5. Flexure (`rc/codes/<code>/beam.ts`)
 
 All flexure math is internal in **N, mm, MPa**; moments cross the API boundary in
-**kN·m**. Constants: `εcu = 0.003` (22.2.2.1), tension-controlled limit
-`εt = 0.005` (21.2.2).
+**kN·m**. Constants: `εcu = 0.003` (22.2.2.1); tension-controlled limit `εt` is
+**code-dependent** — `0.005` for SNI 2847:2019 (the main code) and `εty + 0.003`
+for ACI 318-25 (`epsTC`, [§5c](#5c-code-edition-deltas)). The `0.005` shown in the
+formulas below is the SNI baseline.
 
 ### 5.1 Common quantities
 - **Stress-block factor** `β₁ = 0.85 − 0.05(f'c − 28)/7`, clamped `[0.65, 0.85]`
@@ -345,6 +353,40 @@ The origin lies inside the surface, so the ray O→(Mu, Pu) crosses the closed
 
 ---
 
+## 5c. Code-edition deltas
+
+`SNI 2847:2019` is the **main code**; it was adopted from **ACI 318-14**, so the
+`sni2847-19/` module is the 318-14 baseline. The `aci318-25/` module diverges in
+**two independent places** (the tension-controlled limit and the no-stirrup `Vc`)
+— these surface as the **three ⚑ rows** in the [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference) per-code tables (the cₘₐₓ row is a
+derived consequence of the limit). All other clause math — As,min, β1, crack
+spacing, the φ values, frame-type detailing — is shared and identical. The deltas
+live as `rules.ts` helpers so `beam.ts` / `column.ts` of each code call their own:
+
+| Quantity | `sni2847-19` (ACI 318-14) | `aci318-25` | Clause |
+|---|---|---|---|
+| Tension-controlled strain limit (`cMax`, φ ramp top) | **0.005** fixed (`EPS_T_MIN`) | **εty + 0.003** = fy/Es + 0.003 (`epsTC(cr)`) | Table 21.2.2 |
+| One-way-shear `Vc`, regions **with** ≥ Av,min | `0.17λ√f'c·bw·d` (formula a) | same | 22.5.5.1 |
+| One-way-shear `Vc`, regions **without** Av,min | `0.17λ√f'c·bw·d` (no size effect) | **formula (c)** `0.66·λs·λ·ρw^(1/3)·√f'c·bw·d`, **λs = √(2/(1+d/250)) ≤ 1** (`lambdaS(d)`) | 22.5.5.1.3 |
+| `√f'c` cap (both modules) | `√f'c ≤ 8.3 MPa` (`sqrtFc`) | same | 22.5.3.1 |
+
+**Where the size-effect inputs come from.** `vc(λ, fc, bw, d, hasMinShearReinf,
+ρw)` gains two args; SNI ignores both. `strategy.ts::designZoneShear` resolves
+them per zone — `hasMinShearReinf` from checked mode (`avS_provided ≥ Av,min/s`)
+or required mode (`Vu > ½φVc`, using the un-penalised Vc); `ρw` from the zone's
+longitudinal tension steel (checked = provided, required = required-flexure As).
+For beams the formula-(c) penalty therefore only ever affects low-shear regions
+that don't govern; it matters most for deep, lightly-reinforced members. SMF hinge
+zones zero `Vc` regardless (18.6.5.2), so λs is moot there.
+
+**Practical magnitude.** For Grade-420 stirruped beams the two codes are nearly
+identical (εty+0.003 ≈ 0.0051 ≈ 0.005); the divergence grows with steel grade and
+member depth. The book validation anchors (Contoh 5-A/B/C) bind to the SNI module
+(`rc_beam_verify.mjs`, `rc_column_verify.mts`); the deltas have their own anchors
+in `rc_beam_aci31825.mts`.
+
+---
+
 ## 6. Bar layout & layering (geometry `rc/shared/bar-geometry.ts`; detailing checks `rc/codes/<code>/beam.ts`)
 
 `buildBarLayout(b, h, cover, arrangement)` is the **single source of truth** for
@@ -396,85 +438,188 @@ Flexure runs **before** shear because the capacity-design shear needs the
 flexural steel.
 
 ### 7.1 Capacities
-- **Concrete** `Vc = 0.17·λ·√f'c·bw·d` (22.5.5.1). *(The book's worked example
-  used 1/6 ≈ 0.167 — a ~2 % difference; we use the code coefficient 0.17.)*
+- **Concrete** `Vc` per Table 22.5.5.1. Regions **with** ≥ Av,min use formula (a)
+  `Vc = 0.17·λ·√f'c·bw·d` (both codes). Regions **without** min stirrups use
+  formula (c) — for ACI 318-25, `Vc = 0.66·λs·λ·ρw^(1/3)·√f'c·bw·d` with the
+  size-effect `λs` ([§5c](#5c-code-edition-deltas)); SNI/318-14 keeps the (a) form.
+  ρw = the longitudinal tension steel ratio for the zone. The axial term Nu/(6Ag)
+  is omitted (beams are axial-gated). *(The book's worked example used 1/6 ≈ 0.167
+  — a ~2 % difference vs the code coefficient 0.17.)*
 - **Cross-section ceiling** `φVmax = φ·(Vc + 0.66·√f'c·bw·d)` (22.5.1.2). Demand
   above this → section too small (`crossSectionOk = false`).
 - **Minimum web steel** `Aᵥ,min/s = max(0.062√f'c, 0.35)·bw/fyt` (9.6.3.3),
   required where `Vu > ½·φVc` (9.6.3.1).
 
 ### 7.2 Design shear `Vdesign = max(Vu, Ve)`
-| Frame | `Ve` (capacity-design shear) | `Vc` in end zones |
-|-------|------|------|
-| **OMF** | — (envelope `Vu` only) | full |
-| **IMF** | `(Mn_i + Mn_j)/L + Vg` (nominal end moments) | full |
-| **SMF** | `(Mpr_i + Mpr_j)/L + Vg` (probable moments, 1.25fy) | **0** (18.6.5.2) |
-
-Both sway directions are evaluated (`(M⁻_i + M⁺_j)/L` and `(M⁺_i + M⁻_j)/L`); the
-larger governs. `Vg` is the gravity shear from the internal 1.2D+1.0L combo.
+The per-frame `Ve` rule and the `Vc = 0` hinge treatment are tabulated in
+[§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference) (table D). Implementation notes:
+- **`Ve`** (`capacityEndMoments` → end moments at `fy` for IMF/SRPMM, `1.25fy` for
+  SMF/SRPMK; φ = 1). Both sway directions are evaluated
+  (`(M⁻_i + M⁺_j)/Lₙ` and `(M⁺_i + M⁻_j)/Lₙ`); the larger governs.
+- **`Vg`** is the gravity shear from the internal `1.2D + 1.0L` combo
+  (`buildGravityCombo`).
 
 ### 7.3 Required `Aᵥ/s` and stirrup suggestion
 - `Aᵥ/s = max((Vdesign − φVc)/(φ·fyt·d), Aᵥ,min/s)` (R22.5.10.5), in mm²/m.
 - `suggestStirrup` picks a spacing (25 mm steps, ≥ 25 mm) for the chosen bar/leg
-  count, capped by the governing spacing maximum ([§7.4](#74-spacing-maxima)).
+  count, capped by the governing spacing maximum (`governingSpacingMax`, [§7.4](#74-spacing-maxima)).
 
 ### 7.4 Spacing maxima (`governingSpacingMax`)
-| Context | Maximum spacing | Clause |
-|---------|------|--------|
-| SMF hinge (end zone) | `min(d/4, 6·db,long, 150)` | 18.6.4.4 |
-| IMF hinge (end zone) | `min(d/4, 8·db,long, 24·db,hoop, 300)` | 18.4.2.5 |
-| General — low Vs | `min(d/2, 600)` | 9.7.6.2.2 |
-| General — **high Vs** | `min(d/4, 300)` | 9.7.6.2.2 |
-
-"High Vs" means the required steel shear `Vs = Vu/φ − Vc` exceeds
-`0.33·√f'c·bw·d` (`vsSpacingThreshold`). This tightening is demand-dependent, so
-it is enforced at **Run**; the live preview shows the baseline `min(d/2, 600)`
-with a note.
+The per-frame caps are in [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference) (table D). One cap is **demand-dependent**: the
+general (SRPMB/OMF) case `min(d/2, 600)` tightens to `min(d/4, 300)` when the
+required steel shear `Vs = Vu/φ − Vc` exceeds `0.33·√f'c·bw·d`
+(`vsSpacingThreshold`). Because it depends on `Vs`, this tightening is enforced at
+**Run**; the live preview shows the baseline `min(d/2, 600)` with a note. The
+`db_long` in the 6db/8db hinge caps is the **smallest** primary flexural bar
+(18.6.4.4(b) / 18.4.2.5(b)).
 
 ---
 
 ## 8. Detailing checks (live, demand-independent)
 
-Rendered under the cross-section preview in **As-checked** mode, updating as you
-type (no solver run needed). All are geometry-only.
+The detailing **rules and clauses** are tabulated in [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference). This section
+documents only *how* they surface and the implementation-specific assumptions not
+captured by a single clause number. All checks are geometry-only and render under
+the cross-section preview in **As-checked** mode, updating as you type (no solver
+run needed):
 
-### 8.1 Longitudinal (`checkArrangement`)
-| Check | Rule | Clause |
-|-------|------|--------|
-| Single-layer fit / 2-layer overflow | bars fit within 2 layers | 25.2.1 |
-| Clear spacing in a layer | `≥ max(25, db, (4/3)·d_agg)`, `d_agg = 25.4 mm` | 25.2.1 |
-| Max bar spacing (crack control) | `≤ min(380·(280/fs) − 2.5cc, 300·(280/fs))`, `fs = ⅔fy` | 24.3.2 |
-| Minimum cover | `≥ 40 mm` (cast-in-place, not exposed — assumed) | 20.6.1.3.1 |
-| SMF continuous bars | `≥ 2` top and bottom | 18.6.3.1 |
-| Skin reinforcement | required (and checked for spacing) when `h > 900 mm` | 9.7.2.3 |
+- **`checkArrangement`** (longitudinal) renders the §9.A rules: clear spacing
+  (25.2.1), crack-control c/c spacing (24.3.2), cover (20.6.1.3.1), SMF/SRPMK
+  ρ≤0.025 + ≥2 continuous bars (18.6.3.1), skin reinforcement when h>900 (9.7.2.3).
+- **`checkTransverse`** (transverse) renders the §9.D rules: max hoop spacing per
+  frame+zone, min web steel `Aᵥ/s ≥ Aᵥ,min/s` (9.6.3.3), SMF/SRPMK lateral support
+  `hₓ ≤ 350` (18.6.4.2), min hoop ≥ D10 (25.7.1), and the 2h confined-region pass
+  entry; first-hoop ≤ 50 mm is an **advisory** (span placement isn't modeled).
+- **`checkBeamDimensions`** renders the §9.B SMF/SRPMK limits (Lₙ ≥ 4d,
+  bw ≥ min(0.3h, 250)) from the shortest member span using the section.
 
-### 8.2 Transverse (`checkTransverse`)
-| Check | Rule | Clause |
-|-------|------|--------|
-| Max stirrup/hoop spacing | per frame + zone ([§7.4](#74-spacing-maxima)); midspan SMF/IMF → `d/2` | 9.7.6.2.2 / 18.4.2.5/6 / 18.6.4.4/6 |
-| Minimum web steel | `Aᵥ/s ≥ Aᵥ,min/s` | 9.6.3.3 |
-| SMF lateral support | `hₓ ≤ 350 mm` (laterally-supported bar spacing) | 18.6.4.2 |
-| Minimum hoop bar | `≥ D10` (practice) | 25.7.1 |
-| First-hoop placement | `≤ 50 mm` from the support face (advisory — span placement not modelled) | 18.6.4.1 / 18.4.2.4 |
-
-> ACI sets **no minimum** stirrup spacing — only maxima. A constructability
-> advisory may be shown for very tight spacing, clearly marked as practice.
+**Implementation-only assumptions** (not a single clause):
+- 25.2.1 clear spacing uses an assumed aggregate size `d_agg = 25.4 mm`
+  (`AGG_SIZE_MM`) — not a tracked input.
+- 2-layer auto-overflow uses a hard-coded **50 mm** clear gap (≥ the 25.2.2
+  minimum; for 135° hook clearance) — see [§6.2](#62-auto-overflow-to-a-second-layer).
+- ACI sets **no minimum** stirrup spacing — only maxima; any tight-spacing advisory
+  is clearly marked as practice, not code.
 
 ---
 
-## 9. Frame-type matrix (OMF / IMF / SMF)
+## 9. Rectangular RC beam — per-code rule tables (the canonical reference)
 
-| Aspect | OMF | IMF | SMF |
-|--------|-----|-----|-----|
-| Moment minimums | none | ⅓ / ⅕ (18.4.2.2) | ½ / ¼ (18.6.3.2) |
-| Shear demand | envelope `Vu` | `Ve` from **Mn** + Vg | `Ve` from **Mpr** (1.25fy) + Vg |
-| `Vc` in end zones | full | full | **0** (18.6.5.2) |
-| Hinge hoop spacing | n/a | `min(d/4, 8db, 24db_h, 300)` | `min(d/4, 6db, 150)` |
-| Lateral support hₓ | n/a | n/a | `≤ 350` (18.6.4.2) |
+These two tables are the **single source of truth** for the beam design rules.
+Everything else in this document (§5 flexure, §7 shear, §8 detailing) describes
+*how* the engine computes them; the *values* live here.
 
-> **Validation status:** the numeric anchor (`validation/rc_beam_verify.mjs`) is an
-> **SMF** worked example. OMF/IMF follow the same code text and share the engine,
-> but are not separately anchored to a published example yet.
+**SNI 2847:2019 is the project's main code** (it is the default `RcCriteria.code`).
+SNI 2847:2019 was adopted from **ACI 318-14**, so the two are treated as one
+baseline; ACI 318-25 is the selectable alternative. The two tables differ in
+**exactly three rows**, flagged **⚑** (the code-edition deltas, [§5c](#5c-code-edition-deltas)) —
+everything else is identical (ACI Chapter 18 is unchanged 318-14 → 318-25).
+
+**Terminology.** SNI 2847:2019 uses the Indonesian frame designations
+**SRPMB / SRPMM / SRPMK**; ACI 318-25 uses **OMF / IMF / SMF**. They map 1:1:
+
+| SNI 2847:2019 | ACI 318-25 | Meaning |
+|---|---|---|
+| **SRPMB** (Sistem Rangka Pemikul Momen Biasa) | **OMF** | Ordinary moment frame |
+| **SRPMM** (… Menengah) | **IMF** | Intermediate moment frame |
+| **SRPMK** (… Khusus) | **SMF** | Special moment frame |
+
+**Legend:** ⚑ = code-dependent row (the only differences between the two tables) ·
+"—" = no requirement · "same" = identical across the three frame types. Clause
+numbers are shared by both editions (ACI Chapter 9/18/20/22/24/25). The engine
+`frameType` enum is internally `OMF|IMF|SMF` for both codes; the SRPM labels are a
+display alias when SNI is selected.
+
+### 9.1 SNI 2847:2019 (≡ ACI 318-14) — main code
+
+**A · Materials, flexure capacity & longitudinal limits**
+
+| Rule | SRPMB | SRPMM | SRPMK | Clause |
+|---|---|---|---|---|
+| Concrete crushing strain εcu | 0.003 | 0.003 | 0.003 | 22.2.2.1 |
+| ⚑ Tension-controlled limit εₜ | **0.005** | **0.005** | **0.005** | 21.2.2 |
+| Stress-block β₁ | 0.85−0.05(f'c−28)/7 ∈ [0.65, 0.85] | same | same | 22.2.2.4.3 |
+| φ (flexure / shear / comp) | 0.90 / 0.75 / 0.65 | same | same | 21.2.1 |
+| As,min | max(0.25√f'c, 1.4)/fy · bw·d | same | same | 9.6.1.2 |
+| ⚑ Singly cₘₐₓ (derived) | εcu/(εcu+0.005)·d = **0.375d** | same | same | 21.2.2 |
+| Max flexural ρ | — | — | ≤ 0.025 | 18.6.3.1 |
+| Min continuous bars | — | — | ≥ 2 top & bottom | 18.6.3.1 |
+| M⁺ at joint face | — | ≥ ⅓\|M⁻\| | ≥ ½\|M⁻\| | 18.4.2.2 / 18.6.3.2 |
+| Min moment strength anywhere | — | ≥ ⅕ max | ≥ ¼ max | 18.4.2.2 / 18.6.3.2 |
+| Crack-control max c/c spacing | min(380·280/fs − 2.5cc, 300·280/fs), fs=⅔fy | same | same | 24.3.2 |
+| Skin reinforcement (h > 900) | required | required | required | 9.7.2.3 |
+| Clear cover | ≥ 40 mm | ≥ 40 mm | ≥ 40 mm | 20.6.1.3.1 |
+
+**B · Dimensional limits (SRPMK only)**
+
+| Rule | SRPMB | SRPMM | SRPMK | Clause |
+|---|---|---|---|---|
+| Clear span Lₙ | — | — | ≥ 4d | 18.6.2.1 |
+| Web width bw (lower) | — | — | ≥ min(0.3h, 250 mm) | 18.6.2.1 |
+| Web width bw (upper) | — | — | ≤ c₂+min(c₂,0.75c₁) — *not modeled (no column geometry)* | 18.6.2.1 |
+
+**C · Shear — concrete capacity**
+
+| Rule | SRPMB | SRPMM | SRPMK | Clause |
+|---|---|---|---|---|
+| Vc, **with** ≥ Av,min | 0.17λ√f'c·bw·d | same | same (0 in hinge ↓) | 22.5.5.1 |
+| ⚑ Vc, **without** Av,min | 0.17λ√f'c·bw·d (no size effect) | same | — | 22.5.5.1 |
+| √f'c cap | ≤ 8.3 MPa | same | same | 22.5.3.1 |
+| Vc in end (hinge) zone | full | full | **0** | 18.6.5.2 |
+| φVmax cross-section ceiling | φ(Vc + 0.66√f'c·bw·d) | same | same | 22.5.1.2 |
+| Av,min/s | max(0.062√f'c, 0.35)·bw/fyt | same | same | 9.6.3.4 |
+| Stirrups required when | Vu > ½φVc | same | same | 9.6.3.1 |
+| Av/s required | max((Vu−φVc)/(φ·fyt·d), Av,min/s) | same | same | 22.5.10.5 |
+
+**D · Shear — design demand & transverse detailing**
+
+| Rule | SRPMB | SRPMM | SRPMK | Clause |
+|---|---|---|---|---|
+| Design shear Vdesign | envelope Vu | max(Vu, Ve); Ve=(Mn_i+Mn_j)/Lₙ + Vg | max(Vu, Ve); Ve=(Mpr_i+Mpr_j)/Lₙ + Vg, Mpr@1.25fy | 18.4.2.3 / 18.6.5.1 |
+| Confined hoop region | — | 2h from face | 2h from face | 18.4.2.4 / 18.6.4.1 |
+| First hoop from face | — | ≤ 50 mm | ≤ 50 mm | 18.4.2.4 / 18.6.4.1 |
+| Max spacing — end/hinge zone | min(d/2, 600); → min(d/4, 300) if Vs>0.33√f'c·bw·d | min(d/4, 8db_long, 24db_hoop, 300) | min(d/4, 6db_long, 150) | 9.7.6.2.2 / 18.4.2.5 / 18.6.4.4 |
+| Max spacing — midspan | min(d/2, 600) | d/2 | d/2 | 9.7.6.2.2 / 18.4.2.6 / 18.6.4.6 |
+| db_long basis | — | smallest primary flexural bar | smallest primary flexural bar | 18.4.2.5 / 18.6.4.4 |
+| Lateral bar support hₓ | — | — | ≤ 350 mm | 18.6.4.2 |
+| Min hoop size | ≥ D10 (practice) | ≥ D10 | ≥ D10 | 25.7.1 |
+
+> SRPMB (OMF) carries no Chapter-18 seismic detailing — it is pure Chapter 9/22
+> (the 18.3.3 SDC-B continuity rule is not modeled). All "—" cells reflect this.
+
+### 9.2 ACI 318-25 — selectable alternative
+
+Identical to [§9.1](#91-sni-28472019--aci-318-14--main-code) **except the three ⚑ rows below**. Sub-tables B and D are
+byte-identical to SNI and are not repeated.
+
+**A · Materials, flexure capacity & longitudinal limits** (⚑ rows shown; all other rows = §9.1.A)
+
+| Rule | OMF | IMF | SMF | Clause |
+|---|---|---|---|---|
+| ⚑ Tension-controlled limit εₜ | **εty + 0.003** | **εty + 0.003** | **εty + 0.003** | 21.2.2 / Table 21.2.2 |
+| ⚑ Singly cₘₐₓ (derived) | εcu/(εcu+εty+0.003)·d (**≈0.370d** @ fy420) | same | same | 21.2.2 |
+
+**C · Shear — concrete capacity** (⚑ row shown; all other rows = §9.1.C)
+
+| Rule | OMF | IMF | SMF | Clause |
+|---|---|---|---|---|
+| ⚑ Vc, **without** Av,min | **0.66·λs·λ·ρw^(1/3)·√f'c·bw·d** (formula c), λs=√(2/(1+d/250))≤1 | same | — | 22.5.5.1 / 22.5.5.1.3 |
+
+Everything else (As,min, β1, φ, moment floors, ρ≤0.025, continuity, dimensional
+limits, Ve, all transverse spacing, cover, skin reinforcement) is **exactly as in
+§9.1** — only the strain limit, the cₘₐₓ it drives, and the no-stirrup Vc change.
+
+**Implementation map.** SMF/SRPMK ρ≤0.025 + continuity → `checkArrangement`;
+dimensional limits → `checkBeamDimensions` (Lₙ = node-to-node length; live in the
+RC tool from the shortest span using the section); 2h confined region = the
+end-zone model; Ve / Vc / spacing → `strategy.ts::designZoneShear` + the code
+module's `vc` / `governingSpacingMax`.
+
+> **Validation status:** the numeric anchor (`validation/rc_beam_verify.mjs`,
+> bound to SNI) is an **SRPMK/SMF** worked example (Contoh 5-A/5-B); the ACI 318-25
+> ⚑ deltas are anchored in `rc_beam_aci31825.mts`. SRPMB/SRPMM (OMF/IMF) follow the
+> same code text and share the engine but are not separately anchored to a
+> published example yet.
 
 ---
 
@@ -498,10 +643,12 @@ type (no solver run needed). All are geometry-only.
 |--------|---------|
 | `validation/rc_beam_verify.mjs` | Book Contoh 5-A/5-B (SMF, 350×600, f'c 30, fy 420): `As = 2224 mm²`, `Mpr = 552.9 kN·m`, `Ve = 234.03 kN`, `Aᵥ/s = 1417 mm²/m → D10@100`; β₁ clamps, As,min, φ-ramp endpoints, analytic zone extremes vs dense sampling (25 assertions). |
 | `validation/strain_compat_check.mts` | Strain-compat ≡ Whitney on the single-layer case; Mpr parity; compression steel; 2-layer bracketing; side-bar capacity gain; auto-overflow geometry (50 mm clear, centroid, corner placement); transverse spacing caps + Vs threshold (16 assertions). Run via `npx tsx --tsconfig config/tsconfig.json …`. |
-| `validation/rc_column_verify.mts` | Book Contoh 5-C (600×600, f'c 30, fy 420, 20D25): `Po = 13050 kN`, `φPn,max = 6786 kN`, balanced/tension-control/pure-moment/pure-tension coordinates (B −2594/856, C −1394/1068, D 0/855, E +3710), demand (−1435, 625) inside the φ curve, polygon cap edge, and column engine ≡ `phiMnBars` at pure bending (26 assertions). Run via tsx. |
+| `validation/rc_column_verify.mts` | Book Contoh 5-C (600×600, f'c 30, fy 420, 20D25): `Po = 13050 kN`, `φPn,max = 6786 kN`, balanced/tension-control/pure-moment/pure-tension coordinates (B −2594/856, C −1394/1068, D 0/855, E +3710), demand (−1435, 625) inside the φ curve, polygon cap edge, and column engine ≡ `phiMnBars` at pure bending (26 assertions). **Imports the `sni2847-19` module** (the book is an SMF/318-14 example). Run via tsx. |
+| `validation/rc_beam_aci31825.mts` | ACI 318-25 ↔ SNI deltas: `Vc` formula (a) with min stirrups vs **formula (c)** `0.66·λs·ρw^⅓·√f'c·bw·d` without (and ρw=0 fallback), `epsTC` = εty+0.003 vs fixed 0.005 (fy 420 ≈ book As; fy 550 → ACI φ < SNI φ in transition), `√f'c ≤ 8.3` cap (fc 80, both modules), and frame checks (SMF ρ=2.56% fails 18.6.3.1; ln<4d fails 18.6.2.1). Run via tsx with the **root** tsconfig. |
 
-Required-mode flexure and the SMF shear path are **byte-stable** against these
-anchors — changes to the strain-compat / checked path must keep them passing.
+Required-mode flexure and the SMF shear path are **byte-stable** against the book
+anchors (now bound to the `sni2847-19` module) — changes to the strain-compat /
+checked path must keep them passing.
 
 ---
 

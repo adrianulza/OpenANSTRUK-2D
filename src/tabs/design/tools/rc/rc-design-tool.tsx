@@ -9,6 +9,7 @@ import type { SectionId, StructureModel } from "@/lib/model"
 import { REBAR_SIZES, STIRRUP_SIZES, barDia, type RebarSize } from "@/lib/design/rc/shared/rebar"
 import {
   AGG_SIZE_MM,
+  buildBarLayout,
   maxBarsTwoLayers,
   maxSideBars,
 } from "@/lib/design/rc/shared/bar-geometry"
@@ -113,6 +114,28 @@ export function SectionDesignToolContent({
   // The user explicitly picks beam vs column. Legacy "auto" inputs fall back to beam.
   const effectiveType: "beam" | "column" =
     input?.elementType === "column" ? "column" : "beam"
+
+  // SMF beam dimensional limits (18.6.2.1), live. Lₙ = the SHORTEST node-to-node
+  // span among members using this section (governs 4d); [] for OMF/IMF or when no
+  // member references the section. d = bottom effective depth (checked) or h−d′.
+  const beamDimChecks = React.useMemo<ArrangementCheck[]>(() => {
+    if (!model || !sec || effectiveType !== "beam" || !input) return []
+    const lens = Object.values(model.members)
+      .filter((m) => m.section === selectedSectionId)
+      .map((m) => {
+        const na = model.nodes[m.a]
+        const nb = model.nodes[m.b]
+        return na && nb ? Math.hypot(nb.x - na.x, nb.y - na.y) * 1000 : Infinity
+      })
+      .filter((v) => Number.isFinite(v))
+    if (lens.length === 0) return []
+    const dEff =
+      input.mode === "checked"
+        ? buildBarLayout(b, h, input.cover, input.support).bottom.centroid
+        : h - input.dPrime
+    return code.checkBeamDimensions(b, h, dEff, Math.min(...lens), rc.frameType)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, sec, effectiveType, input, b, h, selectedSectionId, rc.frameType, rc.code])
 
   // Demand (P,M) markers + governing for the column advanced report: gather every
   // column member that uses this section from the last run.
@@ -221,6 +244,7 @@ export function SectionDesignToolContent({
                   Run Design Check to get required As (top/bottom) and stirrup Av/s per zone.
                 </p>
               </div>
+              {beamDimChecks.length > 0 && <DimensionChecksCard checks={beamDimChecks} />}
             </>
           ) : (
             <>
@@ -261,6 +285,8 @@ export function SectionDesignToolContent({
                   legs: rc.stirrupLegs,
                 })}
               />
+
+              {beamDimChecks.length > 0 && <DimensionChecksCard checks={beamDimChecks} />}
 
               {/* Advanced Capacity Report — pill + portal deck (checked mode only) */}
               <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
@@ -378,6 +404,34 @@ function DetailingChecksCard({
           {n}
         </p>
       ))}
+    </div>
+  )
+}
+
+/** SMF beam dimensional-limit checks (18.6.2.1), shown only for SMF beams that
+ *  are placed on at least one member. Lₙ is the shortest span using the section. */
+function DimensionChecksCard({ checks }: { checks: ArrangementCheck[] }) {
+  return (
+    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
+      <p className="text-[10px] font-semibold text-[#1a2f5e] leading-snug">
+        SMF Dimensional Limits
+      </p>
+      {checks.map((c, i) => {
+        const g = CHECK_GLYPH[c.status]
+        return (
+          <div key={i} className="flex items-start gap-1.5">
+            <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>
+              {g.glyph}
+            </span>
+            <p className="text-[10px] text-gray-600 leading-snug flex-1">
+              {c.text} <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
+            </p>
+          </div>
+        )
+      })}
+      <p className="text-[10px] text-gray-400 leading-snug pt-0.5">
+        Lₙ = shortest node-to-node span using this section (no column-face offset).
+      </p>
     </div>
   )
 }

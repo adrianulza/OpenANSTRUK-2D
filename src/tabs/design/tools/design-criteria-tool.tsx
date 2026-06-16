@@ -11,13 +11,21 @@ import type { RcCriteria } from "@/lib/design/rc/criteria"
 import { RC_CODE_LABELS, type RcCode } from "@/lib/design/rc/codes"
 
 /**
- * Framing-type labels — show both the ACI 318-25 (OMF/IMF/SMF) and the
- * SNI 2847:2019 (SRPMB/SRPMM/SRPMK) abbreviations together.
+ * Framing-type labels per code: SNI 2847:2019 uses SRPMB/SRPMM/SRPMK, ACI 318-25
+ * uses OMF/IMF/SMF (the engine `frameType` enum stays OMF|IMF|SMF internally).
  */
-const FRAME_TYPE_LABELS: Record<FrameType, string> = {
-  OMF: "OMF / SRPMB",
-  IMF: "IMF / SRPMM",
-  SMF: "SMF / SRPMK",
+const FRAME_TYPE_LABELS_ACI: Record<FrameType, string> = {
+  OMF: "Ordinary Moment Frame (OMF)",
+  IMF: "Intermediate Moment Frame (IMF)",
+  SMF: "Special Moment Frame (SMF)",
+}
+const FRAME_TYPE_LABELS_SNI: Record<FrameType, string> = {
+  OMF: "SRPMB (Biasa)",
+  IMF: "SRPMM (Menengah)",
+  SMF: "SRPMK (Khusus)",
+}
+function frameTypeLabels(code: RcCode): Record<FrameType, string> {
+  return code === "SNI2847-19" ? FRAME_TYPE_LABELS_SNI : FRAME_TYPE_LABELS_ACI
 }
 
 interface DesignCriteriaToolProps {
@@ -116,6 +124,11 @@ function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
             ))}
           </SelectContent>
         </Select>
+        <p className="text-[10px] text-gray-500 leading-snug">
+          {criteria.code === "ACI318-25"
+            ? "ACI 318-25: tension-controlled limit εty+0.003 and one-way-shear size effect λs (members without min. stirrups). Differs from SNI only for high-strength steel / deep unstirruped regions."
+            : "SNI 2847:2019 (adopted from ACI 318-14): fixed tension-controlled limit 0.005, no shear size effect (λs = 1)."}
+        </p>
       </div>
 
       {/* Frame type */}
@@ -129,7 +142,7 @@ function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
           <SelectContent>
             {FRAME_TYPES.map((f) => (
               <SelectItem key={f.id} value={f.id}>
-                {FRAME_TYPE_LABELS[f.id]}
+                {frameTypeLabels(criteria.code)[f.id]}
               </SelectItem>
             ))}
           </SelectContent>

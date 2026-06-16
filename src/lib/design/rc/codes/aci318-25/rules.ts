@@ -1,17 +1,40 @@
 /**
- * ACI 318-25 / SNI 2847:2019 — scalar code rules shared by the beam + column
- * strategies of this code. The numbers that distinguish one code edition from
- * another live here; beam.ts and column.ts read them.
+ * ACI 318-25 — scalar code rules shared by the beam + column strategies of this
+ * code. The numbers that distinguish one code edition from another live here;
+ * beam.ts and column.ts read them.
  *
- * NOTE: this is the v1.1.2 restructure baseline — byte-identical to the former
- * flat rc/ math. Edition-specific updates (true 318-25 vs 2847:2019 deltas) are
- * future work; the SNI copy currently mirrors this file exactly.
+ * Edition deltas vs SNI 2847:2019 (≡ ACI 318-14, see ../sni2847-19/rules.ts):
+ *   - `lambdaS(d)`  — one-way-shear size-effect factor (22.5.5.1.3). NOT in 318-14.
+ *   - `epsTC(cr)`   — tension-controlled strain limit εty+0.003 (Table 21.2.2),
+ *                     vs the fixed 0.005 used by 318-14.
+ *   - `sqrtFc(fc)`  — √f'c ≤ 8.3 MPa cap (22.5.3.1). Edition-stable, so the SNI
+ *                     copy carries it too; it only bites at f'c > 68.9 MPa.
  */
 
 import { minClearSpacing } from "../../shared/bar-geometry"
 
 export const EPS_CU = 0.003 // concrete crushing strain (22.2.2.1)
-export const EPS_T_MIN = 0.005 // tension-controlled limit strain for beams (9.3.3.1 / 21.2.2)
+export const EPS_T_MIN = 0.005 // legacy tension-controlled constant (kept for back-compat exports)
+
+/** √f'c with the 22.5.3.1 cap (√f'c ≤ 8.3 MPa ⇒ f'c ≤ 68.9 MPa) applied to all
+ *  shear/anchorage uses. Edition-stable — present since well before 318-14. */
+export function sqrtFc(fc: number): number {
+  return Math.sqrt(Math.min(fc, 8.3 * 8.3))
+}
+
+/** One-way-shear size-effect factor for members WITHOUT at least minimum shear
+ *  reinforcement (ACI 318-25 §22.5.5.1.3): λs = √(2/(1+d/250)) ≤ 1. Members with
+ *  ≥ Av,min keep λs = 1. ACI 318-14 / SNI 2847:2019 have no size effect (λs ≡ 1). */
+export function lambdaS(d: number): number {
+  return Math.min(1, Math.sqrt(2 / (1 + d / 250)))
+}
+
+/** Net tensile strain at the tension-controlled limit (ACI 318-25 Table 21.2.2):
+ *  εty + 0.003, where εty = fy/Es. Drives `cMax` (singly-reinforced ceiling) and
+ *  the φ ramp. ACI 318-14 / SNI 2847:2019 use a fixed 0.005 instead. */
+export function epsTC(cr: { fy: number; Es: number }): number {
+  return cr.fy / cr.Es + 0.003
+}
 
 /** Stress-block factor β₁ (22.2.2.4.3): 0.85 − 0.05(f'c−28)/7, clamped [0.65, 0.85]. */
 export function beta1(fc: number): number {

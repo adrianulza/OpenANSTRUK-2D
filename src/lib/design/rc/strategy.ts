@@ -223,23 +223,42 @@ function designZoneShear(
   input: RcSectionInput,
   arr: RebarArrangement,
   cr: RcCriteria,
+  /** Longitudinal tension steel for ρw in the ACI 318-25 no-stirrup Vc (formula
+   *  c). Checked = provided; required = required-flexure As. mm². */
+  tensionAs: number,
 ): ZoneShearResult {
   const code = getRcCode(cr.code)
   const d = Math.min(g.dPos, g.dNeg)
   const isEndZone = zoneId !== "midspan"
-  const VcFull = code.vc(cr.lambda, g.fc, g.b, d)
+  const Vdesign = Math.max(Vu, Ve ?? 0)
+
+  // Vc size-effect (ACI 318-25 §22.5.5.1.3) applies the formula-(c) penalty to
+  // members WITHOUT at least minimum shear reinforcement; SNI/318-14 ignores it.
+  // Checked mode reads the provided stirrup; required mode provides stirrups
+  // wherever Vu > ½φVc, so the penalty only ever affects low-shear regions that
+  // don't govern. ρw = the longitudinal tension reinforcement ratio.
+  const rhoW = d > 0 ? tensionAs / (g.b * d) : 0
+  const VcWithReinf = code.vc(cr.lambda, g.fc, g.b, d, true)
+  let hasMinShearReinf: boolean
+  if (input.mode === "checked") {
+    const avSprov = code.avSProvided(cr.stirrupLegs, arr.stirrup.size, arr.stirrup.spacing)
+    hasMinShearReinf = avSprov >= code.avMinPerS(g.fc, cr.fyt, g.b) * 1000 - 1e-9
+  } else {
+    hasMinShearReinf = Vdesign > 0.5 * cr.phiShear * VcWithReinf
+  }
+  const VcFull = code.vc(cr.lambda, g.fc, g.b, d, hasMinShearReinf, rhoW)
   // SMF: ignore concrete shear capacity in the hinge (end) zones — 18.6.5.2.
   const VcZone = cr.frameType === "SMF" && isEndZone ? 0 : VcFull
   const phiVc = cr.phiShear * VcZone
   const phiVmax = cr.phiShear * code.vMaxLimit(VcZone, g.fc, g.b, d)
-  const Vdesign = Math.max(Vu, Ve ?? 0)
   const crossSectionOk = Vdesign <= phiVmax
 
   // Required steel shear Vs = Vu/φ − Vc drives the 9.7.6.2.2 spacing tightening.
   const VsReq = Math.max(0, Vdesign / cr.phiShear - VcZone)
+  // 18.6.4.4(b) / 18.4.2.5(b): 6db / 8db of the SMALLEST primary flexural bar.
   const dbLong =
     input.mode === "checked"
-      ? Math.max(barDia(arr.top.size), barDia(arr.bottom.size))
+      ? Math.min(barDia(arr.top.size), barDia(arr.bottom.size))
       : barDia(REQUIRED_MAIN_BAR)
   const dbHoop = input.mode === "checked" ? barDia(arr.stirrup.size) : barDia(REQUIRED_STIRRUP_BAR)
   const sMaxGov = governingSpacingMax(cr, isEndZone, d, dbLong, dbHoop, VsReq, g.fc, g.b)
@@ -432,6 +451,10 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
   // Flexure per zone (support arrangement at end zones, midspan in between).
   const arrFor = (z: ZoneId): RebarArrangement => (z === "midspan" ? di.midspan : di.support)
   const geomFor = (z: ZoneId): MemberGeometry => geometryFor(bMm, hMm, fc, di, arrFor(z))
+
+  // SMF dimensional limits (18.6.2.1). Ln = node-to-node length (m → mm).
+  const code = getRcCode(cr.code)
+  const dimensionChecks = code.checkBeamDimensions(bMm, hMm, geomFor("midspan").dPos, L * 1000, cr.frameType)
   const flexure = {} as Record<ZoneId, ZoneFlexureResult>
   for (const z of ZONE_IDS) {
     const zd = demands.zones[z]
@@ -456,9 +479,20 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
     Ve = Math.max(Ve1, Ve2)
   }
 
+  // Longitudinal tension steel per zone → ρw for the ACI 318-25 no-stirrup Vc.
+  // Checked: the provided top/bottom steel; required: the required-flexure As.
+  const tensionAsFor = (z: ZoneId): number => {
+    if (di.mode === "checked") {
+      const gz = geomFor(z)
+      return Math.max(gz.AsTop, gz.AsBottom)
+    }
+    const fz = flexure[z]
+    return Math.max(fz.AsReqTop ?? 0, fz.AsReqBottom ?? 0)
+  }
+
   const shear = {} as Record<ZoneId, ZoneShearResult>
   for (const z of ZONE_IDS) {
-    shear[z] = designZoneShear(z, demands.zones[z].Vu, Ve, geomFor(z), di, arrFor(z), cr)
+    shear[z] = designZoneShear(z, demands.zones[z].Vu, Ve, geomFor(z), di, arrFor(z), cr, tensionAsFor(z))
   }
 
   // Aggregates for canvas colouring/labels.
@@ -482,6 +516,7 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
       midspan: { flexure: flexure["midspan"], shear: shear["midspan"] },
       "end-j": { flexure: flexure["end-j"], shear: shear["end-j"] },
     },
+    dimensionChecks,
     worstFlexureDC,
     worstShearPass,
     governing: {

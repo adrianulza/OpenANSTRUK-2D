@@ -29,7 +29,8 @@ export interface RcCriteria {
 
 export function defaultRcCriteria(): RcCriteria {
   return {
-    code: "ACI318-25",
+    // SNI 2847:2019 (≡ ACI 318-14) is the project's main/default code.
+    code: "SNI2847-19",
     frameType: "OMF",
     fy: 420,
     fyt: 420,
