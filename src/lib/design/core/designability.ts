@@ -31,7 +31,7 @@ export interface DesignSupportEntry {
  */
 export const DESIGN_SUPPORT: DesignSupportEntry[] = [
   { material: "rc", kind: "rect", beam: true, column: true, implemented: true },
-  { material: "rc", kind: "circle", beam: false, column: true, implemented: false },
+  { material: "rc", kind: "circle", beam: false, column: true, implemented: true },
   { material: "rc", kind: "tee", beam: true, column: false, implemented: false },
   { material: "steel", kind: "iwf", beam: true, column: true, implemented: false },
   { material: "steel", kind: "angle", beam: true, column: true, implemented: false },
@@ -55,12 +55,10 @@ function entryFor(material: DesignMaterial, kind: SectionShape): DesignSupportEn
 function hasValidGeometry(s: Section, material: DesignMaterial): boolean {
   const dims = s.shape?.dims ?? {}
   if (material === "rc") {
-    // Rect uses b×h; concrete needs f'c. (Circle/tee gain their own checks when implemented.)
-    return (
-      (s.strength?.fc ?? 0) > 0 &&
-      (dims.b ?? 0) > 0 &&
-      (dims.h ?? 0) > 0
-    )
+    // Concrete needs f'c. Rect uses b×h; circle uses the diameter d.
+    if ((s.strength?.fc ?? 0) <= 0) return false
+    if (s.shape?.kind === "circle") return (dims.d ?? 0) > 0
+    return (dims.b ?? 0) > 0 && (dims.h ?? 0) > 0
   }
   // Steel: needs a yield stress. Geometry validity per shape lands with the strategy.
   return (s.strength?.fy ?? 0) > 0

@@ -3,11 +3,14 @@ import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { COLOR_DESIGN_FAIL } from "@/lib/constants"
 import { buildColumnBarLayout, layoutToColumnBars } from "@/lib/design/rc/shared/column-grid"
+import { barDia } from "@/lib/design/rc/shared/rebar"
+import type { ColumnGeom } from "@/lib/design/rc/shared/types"
+import { isCircle } from "@/lib/design/rc/types"
 import { getRcCode } from "@/lib/design/rc/codes"
-import type { ColumnInteractionCurve } from "@/lib/design/rc/codes/aci318-25"
+import type { ColumnInteractionCurve, ColumnShearCapacity } from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { ColumnArrangement } from "@/lib/design/rc/types"
-import type { ColumnDesignResult, ColumnShearResult, JointCheckResult } from "@/lib/design/core/types"
+import type { ColumnDesignResult, JointCheckResult } from "@/lib/design/core/types"
 import type { ArrangementCheck } from "@/lib/design/rc/shared/types"
 import type { ColumnPointKey } from "@/lib/design/rc/codes/aci318-25"
 import { FONT, NAVY, LABEL, SubText } from "../chart-text"
@@ -76,11 +79,23 @@ export function ColumnAdvancedReportDeck({
     }
   }, [open])
 
+  const geom: ColumnGeom = isCircle(arrangement) ? { kind: "circle", D: h } : { kind: "rect", b, h }
+
   const curve = React.useMemo(() => {
-    const layout = buildColumnBarLayout(b, h, cover, arrangement)
+    const layout = buildColumnBarLayout(geom, cover, arrangement)
     return getRcCode(criteria.code).buildInteractionCurve(
-      layoutToColumnBars(layout), b, h, fc, criteria, arrangement.confinement === "spiral",
+      layoutToColumnBars(layout), geom, fc, criteria, arrangement.confinement === "spiral",
     )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [b, h, cover, arrangement, fc, criteria])
+
+  // Live shear capacity track — section + tie + criteria only (no Run Design).
+  const shearCap = React.useMemo(() => {
+    const layout = buildColumnBarLayout(geom, cover, arrangement)
+    return getRcCode(criteria.code).columnShearCapacity(
+      layoutToColumnBars(layout), geom, fc, criteria, arrangement.tie, barDia(arrangement.size),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [b, h, cover, arrangement, fc, criteria])
 
   if (!open || typeof document === "undefined" || !pos) return null
@@ -108,7 +123,7 @@ export function ColumnAdvancedReportDeck({
 
         <CoordinateTable curve={curve} />
         <SummaryCard curve={curve} rhoG={rhoG} governing={governing} b={b} h={h} />
-        {result && <ShearStabilityCard result={result} joint={joint} />}
+        <ShearStabilityCard cap={shearCap} result={result} joint={joint} />
       </div>
     </div>
   )
@@ -508,30 +523,48 @@ const CHECK_GLYPH: Record<ArrangementCheck["status"], { glyph: string; cls: stri
   fail: { glyph: "✗", cls: "text-red-500" },
 }
 
-/** Horizontal shear capacity-utilization bar: φVn capacity track with the demand
- *  Vdesign marker, plus φVc and φVmax ticks. Same true-pixel SVG idiom as the
- *  interaction chart. */
-function ShearBar({ s }: { s: ColumnShearResult }) {
-  const W = 520, H = 40, PAD_L = 4, PAD_R = 4, barY = 8, barH = 12
+/** Horizontal shear capacity-utilization bar: φVn capacity track (live, from the
+ *  section + tie) with φVc and φVmax ticks. When a design run exists, the demand
+ *  Vdesign marker is overlaid. Same true-pixel SVG idiom as the interaction chart. */
+function ShearBar({ cap, demand }: {
+  cap: ColumnShearCapacity
+  demand?: { Vdesign: number; dc?: number; phiVmax: number }
+}) {
+  const W = 520, H = 60, PAD_L = 4, PAD_R = 4, barY = 24, barH = 14
   const plotW = W - PAD_L - PAD_R
-  const cap = s.phiVn ?? s.phiVc // checked has φVn; required falls back to φVc
-  const scaleMax = Math.max(s.phiVmax, s.Vdesign, cap) * 1.1 || 1
+  // After a run, φVc/φVmax may differ (axial benefit, hinge zeroing) → prefer the
+  // demand-side ceiling for scaling so the marker stays on-axis.
+  const phiVmax = demand?.phiVmax ?? cap.phiVmax
+  const scaleMax = Math.max(phiVmax, demand?.Vdesign ?? 0, cap.phiVn) * 1.12 || 1
   const x = (v: number) => PAD_L + (Math.max(0, v) / scaleMax) * plotW
-  const over = s.dc !== undefined ? s.dc > 1 : s.Vdesign > s.phiVmax
+  const clampX = (v: number) => Math.min(W - PAD_R, Math.max(PAD_L, v))
+  const over = demand ? (demand.dc !== undefined ? demand.dc > 1 : demand.Vdesign > phiVmax) : false
+  const xVc = x(cap.phiVc), xVn = x(cap.phiVn), xMax = x(phiVmax)
   return (
     <svg width={W} height={H} className="block w-full h-auto" viewBox={`0 0 ${W} ${H}`}>
+      {/* capacity labels (above bar) */}
+      <SubText x={clampX((PAD_L + xVc) / 2)} y={14} main={`φVc ${Math.round(cap.phiVc)}`} fill={LABEL} anchor="middle" />
+      <SubText x={clampX(xVn)} y={14} main={`φVn ${Math.round(cap.phiVn)}`} fill={NAVY} anchor="middle" />
+      <SubText x={clampX(xMax - 2)} y={14} main={`φVmax ${Math.round(phiVmax)}`} fill={GRAY} anchor="end" />
+
       {/* track */}
       <rect x={PAD_L} y={barY} width={plotW} height={barH} rx={2} fill="#e5e7eb" />
       {/* φVc (concrete) */}
-      <rect x={PAD_L} y={barY} width={x(s.phiVc) - PAD_L} height={barH} rx={2} fill="#1a2f5e22" />
-      {/* φVn capacity */}
-      <rect x={PAD_L} y={barY} width={x(cap) - PAD_L} height={barH} rx={2} fill="none" stroke={NAVY} strokeWidth={1.2} />
+      <rect x={PAD_L} y={barY} width={xVc - PAD_L} height={barH} rx={2} fill="#1a2f5e22" />
+      {/* φVs (steel) — hatched extension from φVc to φVn */}
+      <rect x={xVc} y={barY} width={Math.max(0, xVn - xVc)} height={barH} fill="#1a2f5e10" />
+      {/* φVn capacity outline */}
+      <rect x={PAD_L} y={barY} width={xVn - PAD_L} height={barH} rx={2} fill="none" stroke={NAVY} strokeWidth={1.2} />
       {/* φVmax ceiling tick */}
-      <line x1={x(s.phiVmax)} y1={barY - 2} x2={x(s.phiVmax)} y2={barY + barH + 2} stroke={GRAY} strokeWidth={1} strokeDasharray="2 2" />
-      {/* demand marker */}
-      <line x1={x(s.Vdesign)} y1={barY - 3} x2={x(s.Vdesign)} y2={barY + barH + 3} stroke={over ? COLOR_DESIGN_FAIL : "#16a34a"} strokeWidth={1.6} />
-      <SubText x={x(s.Vdesign)} y={H - 2} main={`Vd ${Math.round(s.Vdesign)}`} fill={over ? COLOR_DESIGN_FAIL : NAVY} anchor="middle" />
-      <SubText x={x(s.phiVc)} y={barY - 3} main={`φVc ${Math.round(s.phiVc)}`} fill={LABEL} anchor="middle" />
+      <line x1={xMax} y1={barY - 3} x2={xMax} y2={barY + barH + 3} stroke={GRAY} strokeWidth={1} strokeDasharray="2 2" />
+
+      {/* demand marker (only after a run) */}
+      {demand && (
+        <>
+          <line x1={x(demand.Vdesign)} y1={barY - 4} x2={x(demand.Vdesign)} y2={barY + barH + 4} stroke={over ? COLOR_DESIGN_FAIL : "#16a34a"} strokeWidth={1.6} />
+          <SubText x={clampX(x(demand.Vdesign))} y={H - 3} main={`Vdesign ${Math.round(demand.Vdesign)}`} fill={over ? COLOR_DESIGN_FAIL : "#16a34a"} anchor="middle" />
+        </>
+      )}
     </svg>
   )
 }
@@ -561,18 +594,49 @@ function ScwbSketch({ joint }: { joint: JointCheckResult }) {
   )
 }
 
-/** Capacity-design shear, confinement detailing, slenderness δns and SCWB from
- *  the governing column member of this section's last design run. */
-function ShearStabilityCard({ result, joint }: { result: ColumnDesignResult; joint?: JointCheckResult }) {
+/** Live shear capacity track (section + tie + criteria, no run) with — when a
+ *  design run exists — the demand overlay (Ve/Vu/D/C), confinement detailing,
+ *  slenderness δns and SCWB from the governing column member. */
+function ShearStabilityCard({ cap, result, joint }: {
+  cap: ColumnShearCapacity
+  result?: ColumnDesignResult
+  joint?: JointCheckResult
+}) {
   const fmt1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "—")
-  const s = result.shear
+  const s = result?.shear
+  const demand = s
+    ? { Vdesign: s.Vdesign, dc: s.dc, phiVmax: s.phiVmax }
+    : undefined
   return (
     <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
       <p className="text-[10px] font-semibold text-[#1a2f5e]">Shear · Confinement · Stability</p>
 
-      {s && (
-        <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
-          <ShearBar s={s} />
+      {/* Capacity track — always live */}
+      <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
+        <ShearBar cap={cap} demand={demand} />
+        <p>
+          V<sub>c</sub> = {fmt1(cap.Vc)} kN · V<sub>s</sub> = {fmt1(cap.Vs)} kN
+          {" → "}φV<sub>n</sub> = {fmt1(cap.phiVn)} kN
+          <span className="text-gray-400"> (φV<sub>c</sub> {fmt1(cap.phiVc)} · φV<sub>max</sub> {fmt1(cap.phiVmax)})</span>
+        </p>
+        <p>
+          A<sub>v</sub>/s = {fmt1(cap.avS)} mm²/m{" "}
+          <span className={cap.avSPass ? "text-green-600" : "text-amber-600"}>
+            {cap.avSPass ? "≥" : "<"} A<sub>v,min</sub>/s {fmt1(cap.avSMin)}
+          </span>
+        </p>
+        <p>
+          tie spacing s = {fmt1(cap.spacing)} mm{" "}
+          <span className={cap.spacingPass ? "text-green-600" : "text-red-600"}>
+            {cap.spacingPass ? "≤" : ">"} s<sub>max</sub> {fmt1(cap.spacingMax)} mm
+          </span>
+          <span className="text-gray-400"> (d = {fmt1(cap.d)} mm)</span>
+        </p>
+      </div>
+
+      {/* Demand overlay — after Run Design */}
+      {s ? (
+        <div className="font-mono text-[10px] text-gray-700 space-y-0.5 pt-0.5 border-t border-gray-200">
           <p>
             V<sub>u</sub> = {fmt1(s.Vu)} kN
             {s.Ve !== undefined && <> · V<sub>e</sub> = {fmt1(s.Ve)} kN</>}
@@ -592,9 +656,13 @@ function ShearStabilityCard({ result, joint }: { result: ColumnDesignResult; joi
             </p>
           )}
         </div>
+      ) : (
+        <p className="font-mono text-[10px] text-gray-400">
+          Run Design for the demand shear (V<sub>e</sub>/V<sub>u</sub>), axial-enhanced φV<sub>c</sub>, and D/C.
+        </p>
       )}
 
-      {result.confinement && result.confinement.length > 0 && (
+      {result?.confinement && result.confinement.length > 0 && (
         <div className="space-y-0.5 pt-0.5 border-t border-gray-200">
           {result.confinement.map((c, i) => {
             const g = CHECK_GLYPH[c.status]
@@ -610,23 +678,25 @@ function ShearStabilityCard({ result, joint }: { result: ColumnDesignResult; joi
         </div>
       )}
 
-      <div className="font-mono text-[10px] text-gray-700 pt-0.5 border-t border-gray-200 space-y-0.5">
-        {result.deltaNs !== undefined && (
-          <p>
-            slenderness k·l<sub>u</sub>/r = {fmt1(result.slenderness ?? 0)} · δ<sub>ns</sub> = {(result.deltaNs).toFixed(3)}
-            {result.deltaNs > 1.001 && <span className="text-amber-600"> (magnified)</span>}
-          </p>
-        )}
-        {joint ? (
-          <ScwbSketch joint={joint} />
-        ) : (
-          result.scwbPass !== undefined && (
-            <p className={result.scwbPass ? "text-gray-700" : "text-red-600"}>
-              strong-column-weak-beam: {result.scwbPass ? "OK" : "FAILS"} (18.7.3.2)
+      {result && (result.deltaNs !== undefined || joint || result.scwbPass !== undefined) && (
+        <div className="font-mono text-[10px] text-gray-700 pt-0.5 border-t border-gray-200 space-y-0.5">
+          {result.deltaNs !== undefined && (
+            <p>
+              slenderness k·l<sub>u</sub>/r = {fmt1(result.slenderness ?? 0)} · δ<sub>ns</sub> = {(result.deltaNs).toFixed(3)}
+              {result.deltaNs > 1.001 && <span className="text-amber-600"> (magnified)</span>}
             </p>
-          )
-        )}
-      </div>
+          )}
+          {joint ? (
+            <ScwbSketch joint={joint} />
+          ) : (
+            result.scwbPass !== undefined && (
+              <p className={result.scwbPass ? "text-gray-700" : "text-red-600"}>
+                strong-column-weak-beam: {result.scwbPass ? "OK" : "FAILS"} (18.7.3.2)
+              </p>
+            )
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -20,19 +20,38 @@ export interface RebarArrangement {
   stirrup: { size: RebarSize; spacing: number /* mm */ }
 }
 
-/** Column longitudinal bars on an nx × ny perimeter grid (corners shared):
- *  total = 2·nx + 2·ny − 4. */
-export interface ColumnArrangement {
+interface ColumnArrangementBase {
+  size: RebarSize
+  /** Transverse reinforcement type. Tied caps Pn,max at 0.80·Po, φc 0.65; spiral
+   *  caps at 0.85·Po, φc 0.75 (22.4.2.1 / 21.2.2). Spiral is only valid on a
+   *  circular section; rectangular columns are tied-only. */
+  confinement?: "tied" | "spiral"
+  /** Tie/hoop (or, when spiral, the spiral bar + pitch). */
+  tie: { size: RebarSize; spacing: number /* mm */ }
+}
+
+/** Rectangular column: longitudinal bars on an nx × ny perimeter grid (corners
+ *  shared): total = 2·nx + 2·ny − 4. */
+export interface RectColumnArrangement extends ColumnArrangementBase {
+  shape?: "rect"
   /** Bars along the width (top & bottom rows). */
   nx: number
   /** Bars along the height, including the corner rows. */
   ny: number
-  size: RebarSize
-  /** Transverse reinforcement type. Tied (default) caps Pn,max at 0.80·Po, φc 0.65;
-   *  spiral caps at 0.85·Po, φc 0.75 (22.4.2.1 / 21.2.2). */
-  confinement?: "tied" | "spiral"
-  /** Tie/hoop (or, when spiral, the spiral bar + pitch). */
-  tie: { size: RebarSize; spacing: number /* mm */ }
+}
+
+/** Circular column: `n` longitudinal bars on a single circumferential ring. */
+export interface CircleColumnArrangement extends ColumnArrangementBase {
+  shape: "circle"
+  /** Total bars on the ring. */
+  n: number
+}
+
+export type ColumnArrangement = RectColumnArrangement | CircleColumnArrangement
+
+/** Narrow a ColumnArrangement to its circular variant. */
+export function isCircle(arr: ColumnArrangement): arr is CircleColumnArrangement {
+  return arr.shape === "circle"
 }
 
 export interface ColumnDesignInput {
@@ -70,7 +89,11 @@ function defaultArrangement(): RebarArrangement {
 }
 
 function defaultColumnArrangement(): ColumnArrangement {
-  return { nx: 3, ny: 3, size: "D19", confinement: "tied", tie: { size: "D10", spacing: 100 } }
+  return { shape: "rect", nx: 3, ny: 3, size: "D19", confinement: "tied", tie: { size: "D10", spacing: 100 } }
+}
+
+export function defaultCircleColumnArrangement(): CircleColumnArrangement {
+  return { shape: "circle", n: 8, size: "D19", confinement: "spiral", tie: { size: "D10", spacing: 75 } }
 }
 
 export function defaultRcSectionInput(sectionId: SectionId): RcSectionInput {
