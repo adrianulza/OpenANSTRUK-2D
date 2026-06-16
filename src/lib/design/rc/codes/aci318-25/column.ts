@@ -27,10 +27,10 @@ import type { RcCriteria } from "../../criteria"
 import {
   beta1,
   EPS_CU,
-  EPS_T_MIN,
   RHO_G_MIN,
   RHO_G_MAX,
   minColumnClearSpacing,
+  epsTC,
 } from "./rules"
 
 export type { ColumnBar }
@@ -172,10 +172,10 @@ function sectionForcesAtC(
   return { axialCompPos: axial, Mn_Nmm: moment, epsT, c, a }
 }
 
-/** φ ramp 0.65 → 0.9 over εty → 0.005 (21.2.2). */
+/** φ ramp 0.65 → 0.9 over εty → εty+0.003 (21.2.2 / Table 21.2.2, 318-25). */
 function phiFor(epsT: number, cr: RcCriteria): number {
   const epsTy = cr.fy / cr.Es
-  const t = (epsT - epsTy) / (EPS_T_MIN - epsTy)
+  const t = (epsT - epsTy) / (epsTC(cr) - epsTy)
   return Math.min(
     cr.phiTension,
     Math.max(cr.phiCompression, cr.phiCompression + (cr.phiTension - cr.phiCompression) * t),
@@ -258,7 +258,7 @@ function sideControlPoints(
   const cFs0 = dt // fs = 0 at the extreme tension bar
   const cFs05 = (EPS_CU * dt) / (EPS_CU + 0.5 * epsY)
   const cBal = (EPS_CU * dt) / (EPS_CU + epsY) // εs = εy
-  const cTC = (EPS_CU * dt) / (EPS_CU + EPS_T_MIN) // εt = 0.005
+  const cTC = (EPS_CU * dt) / (EPS_CU + epsTC(cr)) // εt = εty+0.003 (318-25)
   const cPure = pureMomentC(bars, b, h, fc, cr)
   const cAllow = capCrossC(bars, b, h, fc, cr, caps)
   const at = (c: number) => pointAtC(bars, b, h, fc, cr, c, sign, caps)

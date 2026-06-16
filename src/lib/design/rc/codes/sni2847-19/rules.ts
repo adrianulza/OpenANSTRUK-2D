@@ -1,17 +1,23 @@
 /**
- * ACI 318-25 / SNI 2847:2019 — scalar code rules shared by the beam + column
- * strategies of this code. The numbers that distinguish one code edition from
- * another live here; beam.ts and column.ts read them.
+ * SNI 2847:2019 — scalar code rules. SNI 2847:2019 was adopted from ACI 318-14,
+ * so this module is the 318-14 baseline: a FIXED tension-controlled limit of
+ * 0.005 and NO one-way-shear size effect (λs ≡ 1). The ACI 318-25 sibling
+ * (../aci318-25/rules.ts) diverges via `epsTC(cr)` and `lambdaS(d)`.
  *
- * NOTE: this is the v1.1.2 restructure baseline — byte-identical to the former
- * flat rc/ math. Edition-specific updates (true 318-25 vs 2847:2019 deltas) are
- * future work; the SNI copy currently mirrors this file exactly.
+ * The only edition-stable refinement carried here is `sqrtFc` (the √f'c ≤ 8.3 MPa
+ * cap of 22.5.3.1) — it only changes results at f'c > 68.9 MPa, so it is a no-op
+ * on the validated book examples.
  */
 
 import { minClearSpacing } from "../../shared/bar-geometry"
 
 export const EPS_CU = 0.003 // concrete crushing strain (22.2.2.1)
-export const EPS_T_MIN = 0.005 // tension-controlled limit strain for beams (9.3.3.1 / 21.2.2)
+export const EPS_T_MIN = 0.005 // tension-controlled limit strain (fixed, 318-14 / SNI)
+
+/** √f'c with the 22.5.3.1 cap (√f'c ≤ 8.3 MPa ⇒ f'c ≤ 68.9 MPa). Edition-stable. */
+export function sqrtFc(fc: number): number {
+  return Math.sqrt(Math.min(fc, 8.3 * 8.3))
+}
 
 /** Stress-block factor β₁ (22.2.2.4.3): 0.85 − 0.05(f'c−28)/7, clamped [0.65, 0.85]. */
 export function beta1(fc: number): number {

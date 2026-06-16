@@ -21,7 +21,7 @@ import type { ArrangementCheck, TransverseChecks } from "../../shared/types"
 import type { FrameType } from "../../../core/types"
 import type { RcCriteria } from "../../criteria"
 import type { RebarArrangement } from "../../types"
-import { beta1, EPS_CU, EPS_T_MIN, asMin, maxCrackSpacing } from "./rules"
+import { beta1, EPS_CU, asMin, maxCrackSpacing, sqrtFc, lambdaS, epsTC } from "./rules"
 
 // ── Flexure ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ export function requiredAs(
     return { As: floor, AsPrime: 0, doublyReinforced: false, adequate: true }
   }
 
-  const cMax = (EPS_CU / (EPS_CU + EPS_T_MIN)) * d // Pers. 5-5
+  const cMax = (EPS_CU / (EPS_CU + epsTC(cr))) * d // Pers. 5-5 (εt = εty+0.003, 318-25)
   const aMax = beta1(fc) * cMax // Pers. 5-4
 
   const disc = d * d - (2 * Mu) / (phi * 0.85 * fc * b)
@@ -182,7 +182,7 @@ export function phiMnProvided(
   const epsT = EPS_CU * ((d - c) / c)
 
   const epsTy = cr.fy / Es
-  const t = (epsT - epsTy) / (EPS_T_MIN - epsTy)
+  const t = (epsT - epsTy) / (epsTC(cr) - epsTy)
   const phi = Math.min(
     cr.phiTension,
     Math.max(cr.phiCompression, cr.phiCompression + (cr.phiTension - cr.phiCompression) * t),
@@ -261,7 +261,7 @@ export function phiMnBars(
 
   const epsT = EPS_CU * ((dt - c) / c)
   const epsTy = cr.fy / Es
-  const t = (epsT - epsTy) / (EPS_T_MIN - epsTy)
+  const t = (epsT - epsTy) / (epsTC(cr) - epsTy)
   const phi = Math.min(
     cr.phiTension,
     Math.max(cr.phiCompression, cr.phiCompression + (cr.phiTension - cr.phiCompression) * t),
@@ -272,19 +272,42 @@ export function phiMnBars(
 
 // ── Shear ────────────────────────────────────────────────────────────────────
 
-/** Concrete shear capacity Vc = 0.17·λ·√f'c·bw·d (22.5.5.1). kN */
-export function vc(lambda: number, fc: number, bw: number, d: number): number {
-  return (0.17 * lambda * Math.sqrt(fc) * bw * d) / 1e3
+/**
+ * Concrete one-way shear capacity Vc per Table 22.5.5.1 (ACI 318-25). kN
+ *
+ * - Member **with** ≥ Av,min (`hasMinShearReinf = true`): formula (a),
+ *   `Vc = 0.17·λ·√f'c·bw·d` (no size effect). The optional formula (b)
+ *   `0.66·λ·ρw^⅓·√f'c·bw·d` taken as max(a,b) is not used — conservative.
+ * - Member **without** min stirrups: formula (c),
+ *   `Vc = 0.66·λs·λ·ρw^(1/3)·√f'c·bw·d`, with the size-effect factor
+ *   λs = √(2/(1+d/250)) ≤ 1 (22.5.5.1.3) and ρw = the longitudinal tension
+ *   reinforcement ratio. Callers always pass ρw > 0; ρw = 0 falls back to (a).
+ *
+ * The axial term Nu/(6Ag) of Table 22.5.5.1 is omitted (beams are axial-gated,
+ * Pu < 0.1f'c·Ag). The SNI (318-14) copy ignores both flags — no size effect.
+ */
+export function vc(
+  lambda: number,
+  fc: number,
+  bw: number,
+  d: number,
+  hasMinShearReinf = true,
+  rhoW = 0,
+): number {
+  if (!hasMinShearReinf && rhoW > 0) {
+    return (0.66 * lambdaS(d) * lambda * Math.cbrt(rhoW) * sqrtFc(fc) * bw * d) / 1e3
+  }
+  return (0.17 * lambda * sqrtFc(fc) * bw * d) / 1e3
 }
 
 /** Cross-section ceiling Vc + 0.66√f'c·bw·d (22.5.1.2). kN */
 export function vMaxLimit(vcVal: number, fc: number, bw: number, d: number): number {
-  return vcVal + (0.66 * Math.sqrt(fc) * bw * d) / 1e3
+  return vcVal + (0.66 * sqrtFc(fc) * bw * d) / 1e3
 }
 
 /** Minimum stirrups Av,min/s = max(0.062√f'c, 0.35)·bw/fyt (9.6.3.4). mm²/mm */
 export function avMinPerS(fc: number, fyt: number, bw: number): number {
-  return (Math.max(0.062 * Math.sqrt(fc), 0.35) * bw) / fyt
+  return (Math.max(0.062 * sqrtFc(fc), 0.35) * bw) / fyt
 }
 
 /**
@@ -335,7 +358,7 @@ export function imfEndZoneSpacingMax(d: number, dbLong: number, dbHoop: number):
 /** Vs threshold of 9.7.6.2.2: 0.33·√f'c·bw·d. Above it, the general max spacing
  *  halves (d/2→d/4, 600→300). Also the practical upper bound on Vs design. kN */
 export function vsSpacingThreshold(fc: number, bw: number, d: number): number {
-  return (0.33 * Math.sqrt(fc) * bw * d) / 1e3
+  return (0.33 * sqrtFc(fc) * bw * d) / 1e3
 }
 
 /** General stirrup spacing cap (9.7.6.2.2): min(d/2, 600), tightening to
@@ -417,12 +440,24 @@ export function checkArrangement(
     clause: "20.6.1.3.1",
   })
 
-  // SMF beams: at least 2 continuous bars top and bottom.
+  // SMF beams: at least 2 continuous bars top and bottom, and ρ ≤ 0.025 each face.
   if (opts.frameType === "SMF") {
     const ok = arr.top.count >= 2 && arr.bottom.count >= 2
     checks.push({
       status: ok ? "pass" : "fail",
       text: ok ? "≥ 2 continuous bars top and bottom" : "SMF requires ≥ 2 bars top and bottom",
+      clause: "18.6.3.1",
+    })
+    // ρ = As/(bw·d) per face ≤ 0.025 (18.6.3.1). Bottom uses d to the bottom group,
+    // top uses d to the top group (measured from the opposite fibre).
+    const dBot = layout.bottom.centroid
+    const dTop = h - layout.top.centroid
+    const rhoBot = dBot > 0 ? (arr.bottom.count * barArea(arr.bottom.size)) / (b * dBot) : 0
+    const rhoTop = dTop > 0 ? (arr.top.count * barArea(arr.top.size)) / (b * dTop) : 0
+    const rhoMax = Math.max(rhoBot, rhoTop)
+    checks.push({
+      status: rhoMax <= 0.025 + 1e-9 ? "pass" : "fail",
+      text: `ρ = ${(rhoMax * 100).toFixed(2)}% ${rhoMax <= 0.025 ? "≤" : ">"} 2.5% maximum`,
       clause: "18.6.3.1",
     })
   }
@@ -455,6 +490,37 @@ export function checkArrangement(
   return checks
 }
 
+// ── Detailing checks (dimensional) ────────────────────────────────────────────
+
+/**
+ * SMF beam dimensional limits (18.6.2.1): clear span Lₙ ≥ 4d and web width
+ * bw ≥ min(0.3h, 250 mm). Returns [] for OMF/IMF (no dimensional gate). Lₙ is
+ * the node-to-node length (no column-face offset — documented limitation), in mm.
+ */
+export function checkBeamDimensions(
+  b: number,
+  h: number,
+  d: number,
+  Ln: number,
+  frameType: FrameType,
+): ArrangementCheck[] {
+  if (frameType !== "SMF") return []
+  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(0))
+  const bwMin = Math.min(0.3 * h, 250)
+  return [
+    {
+      status: Ln >= 4 * d - 1e-6 ? "pass" : "fail",
+      text: `Clear span Lₙ ${f(Ln)} mm ${Ln >= 4 * d ? "≥" : "<"} 4d = ${f(4 * d)} mm`,
+      clause: "18.6.2.1",
+    },
+    {
+      status: b >= bwMin - 1e-9 ? "pass" : "fail",
+      text: `Web width bw ${f(b)} mm ${b >= bwMin ? "≥" : "<"} min(0.3h, 250) = ${f(bwMin)} mm`,
+      clause: "18.6.2.1",
+    },
+  ]
+}
+
 // ── Detailing checks (transverse) ─────────────────────────────────────────────
 
 /**
@@ -483,7 +549,8 @@ export function checkTransverse(
   const layout = buildBarLayout(b, h, cover, arr)
   const d = layout.bottom.centroid // depth to bottom tension steel (22.5)
   const dbS = barDia(arr.stirrup.size)
-  const dbLong = Math.max(barDia(arr.top.size), barDia(arr.bottom.size))
+  // 18.6.4.4(b) / 18.4.2.5(b): 6db / 8db of the SMALLEST primary flexural bar.
+  const dbLong = Math.min(barDia(arr.top.size), barDia(arr.bottom.size))
   const s = arr.stirrup.spacing
   const checks: ArrangementCheck[] = []
   const notes: string[] = []
@@ -537,13 +604,16 @@ export function checkTransverse(
     })
   }
 
-  // Placement notes (not modelled along the span).
+  // Confined hoop region — the end zone is modelled as 2h from the face, which
+  // is exactly the IMF/SMF confinement length (18.6.4.1 / 18.4.2.4).
   if (frameType !== "OMF" && isEnd) {
-    notes.push(
-      `First hoop ≤ 50 mm from the support face; provide hoops over 2h (${
-        frameType === "SMF" ? "18.6.4.1" : "18.4.2.4"
-      }).`,
-    )
+    checks.push({
+      status: "pass",
+      text: "Confined hoop region = 2h from face (modelled as the support zone)",
+      clause: frameType === "SMF" ? "18.6.4.1" : "18.4.2.4",
+    })
+    // First-hoop position isn't modelled along the span — advisory only.
+    notes.push(`First hoop ≤ 50 mm from the support face (${frameType === "SMF" ? "18.6.4.1" : "18.4.2.4"}).`)
   }
 
   return { checks, notes }

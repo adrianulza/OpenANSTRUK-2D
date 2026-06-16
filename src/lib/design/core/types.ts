@@ -14,6 +14,7 @@
 
 import type { MemberId } from "@/lib/model"
 import type { LoadComboId } from "@/lib/load-cases"
+import type { ArrangementCheck } from "../rc/shared/types"
 
 // ── Material family ───────────────────────────────────────────────────────────
 
@@ -135,6 +136,8 @@ export interface MemberDesignResult {
   /** Governing axial compression, kN (positive = compression). */
   Pu?: number
   zones?: Record<ZoneId, { flexure: ZoneFlexureResult; shear: ZoneShearResult }>
+  /** SMF beam dimensional-limit checks (18.6.2.1); [] for OMF/IMF. */
+  dimensionChecks?: ArrangementCheck[]
   /** Column interaction result (when kind === "column"). */
   column?: ColumnDesignResult
   /** Worst flexural D/C across zones (beam) or interaction D/C (column) — drives

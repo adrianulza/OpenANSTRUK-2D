@@ -2,8 +2,11 @@
  * RC code registry. Maps a `RcCode` id to its code module (beam + column +
  * report math). The strategy and UI resolve the active module via `getRcCode`
  * and call the same named functions regardless of which code is selected — the
- * two modules expose an identical surface (the v1.1.2 restructure ships them
- * byte-identical; edition-specific divergence is future work).
+ * two modules expose an identical surface but now DIVERGE in their math:
+ *   - sni2847-19 = the ACI 318-14 baseline (fixed εt = 0.005, no shear size effect).
+ *   - aci318-25  = adds εty+0.003 tension-controlled limit (Table 21.2.2) and the
+ *                  one-way-shear size-effect factor λs (22.5.5.1.3).
+ * Frame-type detailing (OMF/IMF/SMF) is edition-stable and identical in both.
  */
 
 import * as aci318_25 from "./aci318-25"
@@ -25,5 +28,6 @@ export const RC_CODE_LABELS: Record<RcCode, string> = {
 }
 
 export function getRcCode(code: RcCode): RcCodeModule {
-  return RC_CODES[code] ?? aci318_25
+  // SNI 2847:2019 is the main code → it is the fallback for an unknown id.
+  return RC_CODES[code] ?? sni2847_19
 }
