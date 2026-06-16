@@ -6,6 +6,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.2] — 2026-06-16
+
+**Material-strategy + per-code restructure, real ACI 318-25 ↔ SNI 2847:2019 differentiation, full RC column design, and design-output UI.** The design engine is split along two axes — **material** (RC / Steel) and, within RC, **code edition** — the two RC code modules now genuinely **diverge** (they were byte-identical), and the column path is completed from capacity-only to a full design: **capacity-design shear, transverse confinement, strong-column-weak-beam, non-sway slenderness, and spiral columns**. Every new column check is surfaced on the canvas, in the Advanced Report, and (newly) in required mode. **SNI 2847:2019 (≡ ACI 318-14) is now the default code.** Engine math for the validated beam/column capacity anchors is byte-stable; this is additive.
+
+### Added — engine
+- **`columnFlexuralStrengthAtP`** (`rc/codes/<code>/column.ts`) — bisects the neutral axis so `Pn(c) = Pu`, returning the flexural strength at the acting axial (Mn at 1.0fy / Mpr at 1.25fy). Feeds capacity-design shear + SCWB.
+- **`columnShearVc`** — column one-way Vc with the axial-benefit form `0.17(1+Nu/14Ag)λ√f'c·bw·d` (22.5.6.1). ACI 318-25 applies the size-effect λs when there are no minimum ties; SNI keeps λs = 1.
+- **`designColumnShear`** (`rc/strategy.ts`) — Ve = 2·M/lu (IMF: Mn 18.4.3.1 / SMF: Mpr 18.7.6.1), Vc = 0 in the SMF hinge zone when `Pu < Ag·f'c/20` (18.7.6.2.1); reuses the beam shear helpers (`vMaxLimit`, `avSRequired`, `phiVnProvided`, `suggestStirrup`, spacing caps).
+- **`columnConfinement`** — frame-typed transverse detailing: SRPMB ties (25.7.2.3), SRPMM hoops over lo (18.4.3.2), SRPMK lo (18.7.5.1) + hx ≤ 350 (18.7.5.2) + so (18.7.5.3) + rectilinear `Ash/(s·bc)` (18.7.5.4). Spiral → the ρs requirement (25.7.3.3). **Code delta:** ACI 318-25 adds the third Ash equation `0.2·kf·kn·Pu/(fyt·Ach)`; SNI keeps the two-equation table.
+- **`slendernessMagnifier`** — braced (k = 1.0) in-plane non-sway δns (6.6.4), gated by `k·lu/r ≤ 34 − 12(M1/M2) ≤ 40` (6.2.5); EI = 0.4·Ec·Ig, Pc = π²EI/(k·lu)², Cm = max(0.4, 0.6 − 0.4·M1/M2). Applied per combo before the interaction check.
+- **Spiral columns** — `ColumnArrangement.confinement: "tied" | "spiral"`; `Pn,max = 0.85·Po`, φc = 0.75 threaded through `axialCapacities` / `buildInteractionCurve`.
+- **Strong-column-weak-beam** (`run-design.ts::checkStrongColumnWeakBeam`) — a joint post-pass (SMF only): at each joint with both columns and beams, ΣMnc ≥ 1.2·ΣMnb (18.7.3.2); failing columns get `scwbPass = false` and are forced red. New `DesignRunResult.joints` carries the verdicts.
+- **Beam frame-type completion** (carried over into this release) — SMF ρ ≤ 0.025 (18.6.3.1) in `checkArrangement`; `checkBeamDimensions` (ln ≥ 4d, bw ≥ min(0.3h, 250), 18.6.2.1).
+
+### Added — UI (design outputs)
+- **Canvas** — columns now colour by the **worst** of {interaction, shear} D/C and turn red on a confinement / cross-section / SCWB failure (was interaction-only). **Two pills** per column (interaction on +local-2, shear on −local-2) with `⚠Ash` / `⚠SCWB` flags. New **Columns** report-dropdown entries: Shear D/C, Confinement, Slenderness δns, Strong-column-weak-beam. SCWB renders as a **ratio badge at each joint node** (all joints under its report; failing-only under default) + the pill flag. Legend gains a pass/fail caption.
+- **Advanced Report (checked)** — the column deck gains a **shear capacity-utilization bar** (φVc / φVn / φVmax + demand marker) and a **SCWB joint sketch** (ΣMnc vs 1.2·ΣMnb), plus the confinement checklist and slenderness δns.
+- **Required mode** — a new **Column Design Results** card (previously blank post-run): required ρg + Aₛₜ, Ve + suggested hoop, δns, SCWB verdict, and the confinement checklist.
+- **Issues card** — column shear cross-section and confinement failures now surface as text under Run (SCWB already did).
+- **Tied / Spiral toggle** in the column editor; the live preview draws a spiral ring for spiral columns; the criteria note mentions column Ve / Ash / SCWB.
+
+### Changed
+- **`getRcCode` registry + `RcCriteria`** — the two RC modules (`aci318-25/`, `sni2847-19/`) now diverge: `epsTC` = εty+0.003 (Table 21.2.2) vs fixed 0.005, the `λs` one-way-shear size effect (22.5.5.1.3), and the third confinement Ash equation are ACI-only; SNI is the 318-14 baseline. The `√f'c ≤ 8.3` cap (22.5.3.1) is applied in both. **`defaultRcCriteria().code` is now `SNI2847-19`** (the project's main code), and `getRcCode`'s fallback is the SNI module.
+- **Frame-type labels** are code-dependent in the UI: SNI shows **SRPMB / SRPMM / SRPMK**, ACI 318-25 shows **OMF / IMF / SMF** (the internal `frameType` enum stays `OMF|IMF|SMF`).
+- **`ColumnDesignResult`** gained `shear`, `confinement`, `deltaNs`, `slenderness`, `scwbPass`, `Mn`; `MemberDesignResult` gained `beamMn`; `DesignReport` gained the four `col-*` ids.
+
+### Validation
+- **`validation/rc_beam_aci31825.mts`** — the three beam code-deltas (λs Vc formula (c), εty vs 0.005, √f'c cap) + frame checks.
+- **`validation/rc_column_phases.mts`** — column shear / confinement / slenderness / spiral consistency + OMF≠IMF≠SMF distinctness.
+- **`validation/rc_column_aci_deltas.mts`** — column ACI↔SNI deltas (λs shear, 3-eq vs 2-eq Ash, εt control point).
+- **`validation/rc_column_scwb.mts`** — strong-column-weak-beam + frame distinctness end-to-end on the portal.
+- Capacity anchors **byte-stable**: `rc_column_verify.mts` (Contoh 5-C, 26 assertions) and `rc_beam_verify.mjs` (25) unchanged.
+
+### Notes
+- DSM solver and model math untouched — all design work is a pure consumer of analysis results, and design state remains App-state only (not persisted by Save/Load), same boundary as v1.1.
+- Deferred: sway (δs) / computed-k slenderness, and biaxial out-of-plane bending — a permanent boundary of the 2D model.
+
+### Documentation
+- `docs/DESIGN_RULES.md`: §5b.5 (column shear/confinement/SCWB/slenderness/spiral), the per-code §9 beam tables (SNI / ACI), §5c edition deltas, and the validation table.
+- `CLAUDE.md`: status bumped to v1.1.2; new per-code differentiation + full-column-design + design-output-UI sections; stale "byte-identical" claims corrected.
+- `CHANGELOG.md`: this entry.
+
+---
+
 ## [1.1.1] — 2026-06-13
 
 **Design tab — RC column axial-flexure (P–M interaction) design (ACI 318-14 / SNI 2847:2019).** The SECTION DESIGN tool gains an **Element Type** selector (Beam / Column / Auto), and columns are designed by a full **P–M interaction** capacity surface — five named points A–E plus a continuous neutral-axis sweep, radial demand/capacity ratio, in both As-required and As-checked modes. Validated against the book's Contoh 5-C (600×600, f'c 30, fy 420, 20D25). This pass covers **capacity + interaction**; column **shear** and the **SRPMK `Ash` confinement** table (Contoh 5-D) are a follow-up.

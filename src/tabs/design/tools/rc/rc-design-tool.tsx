@@ -142,7 +142,9 @@ export function SectionDesignToolContent({
   const colDemand = React.useMemo(() => {
     const pairs: { P: number; M: number }[] = []
     let governing: { P: number; M: number; dc: number } | undefined
-    if (!designResult || !selectedSectionId || !model) return { pairs, governing }
+    let result: import("@/lib/design/core/types").ColumnDesignResult | undefined
+    let govId: string | undefined
+    if (!designResult || !selectedSectionId || !model) return { pairs, governing, result, joint: undefined }
     for (const m of Object.values(model.members)) {
       if (m.section !== selectedSectionId) continue
       const r = designResult.members[m.id]
@@ -151,9 +153,14 @@ export function SectionDesignToolContent({
       const g = r.column.governing
       if (g && (!governing || r.column.worstDC > governing.dc)) {
         governing = { P: g.Pu, M: g.Mu, dc: r.column.worstDC }
+        result = r.column
+        govId = m.id
       }
     }
-    return { pairs, governing }
+    // A joint the governing column frames into (prefer a failing one for the sketch).
+    const joints = designResult.joints?.filter((j) => govId !== undefined && j.columnIds.includes(govId)) ?? []
+    const joint = joints.find((j) => !j.pass) ?? joints[0]
+    return { pairs, governing, result, joint }
   }, [designResult, selectedSectionId, model])
 
   return (
@@ -324,6 +331,9 @@ export function SectionDesignToolContent({
                   symmetric perimeter ring for the worst (P, M).
                 </p>
               </div>
+              {colDemand.result && (
+                <ColumnRequiredResultsCard result={colDemand.result} joint={colDemand.joint} />
+              )}
             </>
           ) : (
             <>
@@ -347,6 +357,8 @@ export function SectionDesignToolContent({
                 criteria={rc}
                 demandPairs={colDemand.pairs}
                 governing={colDemand.governing}
+                result={colDemand.result}
+                joint={colDemand.joint}
               />
             </>
           )}
@@ -634,11 +646,23 @@ function ColumnGridEditor({
   onPatch: (p: Partial<ColumnArrangement>) => void
 }) {
   const total = 2 * arr.nx + 2 * arr.ny - 4
+  const confinement = arr.confinement ?? "tied"
   return (
     <div className="space-y-1.5">
       <CountInputRow label="Bars across width (nₓ)" value={arr.nx} min={2} onChange={(n) => onPatch({ nx: n })} />
       <CountInputRow label="Bars up height (n_y)" value={arr.ny} min={2} onChange={(n) => onPatch({ ny: n })} />
       <SizeSelectRow label="Bar size" value={arr.size} options={REBAR_SIZES} onChange={(s) => onPatch({ size: s })} />
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-gray-600 flex-1">Confinement</Label>
+        <div className="grid grid-cols-2 gap-1 w-32">
+          <ModeButton active={confinement === "tied"} onClick={() => onPatch({ confinement: "tied" })} title="Tied: Pn,max = 0.80·Po, φc 0.65">
+            Tied
+          </ModeButton>
+          <ModeButton active={confinement === "spiral"} onClick={() => onPatch({ confinement: "spiral" })} title="Spiral: Pn,max = 0.85·Po, φc 0.75">
+            Spiral
+          </ModeButton>
+        </div>
+      </div>
       <TieRow tie={arr.tie} onChange={(t) => onPatch({ tie: t })} />
       <p className="text-[10px] text-gray-500">
         Total = 2·nₓ + 2·n_y − 4 = <span className="font-mono">{total}</span> bars
@@ -767,8 +791,71 @@ function ColumnDetailingCard({ checks }: { checks: ArrangementCheck[] }) {
         )
       })}
       <p className="text-[10px] text-gray-400 leading-snug pt-0.5">
-        Transverse confinement (ties / Aₛₕ, SRPMK) is designed in a later pass.
+        Shear (Ve), transverse confinement (ties / Aₛₕ) and slenderness are
+        evaluated per member — see the Advanced Report after a Run.
       </p>
+    </div>
+  )
+}
+
+/** Required-mode column results from the last Run (the governing column member of
+ *  this section): ρg/Aₛₜ, shear Ve + suggested hoop, confinement, slenderness δns,
+ *  and the SCWB verdict. Mirrors the checked-mode Advanced Report numbers. */
+function ColumnRequiredResultsCard({
+  result,
+  joint,
+}: {
+  result: import("@/lib/design/core/types").ColumnDesignResult
+  joint?: import("@/lib/design/core/types").JointCheckResult
+}) {
+  const r1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "—")
+  const s = result.shear
+  const ok = result.rhoGRequired !== undefined
+  return (
+    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
+      <p className="text-[10px] font-semibold text-[#1a2f5e] leading-snug">Column Design Results</p>
+      <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
+        <p className={ok ? "" : "text-red-600"}>
+          ρg required = {ok ? `${(result.rhoGRequired! * 100).toFixed(2)}%` : "over 8% — enlarge section"}
+          {" · "}Aₛₜ = {Math.round(result.Ast)} mm²
+        </p>
+        {s && (
+          <>
+            <p>
+              {s.Ve !== undefined && <>Vₑ = {r1(s.Ve)} kN · </>}V_d = {r1(s.Vdesign)} kN
+              {s.AvSReq !== undefined && <> · Aᵥ/s = {r1(s.AvSReq)} mm²/m</>}
+              {s.suggested && <> → {s.suggested.size}@{s.suggested.spacing}</>}
+            </p>
+            {!s.crossSectionOk && <p className="text-red-600">✗ shear exceeds φVmax cross-section limit</p>}
+          </>
+        )}
+        {result.deltaNs !== undefined && (
+          <p>
+            δns = {result.deltaNs.toFixed(3)} (k·lu/r = {r1(result.slenderness ?? 0)})
+            {result.deltaNs > 1.001 && <span className="text-amber-600"> magnified</span>}
+          </p>
+        )}
+        {joint && (
+          <p className={joint.pass ? "" : "text-red-600"}>
+            SCWB {joint.pass ? "✓" : "✗"} ratio {Number.isFinite(joint.ratio) ? joint.ratio.toFixed(2) : "∞"} (18.7.3.2)
+          </p>
+        )}
+      </div>
+      {result.confinement && result.confinement.length > 0 && (
+        <div className="space-y-0.5 pt-0.5 border-t border-gray-200">
+          {result.confinement.map((c, i) => {
+            const g = CHECK_GLYPH[c.status]
+            return (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>{g.glyph}</span>
+                <p className="text-[10px] text-gray-600 leading-snug flex-1">
+                  {c.text} <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

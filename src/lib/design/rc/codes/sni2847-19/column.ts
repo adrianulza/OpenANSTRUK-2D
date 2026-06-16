@@ -18,7 +18,7 @@
  * the neutral-axis depth `c` traces the whole interaction curve.
  */
 
-import { barDia } from "../../shared/rebar"
+import { barArea, barDia } from "../../shared/rebar"
 import { buildColumnBarLayout } from "../../shared/column-grid"
 import type { ColumnBar, ArrangementCheck } from "../../shared/types"
 import type { FrameType } from "../../../core/types"
@@ -31,6 +31,7 @@ import {
   RHO_G_MIN,
   RHO_G_MAX,
   minColumnClearSpacing,
+  sqrtFc,
 } from "./rules"
 
 export type { ColumnBar }
@@ -103,21 +104,25 @@ export interface ColumnInteractionCurve {
 
 // ── Axial endpoints (closed form) ─────────────────────────────────────────────
 
-/** Tied-column axial cap factor Pn,max = 0.80·Po (22.4.2.1 / 25.7.2). Spiral
- *  (0.85) is deferred to the shear/SRPMK pass. */
+/** Axial cap factor Pn,max/Po: tied 0.80, spiral 0.85 (22.4.2.1 / 25.7.2). */
 export const PN_MAX_FACTOR_TIED = 0.8
+export const PN_MAX_FACTOR_SPIRAL = 0.85
+/** Compression-controlled φ for a spiral column (21.2.2). */
+export const SPIRAL_PHI_COMP = 0.75
 
 export function axialCapacities(
   Ast: number,
   Ag: number,
   fc: number,
   cr: RcCriteria,
+  spiral = false,
 ): AxialCapacities {
   const fy = cr.fy
+  const factor = spiral ? PN_MAX_FACTOR_SPIRAL : PN_MAX_FACTOR_TIED
   const Po = (0.85 * fc * (Ag - Ast) + fy * Ast) / 1e3 // kN
   const phiPo = cr.phiCompression * Po
-  const PnMax = PN_MAX_FACTOR_TIED * Po
-  const phiPnMax = PN_MAX_FACTOR_TIED * phiPo
+  const PnMax = factor * Po
+  const phiPnMax = factor * phiPo
   const Pnt = (fy * Ast) / 1e3 // kN (tension)
   const phiPnt = cr.phiTension * Pnt
   return { Po, phiPo, PnMax, phiPnMax, Pnt, phiPnt }
@@ -148,8 +153,10 @@ function sectionForcesAtC(
   fc: number,
   cr: RcCriteria,
   c: number,
+  fyOver: number = cr.fy,
 ): SectionForces {
-  const { Es, fy } = cr
+  const { Es } = cr
+  const fy = fyOver
   const b1 = beta1(fc)
   const a = Math.min(b1 * c, h)
   const Cc = 0.85 * fc * b * a // N, compression +
@@ -308,26 +315,29 @@ export function buildInteractionCurve(
   h: number,
   fc: number,
   cr: RcCriteria,
+  spiral = false,
 ): ColumnInteractionCurve {
+  // Spiral columns raise the compression-controlled φ to 0.75 (edition-stable).
+  const crc: RcCriteria = spiral ? { ...cr, phiCompression: SPIRAL_PHI_COMP } : cr
   const Ast = barsTop.reduce((s, p) => s + p.area, 0)
   const Ag = b * h
-  const caps = axialCapacities(Ast, Ag, fc, cr)
+  const caps = axialCapacities(Ast, Ag, fc, crc, spiral)
 
   const posBars = barsTop // compression at top → depth = d
   const negBars = barsTop.map((p) => ({ d: h - p.d, area: p.area })) // compression at bottom
 
-  const pos = sideControlPoints(posBars, b, h, fc, cr, 1, caps)
-  const neg = sideControlPoints(negBars, b, h, fc, cr, -1, caps)
+  const pos = sideControlPoints(posBars, b, h, fc, crc, 1, caps)
+  const neg = sideControlPoints(negBars, b, h, fc, crc, -1, caps)
 
   // Shared endpoints (M = 0). maxComp is the uncapped squash apex (nominal Po);
   // maxTension is pure tension fy·Ast.
   const maxComp: PMPoint = {
     Pn: -caps.Po, Mn: 0, phiPn: -caps.phiPnMax, phiMn: 0,
-    phi: cr.phiCompression, epsT: -Infinity, c: Infinity,
+    phi: crc.phiCompression, epsT: -Infinity, c: Infinity,
   }
   const maxTension: PMPoint = {
     Pn: caps.Pnt, Mn: 0, phiPn: caps.phiPnt, phiMn: 0,
-    phi: cr.phiTension, epsT: Infinity, c: 0,
+    phi: crc.phiTension, epsT: Infinity, c: 0,
   }
 
   // spColumn control points (+M side), compression → tension.
@@ -362,7 +372,7 @@ export function buildInteractionCurve(
   // Named book points A–E kept for validation/back-compat (A = cap apex at M=0).
   const A: PMPoint = {
     Pn: -caps.PnMax, Mn: 0, phiPn: -caps.phiPnMax, phiMn: 0,
-    phi: cr.phiCompression, epsT: -Infinity, c: Infinity,
+    phi: crc.phiCompression, epsT: -Infinity, c: Infinity,
   }
   const named = {
     A,
@@ -423,6 +433,100 @@ export function interactionDC(
     return { dc: Infinity, capM: 0, capP: 0 }
   }
   return { dc: 1 / sBest, capM: sBest * dM, capP: sBest * dP }
+}
+
+// ── Capacity-design shear (Ve from Mn/Mpr) ────────────────────────────────────
+
+/**
+ * Column flexural strength developed at the acting factored axial `Pu`
+ * (tension-positive). Bisects `c` so `Pn(c) = Pu`, then returns |Mn| there with
+ * `fyOver = fyFactor·fy` (1.0 → Mn for SRPMM, 1.25 → Mpr for SRPMK). kN·m.
+ */
+export function columnFlexuralStrengthAtP(
+  barsTop: ColumnBar[],
+  b: number,
+  h: number,
+  fc: number,
+  cr: RcCriteria,
+  Pu: number, // kN, tension +
+  fyFactor = 1,
+): number {
+  const fyOver = fyFactor * cr.fy
+  const hiC = (1.05 * h) / beta1(fc)
+  const solveSide = (bars: ColumnBar[]): number => {
+    const PnAt = (c: number) => -sectionForcesAtC(bars, b, h, fc, cr, c, fyOver).axialCompPos / 1e3
+    let lo = 1e-3
+    let hi = hiC
+    const target = Math.min(PnAt(lo), Math.max(PnAt(hi), Pu))
+    for (let i = 0; i < 80; i++) {
+      const mid = 0.5 * (lo + hi)
+      if (PnAt(mid) <= target) hi = mid
+      else lo = mid
+    }
+    const c = 0.5 * (lo + hi)
+    return Math.max(0, sectionForcesAtC(bars, b, h, fc, cr, c, fyOver).Mn_Nmm) / 1e6
+  }
+  const negBars = barsTop.map((p) => ({ d: h - p.d, area: p.area }))
+  return Math.max(solveSide(barsTop), solveSide(negBars))
+}
+
+/**
+ * Column one-way concrete shear Vc (kN) — `0.17·(1 + Nu/(14·Ag))·λ·√f'c·bw·d`
+ * (22.5.6.1). SNI 2847:2019 (≡ ACI 318-14) applies NO size-effect factor — the
+ * `hasMinTies` flag is ignored (λs ≡ 1), the lone column-shear code delta vs ACI
+ * 318-25. `NuComp` is the factored axial compression (kN, ≥ 0 in compression).
+ */
+export function columnShearVc(
+  lambda: number,
+  fc: number,
+  bw: number,
+  d: number,
+  NuComp: number, // kN, compression +
+  Ag: number, // mm²
+  _hasMinTies = true,
+): number {
+  void _hasMinTies // SNI: no size effect (λs ≡ 1)
+  const axial = Math.max(0, 1 + (NuComp * 1e3) / (14 * Ag))
+  return (0.17 * axial * lambda * sqrtFc(fc) * bw * d) / 1e3
+}
+
+// ── Slenderness (non-sway moment magnification, in-plane) ─────────────────────
+
+export interface SlendernessResult {
+  delta: number
+  slenderness: number
+  magnified: boolean
+}
+
+/**
+ * Braced (non-sway) moment magnifier δns per 6.6.4 (in-plane, k = 1.0).
+ * Edition-stable — identical to the ACI 318-25 module. See that module for the
+ * clause notes.
+ */
+export function slendernessMagnifier(
+  PuComp: number,
+  M1: number,
+  M2: number,
+  lu: number,
+  Ec: number,
+  Ig: number,
+  Ag: number,
+): SlendernessResult {
+  const k = 1.0
+  const r = Math.sqrt(Ig / Ag)
+  const luMm = lu * 1000
+  const slenderness = r > 0 ? (k * luMm) / r : 0
+  const ratio = M2 !== 0 ? M1 / M2 : 0
+  const limit = Math.min(40, 34 - 12 * ratio)
+  if (PuComp <= 0 || slenderness <= limit) {
+    return { delta: 1, slenderness, magnified: false }
+  }
+  const EI = 0.4 * Ec * Ig
+  const Pc = (Math.PI * Math.PI * EI) / (k * luMm) ** 2 / 1e3
+  const Cm = Math.max(0.4, 0.6 - 0.4 * ratio)
+  const denom = 1 - PuComp / (0.75 * Pc)
+  const delta = denom > 0 ? Math.max(1, Cm / denom) : 99
+  return { delta, slenderness, magnified: true }
 }
 
 // ── Detailing checks ───────────────────────────────────────────────────────────
@@ -495,5 +599,114 @@ export function checkColumnArrangement(
     clause: "20.6.1.3.1",
   })
 
+  return checks
+}
+
+// ── Transverse confinement (Ch. 18 / Ch. 25) ──────────────────────────────────
+
+/** Spacing pass/fail (checked, s > 0) or required-info row. */
+function spacingRow(label: string, s: number, sMax: number, clause: string): ArrangementCheck {
+  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(0))
+  if (s <= 0) {
+    return { status: "pass", text: `${label} ≤ ${f(sMax)} mm (provide a tie to verify)`, clause }
+  }
+  return {
+    status: s <= sMax + 1e-9 ? "pass" : "fail",
+    text: `${label} ${f(s)} mm ${s <= sMax ? "≤" : ">"} ${f(sMax)} mm`,
+    clause,
+  }
+}
+
+/**
+ * Transverse-reinforcement detailing per frame type. SNI 2847:2019 (≡ ACI 318-14):
+ *  - SRPMB: tie spacing ≤ min(16·db,long, 48·db,tie, least dim) (25.7.2.3).
+ *  - SRPMM: hoop spacing over lo ≤ min(8·db,long, 24·db,tie, b/2, 300) (18.4.3.2).
+ *  - SRPMK: lo (18.7.5.1), hx ≤ 350 (18.7.5.2), so (18.7.5.3), and the rectilinear
+ *    `Ash/(s·bc)` from the **two-equation** table (18.7.5.4) — NO kf/kn third
+ *    equation (that is the ACI 318-25 addition).
+ */
+export function columnConfinement(
+  b: number,
+  h: number,
+  cover: number,
+  arr: ColumnArrangement,
+  fc: number,
+  cr: RcCriteria,
+  frameType: FrameType,
+  PuComp: number,
+  lu: number,
+  legs: number,
+): ArrangementCheck[] {
+  void PuComp // SNI: two-equation Ash does not use the axial term
+  const checks: ArrangementCheck[] = []
+  const f = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(0))
+  const dbLong = barDia(arr.size)
+  const dbTie = barDia(arr.tie.size)
+  const s = arr.tie.spacing
+  const leastDim = Math.min(b, h)
+
+  if (frameType === "OMF") {
+    checks.push(spacingRow("Tie spacing", s, Math.min(16 * dbLong, 48 * dbTie, leastDim), "25.7.2.3"))
+    return checks
+  }
+
+  const lo = Math.max(Math.max(b, h), (lu * 1000) / 6, 450)
+  checks.push({
+    status: "pass",
+    text: `Confinement length lo = ${f(lo)} mm from each end`,
+    clause: frameType === "SMF" ? "18.7.5.1" : "18.4.3.2",
+  })
+
+  if (frameType === "IMF") {
+    checks.push(
+      spacingRow("Hoop spacing over lo", s, Math.min(8 * dbLong, 24 * dbTie, leastDim / 2, 300), "18.4.3.2"),
+    )
+    return checks
+  }
+
+  // SRPMK — full confinement.
+  if (arr.confinement === "spiral") {
+    const Ach = (b - 2 * cover) * (h - 2 * cover)
+    const Ag = b * h
+    const rhoSReq = Math.max(0.45 * (Ag / Ach - 1) * (fc / cr.fyt), 0.12 * (fc / cr.fyt))
+    checks.push({
+      status: "pass",
+      text: `Spiral ρs ≥ ${(rhoSReq * 100).toFixed(2)}% (volumetric)`,
+      clause: "18.7.5.4 / 25.7.3.3",
+    })
+    return checks
+  }
+  const layout = buildColumnBarLayout(b, h, cover, arr)
+  const hx = layout.rowSpacing ?? leastDim
+  checks.push({
+    status: hx <= 350 ? "pass" : "fail",
+    text: `hx = ${f(hx)} mm ${hx <= 350 ? "≤" : ">"} 350 mm`,
+    clause: "18.7.5.2",
+  })
+
+  const so0 = Math.min(150, Math.max(100, 100 + (350 - hx) / 3))
+  checks.push(spacingRow("Hoop spacing over lo (so)", s, Math.min(leastDim / 4, 6 * dbLong, so0), "18.7.5.3"))
+
+  // Ash/(s·bc) — rectilinear. SNI/318-14: max of TWO equations only.
+  const Ag = b * h
+  const Ach = (b - 2 * cover) * (h - 2 * cover)
+  const bcMax = Math.max(b - 2 * cover, h - 2 * cover)
+  const fyt = cr.fyt
+  const ratio = Math.max(0.3 * (Ag / Ach - 1) * (fc / fyt), 0.09 * (fc / fyt))
+  const AshSReq = ratio * bcMax // mm²/mm
+  if (s <= 0) {
+    checks.push({
+      status: "pass",
+      text: `Required Ash/s = ${(AshSReq * 1000).toFixed(0)} mm²/m (2-eq, Tabel 5-20)`,
+      clause: "18.7.5.4",
+    })
+  } else {
+    const AshSprov = (legs * barArea(arr.tie.size)) / s
+    checks.push({
+      status: AshSprov >= AshSReq - 1e-9 ? "pass" : "fail",
+      text: `Ash/s ${(AshSprov * 1000).toFixed(0)} ${AshSprov >= AshSReq ? "≥" : "<"} ${(AshSReq * 1000).toFixed(0)} mm²/m`,
+      clause: "18.7.5.4",
+    })
+  }
   return checks
 }

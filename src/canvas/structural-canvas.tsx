@@ -569,6 +569,8 @@ export function StructuralCanvas({
 
       const navy = COLOR_DESIGN_LABEL
       const fail = COLOR_DESIGN_FAIL
+      const warn = "#f97316" // orange — slenderness magnified / advisory
+      const green = "#16a34a" // SCWB pass
       const dcCell = (v: number | undefined, active: boolean): Cell => {
         if (!active || v === undefined) return { text: "–", color: navy }
         if (!Number.isFinite(v)) return { text: "O/S", color: fail }
@@ -668,24 +670,66 @@ export function StructuralCanvas({
           continue
         }
 
-        // Column members: one interaction pill. Shown on the default + col-dc
-        // reports only (beam-specific reports render nothing for columns).
+        // Column members. Default report = two pills (interaction on +local-2,
+        // shear on −local-2 — same sides as beams), with confinement/SCWB fail
+        // flags on the interaction pill. col-* reports each render one pill;
+        // col-scwb renders nothing here (drawn as joint badges below).
         if (r.kind === "column") {
-          if (designReport !== "default" && designReport !== "col-dc") continue
           const col = r.column
           if (!col) continue
-          let text: string
-          let color: string
-          if (r.mode === "required") {
-            const ok = col.rhoGRequired !== undefined
-            text = ok ? `ρ ${(col.rhoGRequired! * 100).toFixed(1)}%` : "ρ O/S"
-            color = ok ? navy : fail
-          } else {
-            const dcText = Number.isFinite(col.worstDC) ? col.worstDC.toFixed(2) : "O/S"
-            text = `D/C ${dcText} · ρ ${(col.rhoG * 100).toFixed(1)}%`
-            color = Number.isFinite(col.worstDC) && col.worstDC <= 1 ? navy : fail
+          const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
+          const cspx = l2x
+          const cspy = -l2y
+          const coff = 14 * s
+
+          // Interaction cell (pure P–M D/C — unaffected by the colour fold-in).
+          const inter: Cell =
+            r.mode === "required"
+              ? col.rhoGRequired !== undefined
+                ? { text: `ρ ${(col.rhoGRequired * 100).toFixed(1)}%`, color: navy }
+                : { text: "ρ O/S", color: fail }
+              : Number.isFinite(col.worstDC)
+                ? { text: `D/C ${col.worstDC.toFixed(2)} · ρ ${(col.rhoG * 100).toFixed(1)}%`, color: col.worstDC <= 1 ? navy : fail }
+                : { text: "D/C O/S", color: fail }
+
+          // Shear cell.
+          const sh = col.shear
+          const shearCell: Cell = !sh
+            ? { text: "V –", color: navy }
+            : r.mode === "required"
+              ? { text: sh.suggested ? `${sh.suggested.size}@${sh.suggested.spacing}` : `Ve ${sh.Vdesign.toFixed(0)}`, color: sh.crossSectionOk ? navy : fail }
+              : sh.dc !== undefined && Number.isFinite(sh.dc)
+                ? { text: `V ${sh.dc.toFixed(2)}`, color: sh.pass ? navy : fail }
+                : { text: "V O/S", color: fail }
+
+          const confFails = col.confinement?.some((c) => c.status === "fail") ?? false
+
+          switch (designReport) {
+            case "default": {
+              let flag = ""
+              if (confFails) flag += " ⚠Ash"
+              if (col.scwbPass === false) flag += " ⚠SCWB"
+              drawPill(midX + cspx * coff, midY + cspy * coff, angle, inter.text + flag, confFails || col.scwbPass === false ? fail : inter.color)
+              drawPill(midX - cspx * coff, midY - cspy * coff, angle, shearCell.text, shearCell.color)
+              break
+            }
+            case "col-dc":
+              drawPill(midX, midY - 14 * s, angle, inter.text, inter.color)
+              break
+            case "col-shear":
+              drawPill(midX, midY - 14 * s, angle, shearCell.text, shearCell.color)
+              break
+            case "col-confine":
+              drawPill(midX, midY - 14 * s, angle, confFails ? "conf ✗" : "conf ✓", confFails ? fail : navy)
+              break
+            case "col-slender": {
+              const dn = col.deltaNs ?? 1
+              const klr = col.slenderness ?? 0
+              drawPill(midX, midY - 14 * s, angle, `δns ${dn.toFixed(2)} · kl/r ${klr.toFixed(0)}`, dn > 1.001 ? warn : navy)
+              break
+            }
+            // col-scwb + beam reports → no member pill (joint badges drawn below).
           }
-          drawPill(midX, midY - 14 * s, angle, text, color)
           continue
         }
 
@@ -716,6 +760,19 @@ export function StructuralCanvas({
             if (lbl.top) drawPill(zx + spx * off, zy + spy * off, angle, lbl.top.text, lbl.top.color)
             if (lbl.bottom) drawPill(zx - spx * off, zy - spy * off, angle, lbl.bottom.text, lbl.bottom.color)
           }
+        }
+      }
+
+      // SCWB joint badges (node-level). Under col-scwb, show every joint's
+      // ΣMnc/ΣMnb ratio; under the default report, flag only failing joints.
+      if (designResult.joints && (designReport === "col-scwb" || designReport === "default")) {
+        for (const j of designResult.joints) {
+          if (designReport === "default" && j.pass) continue
+          const node = model.nodes[j.nodeId]
+          if (!node) continue
+          const p = worldToScreen(node, rect)
+          const ratioText = Number.isFinite(j.ratio) ? j.ratio.toFixed(2) : "∞"
+          drawPill(p.sx, p.sy - 16 * s, 0, `SCWB ${ratioText}`, j.pass ? green : fail)
         }
       }
     },
@@ -3176,6 +3233,11 @@ export function StructuralCanvas({
               </div>
             ))}
           </div>
+          {(designReport === "col-confine" || designReport === "col-scwb") && (
+            <p className="text-[10px] text-muted-foreground mt-1 pt-1 border-t border-border">
+              {designReport === "col-confine" ? "✓ confinement OK · ✗ fail" : "SCWB ratio ≥ 1.0 OK · < 1.0 fail"}
+            </p>
+          )}
         </div>
       )}
 

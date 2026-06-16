@@ -15,10 +15,12 @@ modules.
 > Frame types are **SRPMB / SRPMM / SRPMK** under SNI 2847:2019 and
 > **OMF / IMF / SMF** under ACI 318-25 (they map 1:1, [§9](#9-rectangular-rc-beam--per-code-rule-tables-the-canonical-reference)):
 > - **Beams** — flexure + shear.
-> - **Columns** — axial-flexure **P–M interaction** capacity ([§5b](#5b-columns--pm-interaction)).
->   Column **shear** and SRPMK `Ash` confinement are a follow-up pass.
+> - **Columns** — axial-flexure **P–M interaction** capacity, **capacity-design shear**
+>   (Ve from Mn/Mpr, Vc = 0 in the SMF hinge zone), **transverse confinement**
+>   (SRPMK `Ash` / SRPMM ties / SRPMB ties), **strong-column-weak-beam** (18.7.3.2),
+>   **non-sway slenderness** (δns, in-plane), and **spiral** columns ([§5b](#5b-columns--pm-interaction)).
 >
-> **Scope tomorrow:** column shear/confinement, structural **steel** members, and
+> **Scope tomorrow:** structural **steel** members, and
 > additional concrete **section shapes** (T, L, circular, hollow…). The engine is
 > deliberately structured so these slot in as new *material/shape strategies*
 > behind the same pipeline — see [§12 Extending the engine](#12-extending-the-engine).
@@ -347,9 +349,38 @@ The origin lies inside the surface, so the ray O→(Mu, Pu) crosses the closed
 - **As-required**: bisect ρg ∈ [1%, 8%] (D/C decreases monotonically with ρg) on
   a representative symmetric ring; report required ρg + Aₛₜ.
 
-> **Deferred (next pass):** column **shear** (`Ve` from `Mpr`, `Vc = 0` seismic) +
-> the **SRPMK `Ash` confinement** table (Contoh 5-D), spiral columns
-> (`Pn,max = 0.85`), and slenderness (6.6/6.7).
+### 5b.5 Capacity-design shear, confinement, SCWB, slenderness, spiral
+
+All in `rc/codes/<code>/column.ts` (math) + `rc/strategy.ts` (`designColumnShear`,
+slenderness in `designColumn`) + `core/run-design.ts` (the SCWB joint post-pass):
+
+- **Shear** — `columnFlexuralStrengthAtP(bars, …, Pu, fyFactor)` bisects `c` so
+  `Pn(c) = Pu`, returning the flexural strength at the acting axial; `Ve = 2·M/lu`
+  with `M` = Mn (IMF/SRPMM, 18.4.3.1) or Mpr (SMF/SRPMK, 1.25fy, 18.7.6.1). OMF
+  designs for the factored `Vu`. `columnShearVc` uses the axial-benefit form
+  `0.17(1+Nu/14Ag)λ√f'c·bw·d` (22.5.6.1); SMF zeroes Vc in the hinge zone when
+  `Pu < Ag·f'c/20` (18.7.6.2.1). Reuses the beam `vMaxLimit`/`avSRequired`/
+  `phiVnProvided`/`suggestStirrup` helpers; hoop spacing via `smfEndZoneSpacingMax`
+  / `imfEndZoneSpacingMax` / `generalSpacingMax`.
+- **Confinement** (`columnConfinement`) — SRPMB tie spacing (25.7.2.3); SRPMM hoop
+  spacing over lo (18.4.3.2); SRPMK lo (18.7.5.1), hx ≤ 350 (18.7.5.2), so
+  (18.7.5.3), and rectilinear `Ash/(s·bc)` (18.7.5.4). **Code delta:** ACI 318-25
+  adds the third Ash equation `0.2·kf·kn·Pu/(fyt·Ach)` (kf = f'c/175+0.6 ≥ 1, kn =
+  nl/(nl−2)); SNI keeps the two-equation table. Spiral → the `ρs` requirement
+  (25.7.3.3 / 18.7.5.4).
+- **Strong-column-weak-beam** (`checkStrongColumnWeakBeam`, SMF only) — a joint
+  post-pass: at each joint with both columns and beams, ΣMnc ≥ 1.2·ΣMnb (18.7.3.2,
+  the 6/5 rule), reading the per-member nominal `Mn`. Failing columns get
+  `scwbPass = false`; `DesignRunResult.joints` carries the verdicts.
+- **Slenderness** (`slendernessMagnifier`) — braced, in-plane, k = 1.0 non-sway
+  δns (6.6.4), gated by `k·lu/r ≤ 34 − 12(M1/M2) ≤ 40` (6.2.5). EI = 0.4·Ec·Ig,
+  Pc = π²EI/(k·lu)², Cm = max(0.4, 0.6 − 0.4·M1/M2). Applied per combo to the
+  station moments before the interaction check.
+- **Spiral** — `Pn,max = 0.85·Po`, φc = 0.75 (vs tied 0.80 / 0.65); selected by
+  `ColumnArrangement.confinement`.
+
+> **Deferred:** sway (δs) / computed-k slenderness, biaxial out-of-plane bending
+> (a permanent 2D scope boundary), and column lap-splice/development detailing.
 
 ---
 
@@ -645,6 +676,9 @@ module's `vc` / `governingSpacingMax`.
 | `validation/strain_compat_check.mts` | Strain-compat ≡ Whitney on the single-layer case; Mpr parity; compression steel; 2-layer bracketing; side-bar capacity gain; auto-overflow geometry (50 mm clear, centroid, corner placement); transverse spacing caps + Vs threshold (16 assertions). Run via `npx tsx --tsconfig config/tsconfig.json …`. |
 | `validation/rc_column_verify.mts` | Book Contoh 5-C (600×600, f'c 30, fy 420, 20D25): `Po = 13050 kN`, `φPn,max = 6786 kN`, balanced/tension-control/pure-moment/pure-tension coordinates (B −2594/856, C −1394/1068, D 0/855, E +3710), demand (−1435, 625) inside the φ curve, polygon cap edge, and column engine ≡ `phiMnBars` at pure bending (26 assertions). **Imports the `sni2847-19` module** (the book is an SMF/318-14 example). Run via tsx. |
 | `validation/rc_beam_aci31825.mts` | ACI 318-25 ↔ SNI deltas: `Vc` formula (a) with min stirrups vs **formula (c)** `0.66·λs·ρw^⅓·√f'c·bw·d` without (and ρw=0 fallback), `epsTC` = εty+0.003 vs fixed 0.005 (fy 420 ≈ book As; fy 550 → ACI φ < SNI φ in transition), `√f'c ≤ 8.3` cap (fc 80, both modules), and frame checks (SMF ρ=2.56% fails 18.6.3.1; ln<4d fails 18.6.2.1). Run via tsx with the **root** tsconfig. |
+| `validation/rc_column_phases.mts` | Column shear/confinement/slenderness/spiral engine (SNI module): `columnFlexuralStrengthAtP(P=0)` ≡ pure-bending Mn, Mpr > Mn, Vc axial benefit, OMF/IMF/SMF confinement check-sets distinct, δns = 1 below the 6.2.5 gate and = `Cm/(1−Pu/0.75Pc)` above, spiral cap 0.85 / φc 0.75 lift. Run via tsx. |
+| `validation/rc_column_aci_deltas.mts` | Column ACI 318-25 ↔ SNI deltas: `columnShearVc` λs (no ties, ratio = λs; equal with ties), confinement **3-eq vs 2-eq** `Ash` (ACI > SNI when the 0.2·kf·kn·Pu term governs; equal at low axial), εt control-point `c` (εty+0.003 vs 0.005 at fy 550; ≈ at fy 420). Run via tsx. |
+| `validation/rc_column_scwb.mts` | Strong-column-weak-beam + frame distinctness end-to-end (`runDesign` on the portal): SMF emits joint checks with ΣMnc/1.2ΣMnb ratios, OMF/IMF emit none; SMF columns carry Ve + confinement, OMF columns design for Vu only. Run via tsx with the **root** tsconfig. |
 
 Required-mode flexure and the SMF shear path are **byte-stable** against the book
 anchors (now bound to the `sni2847-19` module) — changes to the strain-compat /
@@ -670,17 +704,13 @@ not rewriting the orchestrator.
 4. Bar layout (`buildBarLayout`) is already position-based; extend it to place
    bars on the actual section outline.
 
-### 12.2 Columns (axial + in-plane flexure) — implemented (capacity)
-The P–M interaction capacity path is implemented in **v1.1.1** ([§5b](#5b-columns--pm-interaction)):
-`rc/codes/<code>/column.ts` (`sectionForcesAtC` / `buildInteractionCurve` /
-`interactionDC` + ρg checks), `rc/shared/column-grid.ts` (perimeter grid), the
-Element-Type resolver in `rc/strategy.ts`, and the section + P–M Advanced Report.
-**Still open:**
-- **Column shear** — `Ve` from column-end `Mpr`, `Vc = 0` seismic; and the
-  **SRPMK `Ash` confinement** table (Tabel 5-20, Pers. a/b/c with `Ach`, `bc`,
-  `kf`, `kn`, cross-tie spacing) — Contoh 5-D.
-- **Spiral** columns (`Pn,max = 0.85`), **slenderness** (6.6/6.7), and biaxial
-  out-of-plane (the 2D model has one bending axis).
+### 12.2 Columns (axial + in-plane flexure) — implemented
+The P–M interaction capacity (v1.1.1) plus, in the current pass, **capacity-design
+shear, transverse confinement, strong-column-weak-beam, non-sway slenderness, and
+spiral** columns — all per frame type (SRPMB/SRPMM/SRPMK ↔ OMF/IMF/SMF) and both
+codes ([§5b.5](#5b5-capacity-design-shear-confinement-scwb-slenderness-spiral)).
+**Still open:** sway (δs) / computed-k slenderness, and biaxial out-of-plane
+bending — a permanent boundary of the 2D model (one bending axis).
 
 ### 12.3 Steel members
 Steel is a distinct material strategy, not a tweak to the RC path:

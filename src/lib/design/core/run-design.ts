@@ -18,7 +18,7 @@ import { buildGravityCombo, envelopeMemberDemands, type MemberZoneDemands } from
 import { isSectionDesignable, materialOf } from "./designability"
 import type { DesignCriteria } from "./criteria"
 import { asRcInput, asSteelInput, defaultSectionDesignInput, type SectionDesignInputs } from "./section-input"
-import type { DesignRunResult, MemberDesignResult } from "./types"
+import type { DesignRunResult, JointCheckResult, MemberDesignResult } from "./types"
 import { designMemberRc } from "../rc/strategy"
 import { designMemberSteel } from "../steel/strategy"
 
@@ -36,6 +36,47 @@ function memberLength(model: StructureModel, memberId: MemberId): number {
   const a = model.nodes[m.a]
   const b = model.nodes[m.b]
   return Math.hypot(b.x - a.x, b.y - a.y)
+}
+
+/**
+ * SMF/SRPMK strong-column-weak-beam joint check (18.7.3.2). At every joint where
+ * both columns and beams frame in, ΣMnc (column nominal flexural strengths at
+ * their design axial) must be ≥ 6/5·ΣMnb (beam nominal flexural strengths). Uses
+ * the section nominal capacities stored on each member result (`column.Mn`,
+ * `beamMn`). Mutates failing columns' `scwbPass`. Empty for OMF/IMF.
+ */
+function checkStrongColumnWeakBeam(
+  model: StructureModel,
+  members: Record<MemberId, MemberDesignResult>,
+  frameType: string,
+): JointCheckResult[] {
+  if (frameType !== "SMF") return []
+  // Node → member ids framing in.
+  const adj: Record<string, MemberId[]> = {}
+  for (const m of Object.values(model.members)) {
+    ;(adj[m.a] ??= []).push(m.id)
+    ;(adj[m.b] ??= []).push(m.id)
+  }
+  const joints: JointCheckResult[] = []
+  for (const [nodeId, ids] of Object.entries(adj)) {
+    const columnIds = ids.filter((id) => members[id]?.kind === "column")
+    const beamIds = ids.filter((id) => members[id]?.kind === "beam")
+    if (columnIds.length === 0 || beamIds.length === 0) continue
+    const sumMnc = columnIds.reduce((s, id) => s + (members[id].column?.Mn ?? 0), 0)
+    const sumMnb = beamIds.reduce((s, id) => s + (members[id].beamMn ?? 0), 0)
+    const pass = sumMnc >= 1.2 * sumMnb
+    const ratio = sumMnb > 0 ? sumMnc / (1.2 * sumMnb) : Infinity
+    joints.push({ nodeId, sumMnc, sumMnb, ratio, pass, columnIds })
+    if (!pass) {
+      for (const id of columnIds) {
+        if (members[id].column) {
+          members[id].column!.scwbPass = false
+          members[id].worstFlexureDC = Infinity // force red on the canvas (SCWB governs)
+        }
+      }
+    }
+  }
+  return joints
 }
 
 // ── Main entry ───────────────────────────────────────────────────────────────
@@ -153,5 +194,30 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     issues.push("No designable members found — RC design requires concrete rectangular sections.")
   }
 
-  return { ok: true, issues, members }
+  // Surface column shear / confinement failures as issues (never silent, even if
+  // the user never opens the Advanced Report deck).
+  for (const [id, r] of Object.entries(members)) {
+    const col = r.column
+    if (r.kind !== "column" || !col) continue
+    if (col.shear && !col.shear.crossSectionOk) {
+      issues.push(`Column ${id}: shear demand ${col.shear.Vdesign.toFixed(0)} kN exceeds the cross-section limit φVmax ${col.shear.phiVmax.toFixed(0)} kN (22.5.1.2).`)
+    } else if (col.shear && col.shear.dc !== undefined && col.shear.dc > 1) {
+      issues.push(`Column ${id}: shear D/C ${col.shear.dc.toFixed(2)} > 1 — increase ties (18.7.6 / 22.5).`)
+    }
+    if (col.confinement?.some((c) => c.status === "fail")) {
+      issues.push(`Column ${id}: transverse confinement detailing fails (18.7.5 / 25.7.2) — see the Advanced Report.`)
+    }
+  }
+
+  // SMF strong-column-weak-beam joint check (post-pass; needs all members designed).
+  const joints = checkStrongColumnWeakBeam(model, members, criteria.rc.frameType)
+  for (const j of joints) {
+    if (!j.pass) {
+      issues.push(
+        `Strong-column-weak-beam at node ${j.nodeId}: ΣMnc ${j.sumMnc.toFixed(0)} < 1.2·ΣMnb ${(1.2 * j.sumMnb).toFixed(0)} kN·m (18.7.3.2).`,
+      )
+    }
+  }
+
+  return { ok: true, issues, members, joints }
 }

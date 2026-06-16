@@ -109,6 +109,31 @@ export type MemberDesignStatus =
   | "axial-exceeded"
   | "no-result"
 
+export interface ColumnShearResult {
+  /** Envelope factored shear |Vu|, kN. */
+  Vu: number
+  /** Capacity-design shear (IMF: Mn-based; SMF: Mpr-based), kN. */
+  Ve?: number
+  /** max(Vu, Ve) — the demand actually designed for, kN. */
+  Vdesign: number
+  phiVc: number // kN
+  phiVmax: number // kN — cross-section ceiling
+  /** SMF: concrete shear set to 0 in the confinement zone (Pu < Ag·f'c/20, 18.7.6.2.1). */
+  vcZeroed: boolean
+  // "As required" mode:
+  AvSReq?: number // mm²/m, incl. min-tie floor
+  suggested?: { size: string; legs: number; spacing: number }
+  // "As checked" mode:
+  phiVn?: number // kN
+  dc?: number
+  /** Governing hoop/tie spacing cap (mm) + pass for the provided tie. */
+  spacingMax?: number
+  spacingPass?: boolean
+  /** Overall pass (cross-section + capacity + spacing). */
+  pass: boolean
+  crossSectionOk: boolean
+}
+
 export interface ColumnDesignResult {
   /** Provided (checked) or representative (required) longitudinal ratio ρg. */
   rhoG: number
@@ -123,6 +148,17 @@ export interface ColumnDesignResult {
   pmPairs?: { P: number; M: number; combo: LoadComboId }[]
   /** Checked: arrangement is buildable + ρg within limits. */
   adequate: boolean
+  /** Capacity-design shear (IMF/SMF) + tie check. */
+  shear?: ColumnShearResult
+  /** Transverse confinement (SMF Ash / IMF ties / OMF ties) detailing verdicts. */
+  confinement?: ArrangementCheck[]
+  /** Slenderness: governing non-sway magnifier δns and klu/r (in-plane). */
+  deltaNs?: number
+  slenderness?: number
+  /** SMF strong-column-weak-beam: false when a joint this column frames into fails. */
+  scwbPass?: boolean
+  /** Column nominal flexural strength at the design axial (kN·m) — feeds SCWB ΣMnc. */
+  Mn?: number
 }
 
 export interface MemberDesignResult {
@@ -145,13 +181,32 @@ export interface MemberDesignResult {
   worstFlexureDC?: number
   /** All zones pass shear (incl. cross-section limit + SMF spacing). */
   worstShearPass?: boolean
+  /** Beam nominal flexural strength at the joint (kN·m) — feeds SCWB ΣMnb. */
+  beamMn?: number
   governing?: Partial<Record<ZoneId, { M: LoadComboId; V: LoadComboId }>>
+}
+
+/** SMF/SRPMK strong-column-weak-beam verdict at one joint (18.7.3.2). */
+export interface JointCheckResult {
+  nodeId: string
+  /** Σ column nominal flexural strengths at the joint, kN·m. */
+  sumMnc: number
+  /** Σ beam nominal flexural strengths at the joint, kN·m. */
+  sumMnb: number
+  /** sumMnc / (1.2·sumMnb). */
+  ratio: number
+  /** sumMnc ≥ 1.2·sumMnb (the 6/5 rule). */
+  pass: boolean
+  /** Column member ids framing into this joint. */
+  columnIds: string[]
 }
 
 export interface DesignRunResult {
   ok: boolean
   issues: string[]
   members: Record<MemberId, MemberDesignResult>
+  /** SMF strong-column-weak-beam joint checks (empty for OMF/IMF). */
+  joints?: JointCheckResult[]
 }
 
 // ── Canvas report selection (SAP2000/ETABS-style overlay dropdown) ────────────
@@ -172,6 +227,10 @@ export type DesignReport =
   | "chk-rho" // ρ provided, top/bottom per zone (%)
   | "chk-shear-dc" // shear D/C per zone
   | "col-dc" // column interaction D/C (per member)
+  | "col-shear" // column capacity-design shear D/C (or Ve / suggested hoop)
+  | "col-confine" // column transverse confinement pass/fail (Ash / ties)
+  | "col-slender" // column non-sway slenderness δns + klu/r
+  | "col-scwb" // strong-column-weak-beam ratio at joints (node badges)
 
 export const DESIGN_REPORTS: {
   group: "General" | "As required" | "As checked" | "Columns"
@@ -196,6 +255,12 @@ export const DESIGN_REPORTS: {
   },
   {
     group: "Columns",
-    items: [{ id: "col-dc", label: "Interaction D/C" }],
+    items: [
+      { id: "col-dc", label: "Interaction D/C" },
+      { id: "col-shear", label: "Shear D/C (Ve)" },
+      { id: "col-confine", label: "Confinement (Ash / ties)" },
+      { id: "col-slender", label: "Slenderness δns" },
+      { id: "col-scwb", label: "Strong-column-weak-beam" },
+    ],
   },
 ]

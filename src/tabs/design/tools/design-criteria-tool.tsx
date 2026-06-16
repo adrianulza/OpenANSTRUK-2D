@@ -150,8 +150,8 @@ function RcCriteriaFields({ criteria, onChange }: RcCriteriaFieldsProps) {
         {criteria.frameType !== "OMF" && (
           <p className="text-[10px] text-gray-500 leading-snug">
             {criteria.frameType === "SMF"
-              ? "SMF: shear designed for probable moments Mpr (1.25fy); Vc = 0 in hinge zones; hoop spacing limits apply."
-              : "IMF: shear designed for nominal end moments Mn plus gravity shear."}
+              ? "SMF/SRPMK: shear from Mpr (1.25fy), Vc = 0 in hinge zones, hoop spacing limits. Columns add Ash confinement (18.7.5) and strong-column-weak-beam (18.7.3.2)."
+              : "IMF/SRPMM: shear from nominal end moments Mn plus gravity; columns get lighter tie spacing over lo (18.4.3)."}
           </p>
         )}
       </div>

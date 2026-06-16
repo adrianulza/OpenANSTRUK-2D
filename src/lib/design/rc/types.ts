@@ -28,6 +28,10 @@ export interface ColumnArrangement {
   /** Bars along the height, including the corner rows. */
   ny: number
   size: RebarSize
+  /** Transverse reinforcement type. Tied (default) caps Pn,max at 0.80·Po, φc 0.65;
+   *  spiral caps at 0.85·Po, φc 0.75 (22.4.2.1 / 21.2.2). */
+  confinement?: "tied" | "spiral"
+  /** Tie/hoop (or, when spiral, the spiral bar + pitch). */
   tie: { size: RebarSize; spacing: number /* mm */ }
 }
 
@@ -66,7 +70,7 @@ function defaultArrangement(): RebarArrangement {
 }
 
 function defaultColumnArrangement(): ColumnArrangement {
-  return { nx: 3, ny: 3, size: "D19", tie: { size: "D10", spacing: 100 } }
+  return { nx: 3, ny: 3, size: "D19", confinement: "tied", tie: { size: "D10", spacing: 100 } }
 }
 
 export function defaultRcSectionInput(sectionId: SectionId): RcSectionInput {
