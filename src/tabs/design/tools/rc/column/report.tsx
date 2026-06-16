@@ -7,6 +7,8 @@ import { getRcCode } from "@/lib/design/rc/codes"
 import type { ColumnInteractionCurve } from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { ColumnArrangement } from "@/lib/design/rc/types"
+import type { ColumnDesignResult, ColumnShearResult, JointCheckResult } from "@/lib/design/core/types"
+import type { ArrangementCheck } from "@/lib/design/rc/shared/types"
 import type { ColumnPointKey } from "@/lib/design/rc/codes/aci318-25"
 import { FONT, NAVY, LABEL, SubText } from "../chart-text"
 
@@ -44,10 +46,14 @@ interface Props {
   demandPairs?: DemandPair[]
   /** Governing demand + its radial D/C. */
   governing?: { P: number; M: number; dc: number }
+  /** Governing column member's full result (shear, confinement, slenderness, SCWB). */
+  result?: ColumnDesignResult
+  /** A joint the governing column frames into (drives the SCWB sketch). */
+  joint?: JointCheckResult
 }
 
 export function ColumnAdvancedReportDeck({
-  open, b, h, cover, arrangement, fc, criteria, demandPairs, governing,
+  open, b, h, cover, arrangement, fc, criteria, demandPairs, governing, result, joint,
 }: Props) {
   const [pos, setPos] = React.useState<{ left: number; top: number } | null>(null)
   React.useEffect(() => {
@@ -72,7 +78,9 @@ export function ColumnAdvancedReportDeck({
 
   const curve = React.useMemo(() => {
     const layout = buildColumnBarLayout(b, h, cover, arrangement)
-    return getRcCode(criteria.code).buildInteractionCurve(layoutToColumnBars(layout), b, h, fc, criteria)
+    return getRcCode(criteria.code).buildInteractionCurve(
+      layoutToColumnBars(layout), b, h, fc, criteria, arrangement.confinement === "spiral",
+    )
   }, [b, h, cover, arrangement, fc, criteria])
 
   if (!open || typeof document === "undefined" || !pos) return null
@@ -100,6 +108,7 @@ export function ColumnAdvancedReportDeck({
 
         <CoordinateTable curve={curve} />
         <SummaryCard curve={curve} rhoG={rhoG} governing={governing} b={b} h={h} />
+        {result && <ShearStabilityCard result={result} joint={joint} />}
       </div>
     </div>
   )
@@ -489,6 +498,135 @@ function SummaryCard({
       ) : (
         <p className="font-mono text-[10px] text-gray-400">Run Design to evaluate demands.</p>
       )}
+    </div>
+  )
+}
+
+const CHECK_GLYPH: Record<ArrangementCheck["status"], { glyph: string; cls: string }> = {
+  pass: { glyph: "✓", cls: "text-green-600" },
+  warn: { glyph: "⚠", cls: "text-amber-500" },
+  fail: { glyph: "✗", cls: "text-red-500" },
+}
+
+/** Horizontal shear capacity-utilization bar: φVn capacity track with the demand
+ *  Vdesign marker, plus φVc and φVmax ticks. Same true-pixel SVG idiom as the
+ *  interaction chart. */
+function ShearBar({ s }: { s: ColumnShearResult }) {
+  const W = 520, H = 40, PAD_L = 4, PAD_R = 4, barY = 8, barH = 12
+  const plotW = W - PAD_L - PAD_R
+  const cap = s.phiVn ?? s.phiVc // checked has φVn; required falls back to φVc
+  const scaleMax = Math.max(s.phiVmax, s.Vdesign, cap) * 1.1 || 1
+  const x = (v: number) => PAD_L + (Math.max(0, v) / scaleMax) * plotW
+  const over = s.dc !== undefined ? s.dc > 1 : s.Vdesign > s.phiVmax
+  return (
+    <svg width={W} height={H} className="block w-full h-auto" viewBox={`0 0 ${W} ${H}`}>
+      {/* track */}
+      <rect x={PAD_L} y={barY} width={plotW} height={barH} rx={2} fill="#e5e7eb" />
+      {/* φVc (concrete) */}
+      <rect x={PAD_L} y={barY} width={x(s.phiVc) - PAD_L} height={barH} rx={2} fill="#1a2f5e22" />
+      {/* φVn capacity */}
+      <rect x={PAD_L} y={barY} width={x(cap) - PAD_L} height={barH} rx={2} fill="none" stroke={NAVY} strokeWidth={1.2} />
+      {/* φVmax ceiling tick */}
+      <line x1={x(s.phiVmax)} y1={barY - 2} x2={x(s.phiVmax)} y2={barY + barH + 2} stroke={GRAY} strokeWidth={1} strokeDasharray="2 2" />
+      {/* demand marker */}
+      <line x1={x(s.Vdesign)} y1={barY - 3} x2={x(s.Vdesign)} y2={barY + barH + 3} stroke={over ? COLOR_DESIGN_FAIL : "#16a34a"} strokeWidth={1.6} />
+      <SubText x={x(s.Vdesign)} y={H - 2} main={`Vd ${Math.round(s.Vdesign)}`} fill={over ? COLOR_DESIGN_FAIL : NAVY} anchor="middle" />
+      <SubText x={x(s.phiVc)} y={barY - 3} main={`φVc ${Math.round(s.phiVc)}`} fill={LABEL} anchor="middle" />
+    </svg>
+  )
+}
+
+/** Schematic strong-column-weak-beam joint: column above/below + beam stubs, with
+ *  ΣMnc vs 1.2·ΣMnb and the pass/fail verdict. */
+function ScwbSketch({ joint }: { joint: JointCheckResult }) {
+  const cx = 90, cy = 46, arm = 34
+  const col = joint.pass ? "#16a34a" : COLOR_DESIGN_FAIL
+  return (
+    <div className="flex items-center gap-3">
+      <svg width={180} height={92} viewBox="0 0 180 92" className="shrink-0">
+        <line x1={cx} y1={cy - arm} x2={cx} y2={cy + arm} stroke={NAVY} strokeWidth={3} />
+        <line x1={cx - arm} y1={cy} x2={cx + arm} y2={cy} stroke={GRAY} strokeWidth={3} />
+        <rect x={cx - 7} y={cy - 7} width={14} height={14} fill="#fff" stroke={col} strokeWidth={1.5} />
+        <SubText x={cx} y={cy - arm - 3} main="ΣMnc" fill={NAVY} anchor="middle" />
+        <SubText x={cx + arm + 4} y={cy + 3} main="Mnb" fill={LABEL} anchor="start" />
+      </svg>
+      <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
+        <p>ΣMnc = {Math.round(joint.sumMnc)} kN·m</p>
+        <p>1.2·ΣMnb = {Math.round(1.2 * joint.sumMnb)} kN·m</p>
+        <p className={joint.pass ? "text-green-700" : "text-red-600"}>
+          {joint.pass ? "✓" : "✗"} ratio {Number.isFinite(joint.ratio) ? joint.ratio.toFixed(2) : "∞"} (18.7.3.2)
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Capacity-design shear, confinement detailing, slenderness δns and SCWB from
+ *  the governing column member of this section's last design run. */
+function ShearStabilityCard({ result, joint }: { result: ColumnDesignResult; joint?: JointCheckResult }) {
+  const fmt1 = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "—")
+  const s = result.shear
+  return (
+    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1">
+      <p className="text-[10px] font-semibold text-[#1a2f5e]">Shear · Confinement · Stability</p>
+
+      {s && (
+        <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
+          <ShearBar s={s} />
+          <p>
+            V<sub>u</sub> = {fmt1(s.Vu)} kN
+            {s.Ve !== undefined && <> · V<sub>e</sub> = {fmt1(s.Ve)} kN</>}
+            {" · "}V<sub>design</sub> = {fmt1(s.Vdesign)} kN
+          </p>
+          <p>
+            φV<sub>c</sub> = {fmt1(s.phiVc)} kN{s.vcZeroed && <span className="text-amber-600"> (=0, hinge zone)</span>}
+            {s.phiVn !== undefined && <> · φV<sub>n</sub> = {fmt1(s.phiVn)} kN</>}
+            {s.dc !== undefined && (
+              <span className={s.dc > 1 ? "text-red-600" : "text-gray-400"}> · D/C {s.dc.toFixed(2)}</span>
+            )}
+          </p>
+          {s.AvSReq !== undefined && (
+            <p>
+              required A<sub>v</sub>/s = {fmt1(s.AvSReq)} mm²/m
+              {s.suggested && <> → {s.suggested.size}@{s.suggested.spacing}</>}
+            </p>
+          )}
+        </div>
+      )}
+
+      {result.confinement && result.confinement.length > 0 && (
+        <div className="space-y-0.5 pt-0.5 border-t border-gray-200">
+          {result.confinement.map((c, i) => {
+            const g = CHECK_GLYPH[c.status]
+            return (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className={cn("text-[10px] leading-snug shrink-0 w-3 text-center", g.cls)}>{g.glyph}</span>
+                <p className="text-[10px] text-gray-600 leading-snug flex-1">
+                  {c.text} <span className="text-gray-400 whitespace-nowrap">({c.clause})</span>
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="font-mono text-[10px] text-gray-700 pt-0.5 border-t border-gray-200 space-y-0.5">
+        {result.deltaNs !== undefined && (
+          <p>
+            slenderness k·l<sub>u</sub>/r = {fmt1(result.slenderness ?? 0)} · δ<sub>ns</sub> = {(result.deltaNs).toFixed(3)}
+            {result.deltaNs > 1.001 && <span className="text-amber-600"> (magnified)</span>}
+          </p>
+        )}
+        {joint ? (
+          <ScwbSketch joint={joint} />
+        ) : (
+          result.scwbPass !== undefined && (
+            <p className={result.scwbPass ? "text-gray-700" : "text-red-600"}>
+              strong-column-weak-beam: {result.scwbPass ? "OK" : "FAILS"} (18.7.3.2)
+            </p>
+          )
+        )}
+      </div>
     </div>
   )
 }

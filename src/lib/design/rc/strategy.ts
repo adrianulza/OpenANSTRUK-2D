@@ -18,12 +18,15 @@ import type { MemberEndForces } from "@/lib/solver"
 import { memberInternalForces } from "@/lib/solver"
 import type {
   ColumnDesignResult,
+  ColumnShearResult,
   ElementType,
   MemberDesignResult,
   ZoneFlexureResult,
   ZoneId,
   ZoneShearResult,
 } from "../core/types"
+import type { ColumnBar } from "./shared/types"
+import type { RebarSize } from "./shared/rebar"
 import { ZONE_IDS } from "../core/types"
 import {
   applyFrameMomentMinimums,
@@ -318,31 +321,133 @@ function resolveElementType(
 
 // ── Column (P–M interaction) ──────────────────────────────────────────────────
 
-/** Worst radial interaction D/C over every combo × candidate (P,M) station. */
+/**
+ * Worst radial interaction D/C over every combo × candidate (P,M) station. When
+ * `slender` is given, each combo's station moments are magnified by the in-plane
+ * non-sway δns (6.6.4) computed from that combo's end moments + axial; the
+ * governing δns/slenderness is reported back.
+ */
 function worstInteraction(
   code: RcCodeModule,
   curve: ColumnInteractionCurve,
   efByCombo: Record<LoadComboId, MemberEndForces>,
   L: number,
+  slender?: { Ec: number; Ig: number; Ag: number },
 ): {
   worstDC: number
   governing?: { combo: LoadComboId; Pu: number; Mu: number }
   pairs: { P: number; M: number; combo: LoadComboId }[]
+  deltaNs: number
+  slenderness: number
 } {
   let worstDC = 0
   let governing: { combo: LoadComboId; Pu: number; Mu: number } | undefined
+  let deltaNs = 1
+  let slenderness = 0
   const pairs: { P: number; M: number; combo: LoadComboId }[] = []
   for (const [comboId, ef] of Object.entries(efByCombo)) {
-    for (const p of collectPMPairs(ef, L)) {
-      pairs.push({ P: p.P, M: p.M, combo: comboId })
-      const { dc } = code.interactionDC(curve, p.P, p.M)
+    const stations = collectPMPairs(ef, L)
+    // Per-combo non-sway magnifier from the end moments + max compression.
+    let delta = 1
+    if (slender) {
+      const Mi = memberInternalForces(ef, 0, L).M
+      const Mj = memberInternalForces(ef, L, L).M
+      const M2 = Math.abs(Mi) >= Math.abs(Mj) ? Mi : Mj
+      const M1 = Math.abs(Mi) >= Math.abs(Mj) ? Mj : Mi
+      const PuComp = stations.reduce((m, p) => Math.max(m, -p.P), 0)
+      const sl = code.slendernessMagnifier(PuComp, M1, M2, L, slender.Ec, slender.Ig, slender.Ag)
+      delta = sl.delta
+      if (sl.delta > deltaNs) deltaNs = sl.delta
+      if (sl.slenderness > slenderness) slenderness = sl.slenderness
+    }
+    for (const p of stations) {
+      const Mu = p.M * delta
+      pairs.push({ P: p.P, M: Mu, combo: comboId })
+      const { dc } = code.interactionDC(curve, p.P, Mu)
       if (dc > worstDC) {
         worstDC = dc
-        governing = { combo: comboId, Pu: p.P, Mu: p.M }
+        governing = { combo: comboId, Pu: p.P, Mu }
       }
     }
   }
-  return { worstDC, governing, pairs }
+  return { worstDC, governing, pairs, deltaNs, slenderness }
+}
+
+/**
+ * Column capacity-design shear (kN). Ve from the column flexural strength
+ * developed at the acting axial: IMF/SRPMM uses Mn (1.0fy, 18.4.3.1), SMF/SRPMK
+ * uses Mpr (1.25fy, 18.7.6.1), assuming hinges at both ends → Ve = 2·M/lu. OMF
+ * designs for the factored Vu only. SMF zeroes Vc in the confinement zone when
+ * the axial is low (Pu < Ag·f'c/20, 18.7.6.2.1). Reuses the beam shear helpers.
+ */
+function designColumnShear(
+  bars: ColumnBar[],
+  bMm: number,
+  hMm: number,
+  fc: number,
+  L: number,
+  cr: RcCriteria,
+  PuComp: number, // kN, compression +
+  Vu: number, // kN
+  mode: RcSectionInput["mode"],
+  dbLong: number,
+  tie: { size: RebarSize; spacing: number },
+): ColumnShearResult {
+  const code = getRcCode(cr.code)
+  const Ag = bMm * hMm
+  const d = bars.length > 0 ? Math.max(...bars.map((p) => p.d)) : hMm - 65
+  const dbHoop = barDia(tie.size)
+
+  // Capacity-design shear demand Ve (IMF: Mn; SMF: Mpr). PuComp (compression +) →
+  // tension-positive axial = −PuComp for the interaction solver.
+  let Ve: number | undefined
+  if (cr.frameType !== "OMF") {
+    const fyFactor = cr.frameType === "SMF" ? 1.25 : 1.0
+    const M = code.columnFlexuralStrengthAtP(bars, bMm, hMm, fc, cr, -PuComp, fyFactor)
+    Ve = L > 0 ? (2 * M) / L : 0
+  }
+  const Vdesign = Math.max(Vu, Ve ?? 0)
+
+  // SMF/SRPMK: Vc = 0 in the confinement region when Pu < Ag·f'c/20 (18.7.6.2.1).
+  const lowAxial = PuComp < (Ag * fc) / 20 / 1e3
+  const vcZeroed = cr.frameType === "SMF" && lowAxial
+  const VcFull = code.columnShearVc(cr.lambda, fc, bMm, d, PuComp, Ag, true)
+  const VcZone = vcZeroed ? 0 : VcFull
+  const phiVc = cr.phiShear * VcZone
+  const phiVmax = cr.phiShear * code.vMaxLimit(VcZone, fc, bMm, d)
+  const crossSectionOk = Vdesign <= phiVmax
+
+  // Hoop/tie spacing cap: SMF hinge min(d/4, 6db, 150); IMF min(d/4, 8db,long,
+  // 24db,hoop, 300); OMF general 25.7/9.7.6.2.2.
+  const VsReq = Math.max(0, Vdesign / cr.phiShear - VcZone)
+  const sMax =
+    cr.frameType === "SMF"
+      ? code.smfEndZoneSpacingMax(d, dbLong)
+      : cr.frameType === "IMF"
+        ? code.imfEndZoneSpacingMax(d, dbLong, dbHoop)
+        : code.generalSpacingMax(d, VsReq > code.vsSpacingThreshold(fc, bMm, d))
+
+  if (mode === "required") {
+    const AvSReq = code.avSRequired(Vdesign, phiVc, cr.fyt, d, cr, fc, bMm)
+    const suggested = code.suggestStirrup(AvSReq, cr.stirrupLegs, tie.size, sMax)
+    return {
+      Vu, Ve, Vdesign, phiVc, phiVmax, vcZeroed,
+      AvSReq, suggested,
+      pass: crossSectionOk, crossSectionOk,
+      spacingMax: sMax,
+    }
+  }
+
+  const avS = code.avSProvided(cr.stirrupLegs, tie.size, tie.spacing)
+  const phiVn = code.phiVnProvided(VcZone, avS, cr.fyt, d, cr)
+  const dc = Vdesign > 0 ? (phiVn > 0 ? Vdesign / phiVn : Infinity) : 0
+  const spacingPass = tie.spacing <= sMax + 1e-9
+  return {
+    Vu, Ve, Vdesign, phiVc, phiVmax, vcZeroed,
+    phiVn, dc,
+    spacingMax: sMax, spacingPass,
+    pass: dc <= 1 && crossSectionOk && spacingPass, crossSectionOk,
+  }
 }
 
 /**
@@ -360,33 +465,59 @@ function designColumn(
   cr: RcCriteria,
   efByCombo: Record<LoadComboId, MemberEndForces>,
   Pu: number,
+  Vu: number,
 ): MemberDesignResult {
   const code = getRcCode(cr.code)
   const Ag = bMm * hMm
+  // In-plane non-sway slenderness inputs (k = 1.0 braced). Ec ≈ 4700√f'c.
+  const slender = { Ec: 4700 * Math.sqrt(fc), Ig: (bMm * hMm ** 3) / 12, Ag }
 
   if (di.mode === "checked") {
     const layout = buildColumnBarLayout(bMm, hMm, di.cover, di.column.checked)
-    const curve = code.buildInteractionCurve(layoutToColumnBars(layout), bMm, hMm, fc, cr)
-    const { worstDC, governing, pairs } = worstInteraction(code, curve, efByCombo, L)
+    const bars = layoutToColumnBars(layout)
+    const spiral = di.column.checked.confinement === "spiral"
+    const curve = code.buildInteractionCurve(bars, bMm, hMm, fc, cr, spiral)
+    const { worstDC, governing, pairs, deltaNs, slenderness } = worstInteraction(
+      code, curve, efByCombo, L, slender,
+    )
     const rhoG = Ag > 0 ? layout.Ast / Ag : 0
+    const shear = designColumnShear(
+      bars, bMm, hMm, fc, L, cr, Pu, Vu, "checked",
+      barDia(di.column.checked.size), di.column.checked.tie,
+    )
+    const confinement = code.columnConfinement(
+      bMm, hMm, di.cover, di.column.checked, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
+    )
+    const Mn = code.columnFlexuralStrengthAtP(bars, bMm, hMm, fc, cr, -Pu, 1.0)
     const column: ColumnDesignResult = {
       rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
+      shear, confinement, deltaNs, slenderness, Mn,
     }
+    // Member colour = worst of interaction + shear D/C; forced to fail (Infinity)
+    // on a cross-section / confinement failure. SCWB is folded in the run-design
+    // post-pass (joint-level). col.worstDC stays the pure interaction D/C for the
+    // pill text + report. designColorForDC consumes worstFlexureDC unchanged.
+    const confinementFails = confinement.some((c) => c.status === "fail")
+    const colourDC =
+      !shear.crossSectionOk || confinementFails
+        ? Infinity
+        : Math.max(worstDC, shear.dc ?? 0)
     return {
       memberId, status: "designed", material: "rc", kind: "column", mode: "checked", Pu,
-      column, worstFlexureDC: worstDC, // continuous colouring via designColorForDC
+      column, worstFlexureDC: colourDC,
+      worstShearPass: shear.pass,
     }
   }
 
   // Required: smallest ρg bringing the worst demand onto the curve.
-  const dcAt = (rhoG: number): number => {
-    const bars = representativeColumnBars(bMm, hMm, di.cover, rhoG * Ag, {
+  const ringBars = (rhoG: number): ColumnBar[] =>
+    representativeColumnBars(bMm, hMm, di.cover, rhoG * Ag, {
       barSize: di.column.required.barSize,
       tieSize: di.column.required.tieSize,
     })
-    return worstInteraction(code, code.buildInteractionCurve(bars, bMm, hMm, fc, cr), efByCombo, L)
+  const dcAt = (rhoG: number): number =>
+    worstInteraction(code, code.buildInteractionCurve(ringBars(rhoG), bMm, hMm, fc, cr), efByCombo, L, slender)
       .worstDC
-  }
   let rhoGRequired: number | undefined
   if (dcAt(code.RHO_G_MAX) > 1) rhoGRequired = undefined // even 8% can't carry it
   else if (dcAt(code.RHO_G_MIN) <= 1) rhoGRequired = code.RHO_G_MIN
@@ -402,13 +533,37 @@ function designColumn(
   }
   const adequate = rhoGRequired !== undefined
   const rhoG = rhoGRequired ?? code.RHO_G_MAX
+  const shear = designColumnShear(
+    ringBars(rhoG), bMm, hMm, fc, L, cr, Pu, Vu, "required",
+    barDia(di.column.required.barSize),
+    { size: di.column.required.tieSize, spacing: 0 },
+  )
+  const reqArr = {
+    nx: 3, ny: 3,
+    size: di.column.required.barSize,
+    tie: { size: di.column.required.tieSize, spacing: 0 },
+  }
+  const confinement = code.columnConfinement(
+    bMm, hMm, di.cover, reqArr, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
+  )
+  const finalEval = worstInteraction(
+    code, code.buildInteractionCurve(ringBars(rhoG), bMm, hMm, fc, cr), efByCombo, L, slender,
+  )
+  const Mn = code.columnFlexuralStrengthAtP(ringBars(rhoG), bMm, hMm, fc, cr, -Pu, 1.0)
   const column: ColumnDesignResult = {
     rhoG, Ast: rhoG * Ag, rhoGRequired,
     worstDC: adequate ? 1 : dcAt(code.RHO_G_MAX), adequate,
+    shear, confinement,
+    deltaNs: finalEval.deltaNs, slenderness: finalEval.slenderness, Mn,
   }
+  // Binary colouring (like beam required): fail on inadequate ρg, cross-section,
+  // or a confinement failure. SCWB folded in the run-design post-pass.
+  const reqConfinementFails = confinement.some((c) => c.status === "fail")
   return {
     memberId, status: "designed", material: "rc", kind: "column", mode: "required", Pu,
-    column, worstFlexureDC: adequate ? 0 : Infinity, // binary colouring like beam required
+    column,
+    worstFlexureDC: adequate && !reqConfinementFails ? 0 : Infinity,
+    worstShearPass: shear.crossSectionOk,
   }
 }
 
@@ -438,7 +593,13 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
   const PuLimit = (0.1 * fc * bMm * hMm) / 1e3 // kN (beam axial gate, Pers. 5-2)
 
   if (resolveElementType(di.elementType, isVertical, Pu, PuLimit) === "column") {
-    return designColumn(memberId, bMm, hMm, fc, L, di, cr, efByCombo, Pu)
+    // Column shear demand Vu = worst zone |V| (already enveloped across combos).
+    const colVu = Math.max(
+      raw.zones["end-i"].Vu,
+      raw.zones["midspan"].Vu,
+      raw.zones["end-j"].Vu,
+    )
+    return designColumn(memberId, bMm, hMm, fc, L, di, cr, efByCombo, Pu, colVu)
   }
 
   // ── Beam path ──
@@ -504,6 +665,11 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
     if (!shear[z].pass) worstShearPass = false
   }
 
+  // Beam nominal flexural strength at the joints (Mn, 1.0fy) for SCWB ΣMnb.
+  const mnI = capacityEndMoments(geomFor("end-i"), flexure["end-i"], di, cr, 1.0)
+  const mnJ = capacityEndMoments(geomFor("end-j"), flexure["end-j"], di, cr, 1.0)
+  const beamMn = Math.max(mnI.pos, mnI.neg, mnJ.pos, mnJ.neg)
+
   return {
     memberId,
     status: "designed",
@@ -519,6 +685,7 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
     dimensionChecks,
     worstFlexureDC,
     worstShearPass,
+    beamMn,
     governing: {
       "end-i": demands.zones["end-i"].governing,
       midspan: demands.zones["midspan"].governing,

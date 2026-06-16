@@ -59,6 +59,15 @@ export function RcColumnPreview({ b, h, cover, arrangement }: Props) {
 
   const layout = buildColumnBarLayout(b, h, Math.max(0, cover), arrangement)
   const tieW = Math.max(0.8, barDia(arrangement.tie.size) * scale)
+  const spiral = arrangement.confinement === "spiral"
+
+  // Spiral: a few concentric ellipses inset within the core hint at the helix.
+  const spiralRings = spiral
+    ? Array.from({ length: 4 }, (_, i) => {
+        const inset = (i * Math.min(sw, sh)) / 14
+        return { x: sx + inset, y: sy + inset, w: sw - 2 * inset, h: sh - 2 * inset }
+      })
+    : []
 
   const yDimTop = y - DIM_OFFSET
   const xDimLeft = x - DIM_OFFSET
@@ -71,11 +80,23 @@ export function RcColumnPreview({ b, h, cover, arrangement }: Props) {
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
         {/* concrete outline */}
         <rect x={x} y={y} width={w} height={ht} fill={FILL} stroke={STROKE} strokeWidth={1.2} />
-        {/* tie */}
-        <rect
-          x={sx} y={sy} width={sw} height={sh}
-          rx={3} fill="none" stroke={TIE} strokeWidth={tieW} opacity={0.85}
-        />
+        {/* transverse reinforcement: rectangular tie, or a spiral hint (concentric
+            rounded rings) when the column is spiral-confined */}
+        {spiral ? (
+          spiralRings.map((rg, i) => (
+            <rect
+              key={i}
+              x={rg.x} y={rg.y} width={rg.w} height={rg.h}
+              rx={Math.min(rg.w, rg.h) / 2} fill="none" stroke={TIE}
+              strokeWidth={tieW} opacity={0.6}
+            />
+          ))
+        ) : (
+          <rect
+            x={sx} y={sy} width={sw} height={sh}
+            rx={3} fill="none" stroke={TIE} strokeWidth={tieW} opacity={0.85}
+          />
+        )}
         {/* perimeter bars from the shared layout */}
         {layout.bars.map((p, i) => (
           <circle
