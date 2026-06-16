@@ -66,13 +66,32 @@ export function DEFAULT_LOAD_CASES(): Record<LoadCaseId, LoadCase> {
       name: "Selfweight",
       kind: "Dead",
       locked: true,
-      enabled: false,
+      enabled: true,
     },
     // Default placement target — acts as SIDL when Selfweight is off.
     dead: {
       id: "dead",
       name: "Dead",
       kind: "Dead",
+      enabled: true,
+    },
+  }
+}
+
+// Default combination present on a fresh document: 1.0·Selfweight + 1.0·Dead.
+// Explicit Selfweight term (rather than relying on kind-matching) so the
+// expression reads as the user expects in the combination list.
+export function DEFAULT_COMBINATIONS(): Record<LoadComboId, LoadCombination> {
+  const id = "cmb-default"
+  return {
+    [id]: {
+      id,
+      name: "1.0·SW + 1.0·D",
+      terms: [
+        { factor: 1, caseId: "selfweight" },
+        { factor: 1, caseId: "dead" },
+      ],
+      source: "custom",
       enabled: true,
     },
   }

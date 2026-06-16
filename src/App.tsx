@@ -78,6 +78,7 @@ import {
   type LoadComboId,
   type CodePreset,
   DEFAULT_LOAD_CASES,
+  DEFAULT_COMBINATIONS,
   newLoadCaseId,
   newLoadComboId,
 } from "@/lib/load-cases"
@@ -92,6 +93,10 @@ import {
 import { runDesign } from "@/lib/design/core/run-design"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 import { useModelHistory } from "@/hooks/use-model-history"
+
+// Built once so `model` and `activeSection` initialise from the same section
+// catalogue (avoids activeSection pointing at a key absent from the model).
+const initialModel = template3Portal()
 
 export default function App() {
   const isMobile = useIsMobile()
@@ -109,8 +114,10 @@ export default function App() {
   const [showLocalAxes, setShowLocalAxes] = useState(false)
   const [cursorX, setCursorX] = useState(0)
   const [cursorY, setCursorY] = useState(0)
-  const [model, setModel] = useState<StructureModel>(template3Portal)
-  const [activeSection, setActiveSection] = useState<SectionId>("section")
+  const [model, setModel] = useState<StructureModel>(initialModel)
+  const [activeSection, setActiveSection] = useState<SectionId>(
+    () => Object.keys(initialModel.sections)[0],
+  )
   const [activeMemberType, setActiveMemberType] = useState<MemberType>("frame")
   const [activeSupportType, setActiveSupportType] = useState<SupportPick>("pin")
   const [selection, setSelection] = useState<MultiSelection>(emptySelection)
@@ -143,9 +150,9 @@ export default function App() {
   // ─── Load Cases & Combinations ─────────────────────────────────────────────
   const [loadCases, setLoadCases] = useState<Record<LoadCaseId, LoadCase>>(DEFAULT_LOAD_CASES)
   const [activeLoadCaseId, setActiveLoadCaseId] = useState<LoadCaseId>("dead")
-  const [combinations, setCombinations] = useState<Record<LoadComboId, LoadCombination>>({})
-  const [combinationsEnabled, setCombinationsEnabled] = useState(false)
-  const [combinationMode, setCombinationMode] = useState<"manual" | "code">("code")
+  const [combinations, setCombinations] = useState<Record<LoadComboId, LoadCombination>>(DEFAULT_COMBINATIONS)
+  const [combinationsEnabled, setCombinationsEnabled] = useState(true)
+  const [combinationMode, setCombinationMode] = useState<"manual" | "code">("manual")
   const [selectedCodePreset, setSelectedCodePreset] = useState<CodePreset>("ASCE7-22")
   const [editingCombinationId, setEditingCombinationId] = useState<LoadComboId | null>(null)
   // Analyze view selector
