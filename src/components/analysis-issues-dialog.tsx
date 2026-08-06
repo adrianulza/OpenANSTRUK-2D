@@ -33,7 +33,7 @@ function messageFor(issue: DiagnosticIssue): string {
     case "no-supports":
       return "The model has no supports."
     case "insufficient-reactions":
-      return "The model has reaction components but needs at least 3 reaction components for static equilibrium."
+      return `The model has ${issue.have} reaction component${issue.have === 1 ? "" : "s"} but needs at least 3 for static equilibrium.`
     case "disconnected-component":
       return "There are nodes disconnected from any support."
     case "singular-at-dof":
