@@ -56,12 +56,19 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
    - Project-level toggle (Include self-weight: on/off)
    - Depends on load cases being available
 
-4. **Design Checks** (RC and Steel)
-   - Basic RC checks: ACI 318 / SNI 2847 — flexure (ϕMn ≥ Mu), shear (ϕVn ≥ Vu)
-   - Basic steel checks: AISC 360 / SNI 1729 — compactness, bending capacity, shear
-   - Pass/fail indicators on members; demand/capacity ratios in flyout
+4. **Design Checks** (RC and Steel) (DONE)
+   - RC: ACI 318-25 / SNI 2847:2019 — beams (flexure, shear, detailing) and columns
+     (P–M interaction, capacity-design shear, confinement, strong-column-weak-beam,
+     slenderness), rectangular and circular
+   - Steel: AISC 360-16 / SNI 1729:2020 — classification, axial (E3/E4/E7/D2),
+     flexure (F2/F3/F7/F8/F9/F10) with LTB, shear (G2–G5), Chapter H interaction;
+     IWF, RHS, CHS, tee and single angle
+   - Capacity ratios on members, per-material report overlays, Advanced Report decks
    - New Design tab (4th tab after Analyze)
-   - Depends on stable shapes, self-weight, and load combinations
+   - Remaining: AISC F4/F5 noncompact and slender webs (refused, not approximated),
+     double angle, tension rupture D2-2, sway-frame K, second-order amplification,
+     AISC 341-16 seismic detailing. Torsion and out-of-plane bending are permanent
+     limits of a 2D model rather than deferrals.
 
 5. **File I/O**
    - Save/load structure as JSON (browser download/upload)

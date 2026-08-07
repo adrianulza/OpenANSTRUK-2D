@@ -10,9 +10,15 @@ function compute(dims: Record<string, number>): SectionProperties {
   // Shear area: κ = 0.5 per AISC 360 for hollow circular sections
   const Aκ   = 0.5 * A
   const r    = Math.sqrt(I33 / A)
+  // Closed circular section: J is the polar moment, = 2·I. No warping (Cw ≈ 0)
+  // and no lateral-torsional buckling limit state (AISC F8 / F11.2(c)), so
+  // rts / ho are deliberately left undefined.
+  const J = (Math.PI / 32) * (d ** 4 - di ** 4)
+
   return {
     A, I33, I22: I33, S33b: S33, S33t: S33, S22L: S33, S22R: S33, Z33, Z22: Z33,
     "Aκ2": Aκ, "Aκ3": Aκ, r33: r, r22: r, yBar: d / 2,
+    J,
   }
 }
 

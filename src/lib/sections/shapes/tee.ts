@@ -1,19 +1,31 @@
 import type { ShapeDef, SectionProperties } from "./types"
+import { torsionStrip } from "./principal"
 
 /**
- * Concrete T-section (inverted-T / slab-beam).
+ * T-section — concrete slab-beam and steel WT alike.
  *
  * Dims (all in mm):
  *   bf — effective flange width  (top)
  *   tf — flange thickness        (slab depth)
- *   bw — web width
+ *   bw — web width               (the stem, for a steel WT)
  *   h  — total depth             (flange + web)
  *
- * Used for both concrete and steel T-sections.
  * ACI 318-19 §6.3.2 isolated T-beam guideline: bf ≤ 4·bw (concrete only, not enforced here).
  *
  * Centroid measured from the bottom fibre (yBar).
  * Strong-axis bending (axis 3) is about the horizontal centroidal axis.
+ *
+ * ── Sign convention for steel design (AISC F9) ─────────────────────────────
+ * The flange is at the TOP, and this catalogue maps section +y to member
+ * +local-2. A positive (sagging) moment puts tension on −local-2 — the section
+ * bottom, i.e. the STEM TIP — so `M ≥ 0` is AISC F9's "stem in tension" branch
+ * and the flange is the compression element. `S33b` is therefore the stem-side
+ * modulus and `S33t` the flange-side one. `design/steel/flexure.ts` depends on
+ * exactly this; see `docs/DESIGN_STEEL.md` §S6.3.
+ *
+ * A tee is singly symmetric, so its principal axes ARE its geometric axes and
+ * it carries no `principal` block — but the shear centre is offset from the
+ * centroid, which is what AISC E4-3 flexural-torsional buckling needs.
  */
 function compute(dims: Record<string, number>): SectionProperties {
   const { bf, tf, bw, h } = dims
@@ -80,7 +92,26 @@ function compute(dims: Record<string, number>): SectionProperties {
   const r33 = Math.sqrt(I33 / A)
   const r22 = Math.sqrt(I22 / A)
 
-  return { A, I33, I22, S33b, S33t, S22L, S22R, Z33, Z22, "Aκ2": Aκ2, "Aκ3": Aκ3, r33, r22, yBar }
+  // ── Torsional / warping (AISC 360-16 steel design) ─────────────────────────
+  // Same "full flange + clear web" strip split as iwf.ts, so both shapes apply
+  // the finite-aspect correction to the same lengths.
+  const J = torsionStrip(bf, tf) + torsionStrip(hw, bw)
+  // Thin-walled tee: the flange contributes bf³tf³/144 and the stem tw³·hs³/36,
+  // with hs measured to the flange MID-PLANE. Small compared with an I-shape's
+  // Cw, but E4-3 reads it.
+  const hs = h - tf / 2
+  const Cw = (bf ** 3 * tf ** 3) / 144 + (bw ** 3 * hs ** 3) / 36
+
+  // Shear centre: on the axis of symmetry, at the flange mid-plane. Measured
+  // from the centroid, positive toward the flange (up).
+  const x0 = 0
+  const y0 = hs - yBar
+
+  return {
+    A, I33, I22, S33b, S33t, S22L, S22R, Z33, Z22,
+    "Aκ2": Aκ2, "Aκ3": Aκ3, r33, r22, yBar,
+    J, Cw, x0, y0,
+  }
 }
 
 export const tsection: ShapeDef = {

@@ -12,7 +12,7 @@ import type {
 } from "@/lib/design/rc/codes/aci318-25"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
 import type { RebarArrangement } from "@/lib/design/rc/types"
-import { FONT, NAVY, SubText } from "../chart-text"
+import { FONT, NAVY, SubText } from "../../chart-text"
 import { PREVIEW_VIEW_W, sectionFitScale } from "./preview"
 
 /**

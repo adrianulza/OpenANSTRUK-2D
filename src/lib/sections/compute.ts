@@ -25,6 +25,7 @@ export function computeSectionFromParametric(f: ParametricFields): Partial<Secti
     I22:   props.I22,
     "Aκ3": props["Aκ3"],
     gamma: matProps.gamma,
+    J:     props.J,
     mode:           "parametric",
     materialClass:  f.materialClass,
     shape:          { kind: f.shape, dims: { ...f.dims } },
@@ -40,6 +41,12 @@ export function computeSectionFromParametric(f: ParametricFields): Partial<Secti
       r33:  props.r33,
       r22:  props.r22,
       yBar: props.yBar,
+      Cw:   props.Cw,
+      rts:  props.rts,
+      ho:   props.ho,
+      x0:   props.x0,
+      y0:   props.y0,
+      principal: props.principal,
     },
   }
 }

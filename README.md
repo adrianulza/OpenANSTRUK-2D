@@ -20,7 +20,7 @@ A 2D structural analysis web application for modeling, loading, and analyzing fr
 - Point loads and distributed loads (local-axis and global-axis modes)
 - Direct stiffness method (DSM) solver — runs entirely in the browser
 - Shear force, bending moment, axial force, and deformation diagrams
-- RC beam design checks (flexure + shear, ACI 318-14 / SNI 2847:2019; OMF/IMF/SMF) — see [Design Rules](docs/DESIGN_RULES.md)
+- RC design checks (beams + rectangular/circular columns, ACI 318-25 / SNI 2847:2019) and steel design checks (IWF / RHS / CHS / tee / single angle, AISC 360-16 / SNI 1729:2020) — see [Design Rules](docs/DESIGN_RULES.md)
 - Parametric template builder for beams, frames, and trusses
 - Undo / redo (buttons + Ctrl+Z / Ctrl+Y) covering all model and load edits
 - Save / load models as JSON from the File menu
@@ -37,7 +37,9 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 |-----|-------------|
 | [User Guide](docs/USER_GUIDE.md) | How to model, load, analyze, and design structures in the app |
 | [Architecture](docs/ARCHITECTURE.md) | Codebase structure, solver internals, and design decisions |
-| [Design Rules](docs/DESIGN_RULES.md) | RC/steel member design logic + ACI 318-14 clause index + extension guide |
+| [Design Rules](docs/DESIGN_RULES.md) | Design core: designability, demands, orchestration, extension guide |
+| [Design — RC](docs/DESIGN_RC.md) | Reinforced concrete: flexure, P–M columns, shear, detailing, per-code tables |
+| [Design — Steel](docs/DESIGN_STEEL.md) | Structural steel: classification, axial, flexure + LTB, shear, AISC Chapter H |
 | [Development](docs/DEVELOPMENT.md) | Roadmap, known issues, and planned phases |
 | [Contributing](docs/CONTRIBUTING.md) | How to report bugs, submit features, or get involved |
 

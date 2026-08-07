@@ -13,7 +13,11 @@ import type { ColumnArrangement } from "@/lib/design/rc/types"
 import type { ColumnDesignResult, JointCheckResult } from "@/lib/design/core/types"
 import type { ArrangementCheck } from "@/lib/design/rc/shared/types"
 import type { ColumnPointKey } from "@/lib/design/rc/codes/aci318-25"
-import { FONT, NAVY, LABEL, SubText } from "../chart-text"
+import { FONT, NAVY, LABEL, SubText } from "../../chart-text"
+import {
+  CHART_H, CHART_W, DECK_WIDTH, GRAY, GRID, PAD_B, PAD_L, PAD_R, PAD_T,
+  fmt0, ticks,
+} from "../../chart-utils"
 
 /**
  * Advanced Capacity Report deck — column. Replaces the beam deck's
@@ -27,9 +31,7 @@ import { FONT, NAVY, LABEL, SubText } from "../chart-text"
  * from the section + arrangement; demand markers come from the design run.
  */
 
-const DECK_WIDTH = 600
 const PILL_WIDTH = 3
-const GRAY = "#9ca3af"
 
 interface DemandPair {
   P: number
@@ -132,14 +134,8 @@ export function ColumnAdvancedReportDeck({
 }
 
 // ── P–M interaction chart (true-pixel SVG) ───────────────────────────────────
-
-const CHART_W = 552
-const CHART_H = 360
-const PAD_L = 56 // P-axis labels
-const PAD_R = 16
-const PAD_T = 18
-const PAD_B = 40 // M-axis labels
-const GRID = "#e5e7eb"
+// Geometry, colours, `fmt0` and `ticks` come from ../../chart-utils so the steel
+// decks draw on the same grid.
 
 /** Structured label parts per control-point key → true SubText subscripts. */
 interface LabelParts { main: string; sub?: string; suffix?: string; sub2?: string }
@@ -178,30 +174,6 @@ const EMPHASIS: Record<ColumnPointKey, React.ReactNode> = {
   tensionControl: <>tension-controlled (ε<sub>t</sub> = 0.005)</>,
   pureBending: <>pure bending (P = 0)</>,
   maxTension: <>design tension (φf<sub>y</sub>·A<sub>st</sub>)</>,
-}
-
-function fmt0(n: number): string {
-  return Number.isFinite(n) ? Math.round(n).toString() : "—"
-}
-
-/** "Nice" tick step for a given span and target tick count. */
-function niceStep(span: number, target: number): number {
-  const raw = span / Math.max(1, target)
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
-  const norm = raw / mag
-  const step = norm >= 5 ? 5 : norm >= 2 ? 2 : 1
-  return step * mag
-}
-
-/** Tick values covering [lo, hi] at a nice step (lo<hi). */
-function ticks(lo: number, hi: number, target: number): number[] {
-  const step = niceStep(hi - lo, target)
-  const out: number[] = []
-  const start = Math.ceil(lo / step) * step
-  for (let v = start; v <= hi + step * 1e-6; v += step) {
-    out.push(Math.abs(v) < step * 1e-6 ? 0 : v)
-  }
-  return out
 }
 
 function InteractionChart({

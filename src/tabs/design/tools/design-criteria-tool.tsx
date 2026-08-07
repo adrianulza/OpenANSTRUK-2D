@@ -8,6 +8,7 @@ import {
 import { FRAME_TYPES, type DesignMaterial, type FrameType } from "@/lib/design/core/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
+import type { SteelCriteria } from "@/lib/design/steel/criteria"
 import { RC_CODE_LABELS, type RcCode } from "@/lib/design/rc/codes"
 
 /**
@@ -36,6 +37,68 @@ interface DesignCriteriaToolProps {
 interface RcCriteriaFieldsProps {
   criteria: RcCriteria
   onChange: (patch: Partial<RcCriteria>) => void
+}
+
+interface SteelCriteriaFieldsProps {
+  criteria: SteelCriteria
+  onChange: (patch: Partial<SteelCriteria>) => void
+}
+
+/**
+ * STEEL criteria (AISC 360-16 / SNI 1729:2020). Global defaults — a section
+ * that carries its own fy overrides Fy per member, so a model can mix grades.
+ *
+ * `frameType` is deliberately absent: AISC 341-16 seismic detailing is not
+ * implemented, so offering OMF/IMF/SMF here would imply a check that does not
+ * run.
+ */
+function SteelCriteriaFields({ criteria, onChange }: SteelCriteriaFieldsProps) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded bg-gray-50 border border-gray-200 px-2 py-2">
+        <p className="text-[10px] text-gray-500 leading-snug">
+          AISC 360-16 / SNI 1729:2020. Applies to IWF, RHS, CHS, tee and single
+          angle sections. A section with its own f<sub>y</sub> overrides the
+          value below.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Material</Label>
+        <CriteriaInput label="Yield stress" symbol="Fy" value={criteria.Fy} unit="MPa" min={1} onCommit={(v) => onChange({ Fy: v })} />
+        <CriteriaInput label="Tensile strength" symbol="Fu" value={criteria.Fu} unit="MPa" min={1} onCommit={(v) => onChange({ Fu: v })} />
+        <CriteriaInput label="Elastic modulus" symbol="E" value={criteria.E} unit="MPa" min={1} onCommit={(v) => onChange({ E: v })} />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Strength Reduction</Label>
+        <CriteriaInput label="Flexure (F1)" symbol="φb" value={criteria.phiB} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiB: v })} />
+        <CriteriaInput label="Shear (G1)" symbol="φv" value={criteria.phiV} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiV: v })} />
+        <CriteriaInput label="Compression (E1)" symbol="φc" value={criteria.phiC} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiC: v })} />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Interaction</Label>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={criteria.h13ForBuiltUp}
+            onChange={(e) => onChange({ h13ForBuiltUp: e.target.checked })}
+          />
+          <span className="text-[10px] text-gray-600 leading-snug">
+            Apply the H1.3 alternative to built-up I-shapes
+            <span className="block text-[9px] text-gray-400">
+              AISC H1.3 is written for <em>rolled</em> compact shapes and this
+              engine models its IWF as built-up, so it is off by default.
+              SAP2000 applies it regardless — enable to reconcile. It reports a
+              minimum, so enabling can only lower the D/C.
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -67,11 +130,10 @@ export function DesignCriteriaToolContent({ criteria, onChange }: DesignCriteria
       </div>
 
       {criteria.material === "steel" ? (
-        <div className="rounded bg-gray-50 border border-gray-200 px-2 py-3">
-          <p className="text-[10px] text-gray-500 leading-snug">
-            Steel design criteria (AISC 360-16 / SNI 1729:2020) coming soon.
-          </p>
-        </div>
+        <SteelCriteriaFields
+          criteria={criteria.steel}
+          onChange={(p) => onChange({ steel: { ...criteria.steel, ...p } })}
+        />
       ) : (
         <RcCriteriaFields
           criteria={criteria.rc}

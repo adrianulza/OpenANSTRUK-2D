@@ -32,6 +32,37 @@ export interface Support {
 export type MaterialClass = "concrete" | "steel"
 export type SectionShape  = "rect" | "circle" | "iwf" | "tee" | "angle" | "chs" | "rhs"
 
+/**
+ * AISC F10 / E4 principal-axis properties, for sections whose principal axes do
+ * NOT coincide with their geometric axes — in this catalogue, the single angle.
+ *
+ * The solver bends every member about the GEOMETRIC axis 3, so when this block
+ * is present the steel design path must resolve that moment into its two
+ * principal components and check AISC H2 rather than H1. See
+ * `docs/DESIGN_STEEL.md` §S3.1.
+ */
+export interface PrincipalProperties {
+  /** Rotation of the major principal axis (w) from geometric axis 3, radians CCW. */
+  alpha: number
+  Iw: number     // mm⁴ — major principal moment of inertia
+  Iz: number     // mm⁴ — minor principal moment of inertia
+  rw: number     // mm  — √(Iw/A); the "r_max" of CSI §3.5.2
+  rz: number     // mm  — √(Iz/A); the "r_min", governs single-angle E3 slenderness
+  /**
+   * Elastic section moduli about the principal axes, to the WORST extreme
+   * fibre — for an angle the heel and both leg toes are all considered, per
+   * CSI §3.5.3.8.2 ("the possibility of yielding at the heel and both of the
+   * leg tips").
+   */
+  SwMin: number  // mm³ — Iw / max|z|
+  SzMin: number  // mm³ — Iz / max|w|
+  /** AISC Table C-F10.1 monosymmetry property. Exactly 0 for equal legs. */
+  betaW: number  // mm
+  /** Shear-centre offset from the centroid, in principal axes. */
+  w0: number     // mm
+  z0: number     // mm
+}
+
 export interface Section {
   id: SectionId
   name: string
@@ -83,6 +114,19 @@ export interface Section {
     r33:  number  // mm   — radius of gyration, strong axis
     r22:  number  // mm   — radius of gyration, weak axis
     yBar: number  // mm   — centroid from base
+    // ── Torsional / warping properties (steel design, AISC 360-16) ──────────
+    // Optional: only shapes with a closed-form expression populate these, and
+    // only the LTB path (F2) needs them. Absent → that limit state is skipped
+    // rather than computed from invented data.
+    Cw?:  number  // mm⁶  — warping constant (F2-4, E4)
+    rts?: number  // mm   — effective radius of gyration for LTB (F2-7)
+    ho?:  number  // mm   — distance between flange centroids (F2-4)
+    // ── Shear centre, geometric axes (AISC E4) ──────────────────────────────
+    // Both zero for a doubly-symmetric shape, so E4-2 needs neither.
+    x0?:  number  // mm   — shear-centre offset from centroid along axis 3
+    y0?:  number  // mm   — shear-centre offset from centroid along axis 2
+    /** Principal-axis block; present only when principal ≠ geometric (angle). */
+    principal?: PrincipalProperties
   }
   /** When true, advanced-panel edits are kept verbatim. */
   overridden?: boolean

@@ -452,7 +452,7 @@ export const EXAMPLES: Record<string, ExampleDefinition> = {
     title: "Example 2 - Cantilever Beam",
     templateFn: template2Cantilever,
     svgIllustration: SVG_CANTILEVER,
-    notesTemplate: "This example features a 5 m simply supported beam subjected to a 10 kN/m uniformly distributed load (UDL) across its entire span. ",
+    notesTemplate: "This example features a 5 m cantilever beam, fixed at the left end and free at the right, subjected to a 10 kN/m uniformly distributed load (UDL) across its entire span. ",
     defaultE: 23500,
     defaultI: 3125000,
     defaultA: 150000,

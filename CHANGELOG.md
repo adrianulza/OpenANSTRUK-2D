@@ -6,6 +6,78 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.4] — 2026-08-08
+
+**Steel design covers five shapes, has its own UI, and every disagreement with SAP2000 now has a named cause.** Tee and single angle join IWF, RHS and CHS, which means the engine has to handle two things it never had to before: a section whose strength depends on which way it bends, and a section that resists a single moment about two axes at once. The steel flyout, which until now was a section picker and four number boxes, becomes a real tool with a live cross-section and two report decks. And the four measured gaps against SAP2000 — carried since the shapes landed, one of them written up as *"not fully explained"* — were chased down by experiment rather than argument. No engine math changed to close them: where SAP2000 departs from the AISC text we follow the text and declare the difference, so all four remain, bounded and direction-checked.
+
+### The two shapes that break an assumption
+
+Every shape before these had one `Mn`. A **tee** does not. It is symmetric left-to-right but not top-to-bottom, so sagging puts the stem in tension and hogging puts it in compression, and AISC F9 gives those two cases different limit-state ladders with different caps (1.6M<sub>y</sub> against M<sub>y</sub>). `strategy.ts` therefore evaluates both branches once per load combination and picks per station. On one WT300×200 that is **60.0 kN·m sagging against 31.4 hogging** — the same steel, half the strength.
+
+A **single angle** breaks it differently. Its principal axes sit at an angle α to the geometric axis the solver bends about (exactly 45° when the legs are equal), so one geometric moment resolves into two principal components, `Mw = M33·cos α` and `Mz = −M33·sin α`. Because `Iz ≈ Iw/4`, the *minor* component usually governs. A large capacity ratio on an angle beam is correct behaviour, not a bug, and it is why angles are checked with AISC **H2** rather than H1.
+
+### Added — engine
+
+- **`sections/shapes/principal.ts`** — exact rectangle-composition geometry: area, second **and third** moments, principal axes, the monosymmetry property `βw`, and the `torsionStrip` helper that `iwf.ts` now imports too. Third moments are needed because `βw = (1/Iw)∫z(w²+z²)dA − 2z0` expands into a linear combination of them, so it comes out closed-form rather than numerically integrated. The identity `βw = 0` for equal legs then costs nothing to assert.
+- **AISC F9** (tees) and **F10** (single angles, on the principal axes) in `flexure.ts`; **G3** shear for both; **H2-1** in `interaction.ts`; **E4** torsional and flexural-torsional buckling in `compression.ts` — E4-2 for doubly symmetric shapes, E4-3 for singly symmetric, and the E4-4 cubic for unsymmetric, bracketed and bisected rather than solved in closed form.
+- **E4 is now active for the IWF as well**, which closes a previously deferred item. It enters as `min(E3, E4)`, so it can only lower `Pn`; the 15/15 column anchor re-runs unchanged.
+- **`steel/section-props.ts`** — `resolveSteelSection` + `steelFlexureInput`, the single mapping from a `Section` to Chapter E/F inputs. Both the strategy and the report decks read it, so a deck cannot quietly derive `S33` or `J` differently from the check it is drawing.
+- **`angle.ts` rewritten** on the new geometry engine (dims `{b, d, t}`, with `d` optional so sections saved as `{b, t}` still load as equal-leg); **`tee.ts` additive only** (`J`, `Cw`, shear-centre `y0`) so the concrete tee stays byte-stable. `Section.derived` gains `x0`, `y0` and an optional `principal` block.
+
+### Added — steel UI (`src/tabs/design/tools/steel/`)
+
+The tool now mirrors the RC one's shape — router, preview, then a per-kind report deck — while sharing none of its code. Only the material-agnostic pieces are common: `chart-text.tsx` moved up out of `rc/`, and `chart-utils.ts` was lifted out of the RC column deck so all four charts use the same tick spacing and number formatting.
+
+- **Element type (auto / beam / column)** — this control was missing entirely, even though `SteelSectionInput.elementType` already existed and the strategy already read it.
+- **`preview.tsx`** — live cross-section for all five shapes, drawn from `shape.dims` alone so it works before a design run. An angle also gets **its principal axes drawn at α**, which is the clearest way to show why one moment produces two components.
+- **`beam/report.tsx`** — the **`Mn` vs `Lb` curve**, which is the chart a steel engineer draws by hand: the plastic plateau, the inelastic ramp between `Lp` and `Lr`, and the elastic tail, with the zones shaded and a marker at the member's own unbraced length. It answers what a single `φMn` cannot, namely how much capacity bracing is buying. A tee draws two curves for its sign split; an angle draws `MnW` and `MnZ`.
+- **`column/report.tsx`** — the **AISC H1 interaction envelope**. Unlike the RC P–M curve this one is exact and piecewise-linear, because it is H1 rearranged: `M = (9/8)·Mc·(1 − Pr/Pc)` above `Pr/Pc = 0.2` and `M = Mc·(1 − Pr/2Pc)` below, so the kink between the two branches is visible and labelled. Every `(P, M)` pair the check actually looked at is plotted on it, plus the Chapter E ladder `KL/r → Fe vs Fez → Fcr → Ae → φPn`.
+- **No design math lives in the decks.** Curve points come from the same `flexuralStrength()` the strategy calls; the deck only chooses which `Lb` values to ask about.
+
+### Changed
+
+- **Canvas** — a **Steel group** in the report dropdown (`stl-dc`, `stl-shear-dc`, `stl-capacity`, `stl-limit`, `stl-slender`), material-scoped so a concrete member renders nothing under it. The steel branch also *honours* the dropdown at all now; it previously drew its default pills under every report.
+- **DESIGN SCHEDULE** is material-aware. Steel rows resolve through `asSteelInput` and show the governing AISC equation where RC shows its As-required/As-checked mode, because steel has no such mode — there is no rebar-style unknown to solve for, so steel is always a check of the section you assigned.
+- **`designability.ts`** gains a `steel/tee` row and flips `steel/angle` on. Its steel branch became an explicit `switch`: it used to fall through to the IWF dimension keys for anything that was not CHS or RHS, which was harmless only while every other steel shape was unimplemented.
+- **A silent refusal was fixed.** When `steelGeom` threw, the member came back `not-implemented` with no `note`, so it vanished from the results with nothing to explain it. It now carries a reason that reaches the issues card.
+
+### Fixed
+
+- **Catastrophic cancellation in AISC F9-10.** The bracket `B + √(1+B²)` loses all precision when `B ≪ 0`, which is exactly the stem-in-compression branch at short unbraced lengths, because `B` grows as `1/Lb`. Once `B²` passes `1/ε` the square root rounds to `|B|`, the bracket evaluates to zero, and the capacity collapses. On a WT300×200 at `Lb = 1 µm` the naive form returns `Mn = 0.000` against the correct `52.593 kN·m`, and `Mn(Lb)` stops decreasing monotonically. Now evaluated as the algebraically identical `1/(√(1+B²) − B)`. Found by the new UI render test, whose `Mn`-vs-`Lb` curve samples `Lb → 0`; the clause sweep had started its monotonicity scan at `Lb = 100 mm` and never reached the regime.
+- **A documented claim that turned out to be false.** `flexure.ts::angleShape` said CSI takes `Sc` over the two leg toes only, making our heel-inclusive value conservative. It does not — the manual (p. 3-68) asks for the heel *and* both tips, and SAP2000's `McMinor` reproduces our heel-governed `SzMin` to five decimal places.
+
+### The four SAP2000 divergences, resolved
+
+All four are conservative, all are enforced as bounded, direction-checked `_knownDeltas`, and all now have an identified cause. Two were settled by a designed experiment: `probe_angle_ltb.py` builds 19 variants in one SAP2000 session and **asserts** the resulting characterisation, so a version of SAP2000 that behaves differently fails the suite instead of leaving the documentation quietly wrong.
+
+| # | What | Size | Cause |
+|---|---|---|---|
+| A | Angle capacity ratio | ≤ **24.7 %** high | SAP2000's 3D analysis develops an out-of-plane `M22` that partially cancels our `Mz`. Confirmed from its own PMM row: `MrMajorDsgn` is *our* resolution formula applied to its `(M33, M22)`. A one-bending-DOF element cannot produce that moment, so this is permanent. |
+| B | Hogging tee `McMajor` | **11.6 %** low | SAP2000 does not apply AISC F9.4 stem local buckling at any slenderness. `McMajor / (φ·Fy·S33) = 1.00000` at `d/tw` = 20, 27, 30, 35, 45 and 55 — including where the clause would cut capacity by 59 %. CSI's own manual p. 3-60 prints the three-branch `Fcr` we implement. |
+| C | Equal-leg angle `McMajor` | **6.1 %** low | SAP2000 evaluates F10 on the **thin-walled two-line idealisation**; we use exact polygon geometry. Two separable effects, see below. |
+| D | `J` for tee and angle | **1.6 – 5.1 %** low | SAP2000 adds a junction term where the plates meet. For an angle it is exactly **`0.17500·t⁴`**, constant to five decimal places across `t` = 8/10/12/16, legs of 75/100/150, and both unequal orientations. Not adopted: no published closed form reproduces it, and every formula here cites a clause. The IWF matches SAP2000 exactly. |
+
+**C in full**, because it was the one recorded as unexplained. When `Mcr ∝ 1/Lb` the F10-2 ladder is exactly linear in `√Lb`, which means the intercept fixes `My` and the slope fixes `Mcr` *independently* — so the two effects could be separated without assuming either. The fit over five spans has a maximum residual of `0.003 kN·m`. It gives, first, an `My` at the leg-tip **mid-thickness** fibre (`|z| = 67.175 mm`) rather than the real outer corner at `70.711`, making SAP2000's `Sw` 5.2 % larger. And second, an `Mcr` matching `0.46·E·b²·t²·Cb/Lb`, the **AISC 360-05/10 F10-5** equation. That `0.46` is not an independent constant: it is `9/8 · 2/√24 = 0.45928`, which is F10-4's `9·A·rz·t/8` evaluated in the thin-wall limit. With the real `A` and `rz` the same equation gives `84 039` against SAP2000's `92 000 kN·m·mm`. Unequal-leg angles agree to **0.05 %**, which is why only the equal-leg case ever diverged.
+
+Also settled along the way: **`Cb` really is 1.0 in SAP2000**, not merely reported as such. The same angle at one span under three load patterns whose AISC F1-1 values are 1.136, 1.316 and 2.27→1.5 returned an identical `McMajor` to five decimal places. CSI's manual says `Cb` comes from F1-1 capped at 1.5; the program does not.
+
+### Validation
+
+- **`steel_angle_tee_props.mts`** (68) — every reference recomputed here by exact polygon contour integration (Green's theorem with 4-point Gauss–Legendre, exact for the degree-≤4 integrands), sharing no code with the engine under test.
+- **`steel_angle_tee_clauses.mts`** (80) — F9/F10/E4/G3/H2 branch and continuity sweep, now including the F9-10 cancellation assertion.
+- **`steel_ui_smoke.mts`** (86, new) — renders the preview, both charts and the tool to static markup with `react-dom/server` across all five shapes plus the degenerate inputs a user can actually produce (a section with no shape, `t ≥ leg`, zero dimensions, no result yet). `npm run build` type-checks the decks but never runs them, so this is what catches a divide-by-zero in a chart scale. It is what found the F9-10 bug.
+- **`probe_angle_ltb.py`** (23, new) — bridge stage 8, the experiment above kept as a regression.
+- **`run_all.mjs`** (new) — every `.mts`/`.mjs` suite plus build and lint in one command, `--with-sap` to chain the bridge. Lint is gated against a recorded baseline (6 errors, 28 warnings, all pre-existing `react-hooks` issues in `App.tsx` and `structural-canvas.tsx`) so a new problem still fails the suite while the old ones do not mask it.
+- Pre-existing anchors re-run unchanged: `steel_boundary_sweep` 86/86, `steel_column_verify` 15/15, `steel_flexure_verify` 14/14, `steel_pipeline_smoke` 58/58, every `rc_*`, and the bridge's IWF/RHS/CHS design stage still **21/21 at 0.000 %**.
+
+### Notes
+
+- The DSM solver and model math are untouched. Design remains a pure consumer of analysis results.
+- Design state — criteria, per-section inputs, results — still lives in the session and is not written to the JSON file, the same boundary as load cases and combinations.
+- Still deferred: AISC F4/F5 (noncompact and slender webs, refused rather than approximated), double angle, tension rupture D2-2, sway-frame `K`, second-order amplification, and AISC 341-16 seismic detailing. Torsion (H3) and out-of-plane bending are permanent limits of a 2D model, not deferrals.
+
+---
+
 ## [1.1.3] — 2026-06-16
 
 **Circular RC column design; spiral confinement moved off rectangular sections.** Reinforced-concrete column design now accepts **circular sections** (P–M interaction, capacity-design shear, spiral / circular-tie confinement, detailing, slenderness — both As-checked and As-required). Spiral confinement, which was previously (and incorrectly) offered on rectangular columns with a rectangular core, is **dropped for rectangles** (now tied-only) and lives where it belongs — circular sections. The validated rectangular beam/column capacity anchors are **byte-stable**; this is additive (the `(b, h)` → `ColumnGeom` refactor reduces to the original rectangular math).
