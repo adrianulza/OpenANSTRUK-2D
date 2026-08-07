@@ -19,6 +19,14 @@ function compute(dims: Record<string, number>): SectionProperties {
   const r33 = Math.sqrt(I33 / A)
   const r22 = Math.sqrt(I22 / A)
 
+  // Thin-walled closed rectangle — Bredt's formula on the mid-thickness
+  // perimeter: J = 4·Am²·t / p, with Am the enclosed mid-line area.
+  // Box sections have no lateral-torsional buckling limit state under AISC F7,
+  // so Cw / rts / ho are deliberately left undefined.
+  const bm = b - t
+  const hm = h - t
+  const J = (2 * t * bm ** 2 * hm ** 2) / (bm + hm)
+
   return {
     A, I33, I22,
     S33b: S33, S33t: S33, S22L: S22, S22R: S22,
@@ -26,6 +34,7 @@ function compute(dims: Record<string, number>): SectionProperties {
     "Aκ2": Aκ2, "Aκ3": Aκ3,
     r33, r22,
     yBar: h / 2,
+    J,
   }
 }
 

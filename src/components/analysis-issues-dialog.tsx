@@ -36,8 +36,17 @@ function messageFor(issue: DiagnosticIssue): string {
       return `The model has ${issue.have} reaction component${issue.have === 1 ? "" : "s"} but needs at least 3 for static equilibrium.`
     case "disconnected-component":
       return "There are nodes disconnected from any support."
-    case "singular-at-dof":
-      return "Instability detected. Likely cause: missing constraint or geometric mechanism."
+    case "singular-at-dof": {
+      // The failing degree of freedom is already known — `dofToLocation` maps
+      // the solver's singular pivot back to a node and a direction in App.tsx.
+      // Naming it turns a generic warning into a pointer at the exact joint,
+      // which is the difference between "something is wrong" and "go here".
+      const dir =
+        issue.direction === "u" ? "horizontally"
+        : issue.direction === "v" ? "vertically"
+        : "in rotation"
+      return `Instability detected at node ${issue.nodeId}, ${dir}. Nothing restrains that direction — likely a missing constraint or a geometric mechanism.`
+    }
     case "selfweight-zero-gamma":
       return "Warning: Some sections have Unit Weight (γ) = 0 and will produce zero self-weight contribution."
     case "duplicate-members":

@@ -1,10 +1,10 @@
 /**
- * Steel per-section design input types. Pure domain module: no React imports.
+ * Steel per-section design input. Pure domain module: no React imports.
  *
- * STUB (v1.1.2): minimal field set so per-section steel inputs can be stored and
- * the tool slot exists. Real flexure/compression checks (and the inputs they
- * need, e.g. unbraced length Lb, Cb, effective-length K) are fleshed out in a
- * later pass — see docs/DESIGN_RULES.md "Steel design (planned)".
+ * Unlike RC there is no "required" vs "checked" mode. Steel design here is
+ * always a CHECK of the section the user assigned — there is no rebar-style
+ * "solve for the missing quantity". Auto-selecting a lighter section from a
+ * catalogue is a separate feature and out of scope.
  */
 
 import type { SectionId } from "@/lib/model"
@@ -15,10 +15,26 @@ export interface SteelSectionInput {
   sectionId: SectionId
   /** Beam vs column (auto = by orientation + axial threshold). */
   elementType: ElementType
-  /** Laterally-unbraced length for LTB, m (0 / undefined → assume continuously braced). */
+  /**
+   * Laterally-unbraced length for LTB, m. `undefined` or 0 means "use the full
+   * member length", which is the conservative default — OpenAnstruk has no
+   * intermediate lateral-brace concept, so a shorter Lb must be entered by
+   * hand when the real structure provides bracing.
+   */
   Lb?: number
-  /** Lateral-torsional buckling modification factor Cb (F1, default 1.0). */
+  /**
+   * LTB modification factor Cb (AISC F1-1). `undefined` = compute it from the
+   * member's own moment diagram (the accurate default). A number overrides it;
+   * enter 1.0 for the conservative uniform-moment assumption.
+   */
   Cb?: number
+  /**
+   * Effective length factors. Default 1.0 for both, which is what the AISC
+   * Direct Analysis Method prescribes (K = 1.0 always) and what a braced frame
+   * warrants. Sway-frame K2 via the alignment-chart nomograph is not computed.
+   */
+  K33?: number
+  K22?: number
 }
 
 export function defaultSteelSectionInput(sectionId: SectionId): SteelSectionInput {
@@ -27,6 +43,8 @@ export function defaultSteelSectionInput(sectionId: SectionId): SteelSectionInpu
     sectionId,
     elementType: "auto",
     Lb: 0,
-    Cb: 1.0,
+    Cb: undefined, // auto-compute from the moment diagram
+    K33: 1.0,
+    K22: 1.0,
   }
 }

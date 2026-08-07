@@ -50,12 +50,19 @@ OpenAnstruk-2D/
 │   │   │   ├── compute.ts             # buildParametricSection, computeSectionFromParametric
 │   │   │   ├── materials/             # types, concrete, steel, index
 │   │   │   └── shapes/                # types + rect, circle, iwf, tee, angle, chs, rhs
-│   │   └── design/                    # Design engine (pure) — see docs/DESIGN_RULES.md
+│   │   └── design/                    # Design engine (pure) — see docs/DESIGN_{RULES,RC,STEEL}.md
 │   │       ├── core/                  # material-agnostic: run-design, demands, designability, criteria, types
 │   │       ├── rc/                    # RC strategy: criteria, types, strategy
 │   │       │   ├── shared/            #   code-agnostic geometry (rebar, bar-geometry, column-grid)
 │   │       │   └── codes/<code>/      #   per-code math (rules, beam, column, report) — aci318-25, sni2847-19
-│   │       └── steel/                 # steel strategy — stub (AISC 360 / SNI 1729)
+│   │       └── steel/                 # steel strategy (AISC 360-16 / SNI 1729:2020)
+│   │           ├── rules.ts           #   steelGeom + Table B4.1a/B4.1b classification
+│   │           ├── compression.ts     #   E3 / E4 / E7 / D2
+│   │           ├── flexure.ts         #   F2, F3, F7, F8, F9 (tee), F10 (angle)
+│   │           ├── shear.ts           #   G2 / G3 / G4 / G5
+│   │           ├── interaction.ts     #   H1-1a/b, H1-2, H1.3, H2-1
+│   │           ├── section-props.ts   #   Section → clause inputs (shared with the UI decks)
+│   │           └── strategy.ts        #   designMemberSteel — station sweep + envelope
 │   │
 │   ├── canvas/                        # Canvas shell + tab-agnostic draw primitives
 │   │   ├── structural-canvas.tsx      # Viewport, pan/zoom, event routing, draw() loop
@@ -100,7 +107,9 @@ OpenAnstruk-2D/
 │   └── tsconfig.json
 ├── docs/
 │   ├── ARCHITECTURE.md                # This file
-│   ├── DESIGN_RULES.md                # RC/steel design logic + ACI clause index + extension guide
+│   ├── DESIGN_RULES.md                # Design core: designability, demands, orchestration
+│   ├── DESIGN_RC.md                   # RC clause math (ACI 318-25 / SNI 2847:2019)
+│   ├── DESIGN_STEEL.md                # Steel clause math (AISC 360-16 / SNI 1729:2020)
 │   ├── CONTRIBUTING.md
 │   └── USER_GUIDE.md
 ├── tsconfig.json                      # Root tsconfig (references config/tsconfig.json)
@@ -405,7 +414,9 @@ tabs/
 │   └── material/       material-tool (entry) + parametric/manual forms, shape-preview, …
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
 ├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
-└── design/tools/       design-criteria + rc/ (rc-design-tool, beam/, column/) + steel/
+└── design/tools/       design-criteria, design-schedule, chart-text/chart-utils (shared),
+                    rc/ (rc-design-tool, beam/, column/), steel/ (steel-design-tool,
+                    preview, deck, beam/, column/)
 ```
 
 **Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
@@ -414,16 +425,18 @@ tabs/
 
 ## Design Engine (`src/lib/design/`)
 
-A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` (in `design/core/`) solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
+A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019) and **steel member checks** (classification, axial, flexure + LTB, shear, Chapter H interaction; AISC 360-16 / SNI 1729:2020). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` (in `design/core/`) solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in RC "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
 
 The engine is split along two axes so new work is additive, not invasive (v1.1.2):
 - **`design/core/`** — material-agnostic orchestrator, demands, designability matrix, result types, and `DesignCriteria { material, rc, steel }`.
 - **`design/rc/`** — the RC strategy, itself split into **`shared/`** (code-agnostic bar/grid geometry, single-sourced) and **`codes/<code>/`** (the clause math — `aci318-25`, `sni2847-19` — duplicated per code edition, resolved at runtime via `getRcCode(criteria.rc.code)`).
-- **`design/steel/`** — stub strategy (AISC 360 / SNI 1729) returning `not-implemented`.
+- **`design/steel/`** — the steel strategy: five shapes (IWF, RHS, CHS, tee, single angle), one Chapter H check for beams and columns alike. Unlike RC there is no required/checked split — steel is always a *check* of the assigned section.
 
-A `DESIGN_SUPPORT` registry (material × geometry × element, with an `implemented` flag) gates which combinations run, so **steel members, RC circular columns, and T-beams** slot in by flipping a flag and adding a strategy branch. Full plan: `docs/DESIGN_P4_PLAN.md`.
+A `DESIGN_SUPPORT` registry (material × geometry × element, with an `implemented` flag) gates which combinations run, so a planned-but-unbuilt combination (an RC T-beam, say) shows "N.A." rather than crashing; enabling one means flipping a flag and adding a strategy branch.
 
-> The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** — read it before touching `src/lib/design/`.
+**Two shapes break the "one `Mn` per section" assumption** the other three hold to, and both are worth knowing before reading the steel code: a **tee** is singly symmetric, so its capacity depends on the *sign* of the moment (F9); a **single angle**'s principal axes are rotated from the geometric axis the solver bends about, so one geometric moment produces two principal components and the member is checked with **H2**, not H1.
+
+> The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** (core), **[`DESIGN_RC.md`](DESIGN_RC.md)** and **[`DESIGN_STEEL.md`](DESIGN_STEEL.md)** — read them before touching `src/lib/design/`.
 
 ---
 

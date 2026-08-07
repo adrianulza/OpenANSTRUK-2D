@@ -40,9 +40,13 @@ Click a node to assign a support. Choose the support type in the flyout:
 - **Fixed** — restrains all three DOFs (displacement and rotation)
 
 ### MATERIAL
-Click a member to view and edit its section properties: elastic modulus (E), second moment of area (I), cross-sectional area (A), unit weight (W), and Poisson's ratio (ν).
+Click a member to view and edit its section. There are two ways to define one.
 
-Available sections: IWF 150, IWF 200, WF 300.
+**Parametric** — pick a material class (concrete or steel) and a shape, then type the dimensions. The app computes area, second moments, section moduli, radii of gyration and the torsional properties for you, and sets the unit weight from the material (concrete 24 kN/m³, steel 78.5 kN/m³). Shapes available: rectangle, circle, IWF, tee, angle, CHS and RHS. This is the mode the Design tab needs, because design checks read the shape and its dimensions, not just E, I and A.
+
+**Manual** — enter elastic modulus (E), second moment of area (I), cross-sectional area (A), unit weight (γ) and Poisson's ratio (ν) directly. Manual sections analyse fine but cannot be designed, since there is no cross-section behind the numbers to classify or detail.
+
+An **Advanced** panel lets you override individual derived values when you need to match a published section table.
 
 ### MODIFY
 Click any node, member, or support to select it and view its properties in the flyout. Multiple elements can be selected by clicking while holding Shift, or by dragging a selection box. Click a selected element again to deselect.
@@ -124,18 +128,25 @@ Displays the deformed shape. Use the scale slider to exaggerate deformations for
 
 ## Design Tab
 
-The Design tab checks **reinforced-concrete rectangular beams** for flexure and shear per **ACI 318-14 / SNI 2847:2019**, across Ordinary / Intermediate / Special moment frames (OMF / IMF / SMF). It applies to any member with a concrete rectangular section (f'c > 0), in any orientation.
+The Design tab checks two materials, and a model containing both is designed in one run. Each member goes to the strategy for its own material, so you never have to separate them yourself.
 
-Two tools set it up:
+**Reinforced concrete** — rectangular beams and columns plus circular columns, per **SNI 2847:2019** or **ACI 318-25**, across Ordinary / Intermediate / Special moment frames (SRPMB / SRPMM / SRPMK under SNI). Any member with a concrete section and f'c > 0 qualifies, in any orientation.
 
-- **DESIGN CRITERIA** — the global code setup: framing type, steel strengths (fy, fyt, Es), strength-reduction factors (φ), lightweight factor (λ), and stirrup legs.
-- **SECTION DESIGN** — per concrete section: pick **As required** (the program computes the steel needed) or **As checked** (you define the bars and stirrups, and it reports capacity ratios). In checked mode you set cover, top/bottom/side bars, and the stirrup for two arrangements — **Support** (the 2h end/hinge zones) and **Midspan** — with a live cross-section preview and a running ACI detailing checklist (spacing, cover, layering, skin reinforcement, hoop spacing).
+**Structural steel** — IWF, RHS, CHS, tee and single angle, per **AISC 360-16 / SNI 1729:2020**: section classification, axial, flexure with lateral-torsional buckling, shear, and the Chapter H combined-force check.
 
-Press **Run Design** (floating button, top of the canvas) to evaluate every beam. Members are coloured by their worst flexural capacity ratio (navy → green → orange → red), with a flexure and a shear label per member and a colour legend. Any run problems (no load combinations, unsolved cases, no designable section) appear in an amber card.
+Three tools set it up:
+
+- **DESIGN CRITERIA** — the global code setup. Which material you are designing, then its parameters: for concrete the framing type, bar strengths (fy, fyt, Es), strength-reduction factors (φ), lightweight factor (λ) and stirrup legs; for steel the grade (Fy, Fu, E) and the φ factors.
+- **REINFORCED CONCRETE** — per concrete section: pick **As required**, where the program computes the steel you need, or **As checked**, where you define the bars and stirrups and it reports capacity ratios. In checked mode you set cover, top/bottom/side bars, and the stirrup for two arrangements — **Support** (the 2h end/hinge zones) and **Midspan** — with a live cross-section preview and a running detailing checklist covering spacing, cover, layering, skin reinforcement and hoop spacing.
+- **STEEL** — per steel section. There is no required/checked choice here, because steel has no rebar-style unknown to solve for: the check always evaluates the section you assigned. What you set instead is what AISC needs beyond the geometry — the unbraced length L<sub>b</sub>, C<sub>b</sub>, and the effective-length factors K<sub>33</sub> and K<sub>22</sub> — plus whether the member is a beam or a column, which selects the report rather than the maths. A live cross-section sits above the inputs; for a single angle it also draws the **principal axes**, which is worth looking at, since bending an angle about a geometric axis loads both of them at once and that is why angles come out weak.
+
+Each tool has an **Advanced Report** you can open beside the flyout. The steel beam report draws the classic **capacity-against-unbraced-length curve**, with the plastic plateau, the ramp between L<sub>p</sub> and L<sub>r</sub>, and a marker at your member's own L<sub>b</sub> — so you can see what bracing is buying you before you change it. The steel column report draws the **AISC H1 interaction envelope** with every axial-moment pair the check looked at plotted on it.
+
+Press **Run Design** (floating button, top of the canvas) to evaluate every member. Members are coloured by their worst capacity ratio (navy → green → orange → red), each carrying two labels — flexure or combined-force on one side, shear on the other — with a colour legend. A steel member's combined-force label names the AISC equation that governed, because for steel *which* equation governs tells you as much as the number does. The report dropdown switches what those labels show, and its groups are scoped by material: a concrete member stays unlabelled under a steel report, and vice versa. Any run problems (no load combinations, unsolved cases, no designable section) appear in an amber card.
 
 > Design results are not saved in the JSON file (same as load cases and combinations) and clear automatically whenever you change the model, loads, combinations, or design inputs — re-run after edits.
 
-For the full engineering logic and the governing code clauses behind every check, see **[DESIGN_RULES.md](DESIGN_RULES.md)**.
+For the full engineering logic and the governing code clauses behind every check, see **[DESIGN_RULES.md](DESIGN_RULES.md)** (the core), **[DESIGN_RC.md](DESIGN_RC.md)** (reinforced concrete) and **[DESIGN_STEEL.md](DESIGN_STEEL.md)** (steel).
 
 ---
 

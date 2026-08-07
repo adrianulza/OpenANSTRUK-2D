@@ -503,7 +503,17 @@ function FlyoutContent({
           />
         ) : null
       case "STEEL_DESIGN":
-        return <SteelDesignToolContent />
+        return model && onPatchSectionDesignInput && designCriteria ? (
+          <SteelDesignToolContent
+            model={model}
+            selectedSectionId={designSelectedSectionId ?? null}
+            onSelectSection={onDesignSelectedSectionChange ?? (() => {})}
+            inputs={sectionDesignInputs ?? {}}
+            onPatchInput={onPatchSectionDesignInput}
+            designResult={designResult ?? null}
+            criteria={designCriteria}
+          />
+        ) : null
       case "DESIGN_SCHEDULE":
         return designCriteria && onPatchSectionDesignInput ? (
           <DesignScheduleToolContent

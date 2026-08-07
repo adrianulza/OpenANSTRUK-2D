@@ -615,6 +615,9 @@ export function StructuralCanvas({
         designReport.startsWith("req-") ? "required"
         : designReport.startsWith("chk-") ? "checked"
         : null
+      // …and material-scoped: stl-* only on steel members, everything else only
+      // on RC ones. `default` is the one report that renders for both.
+      const isSteelReport = designReport.startsWith("stl-")
 
       const zoneLabels = (r: MemberDesignResult, z: ZoneId): ZoneLabels | null => {
         if (r.status !== "designed" || !r.zones) return null
@@ -669,6 +672,70 @@ export function StructuralCanvas({
           drawPill(midX, midY - 14 * s, angle, "N/A — axial", "#92700c")
           continue
         }
+
+        // Steel members (AISC 360-16). Under the default report: a combined-force
+        // pill on +local-2 and a shear pill on −local-2, the same sides beams and
+        // columns use. The combined-force pill names the governing AISC equation,
+        // because for steel *which* equation governs is as informative as the
+        // ratio. The stl-* reports each render one pill instead.
+        if (r.material === "steel") {
+          const st = r.steel
+          if (!st) continue
+          // An RC-scoped report (req-/chk-/col-) renders nothing on a steel
+          // member, mirroring how a mode-mismatched RC member renders nothing.
+          if (!isSteelReport && designReport !== "default") continue
+          const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
+          const sspx = l2x
+          const sspy = -l2y
+          const soff = 14 * s
+          const eq = st.equation !== "none" ? ` ${st.equation}` : ""
+          const main: Cell = Number.isFinite(st.ratio)
+            ? { text: `D/C ${st.ratio.toFixed(2)}${eq}`, color: st.ratio <= 1 ? navy : fail }
+            : { text: "D/C O/S", color: fail }
+          const vCell: Cell = Number.isFinite(st.shearRatio)
+            ? { text: `V ${st.shearRatio.toFixed(2)}`, color: st.shearRatio <= 1 ? navy : fail }
+            : { text: "V O/S", color: fail }
+          const flag = st.warnings.length > 0 ? " ⚠" : ""
+
+          switch (designReport) {
+            case "default":
+              drawPill(midX + sspx * soff, midY + sspy * soff, angle, main.text + flag, main.color)
+              drawPill(midX - sspx * soff, midY - sspy * soff, angle, vCell.text, vCell.color)
+              break
+            case "stl-dc":
+              drawPill(midX, midY - 14 * s, angle, main.text + flag, main.color)
+              break
+            case "stl-shear-dc":
+              drawPill(midX, midY - 14 * s, angle, vCell.text, vCell.color)
+              break
+            case "stl-capacity":
+              drawPill(
+                midX, midY - 14 * s, angle,
+                `P ${st.PcComp.toFixed(0)} · M ${st.Mc33.toFixed(1)} · V ${st.Vc.toFixed(0)}`,
+                navy,
+              )
+              break
+            case "stl-limit":
+              drawPill(midX, midY - 14 * s, angle, `${st.flexureLimit} · ${st.sectionClass}`, navy)
+              break
+            case "stl-slender": {
+              const klr = st.slenderness ?? 0
+              // Flexural-torsional governing is worth flagging: it is the E4
+              // path, which only exists for open, non-doubly-symmetric shapes.
+              const ft = st.bucklingMode === "flexural-torsional"
+              drawPill(
+                midX, midY - 14 * s, angle,
+                `KL/r ${klr.toFixed(0)}${st.slendernessAxis ? `(${st.slendernessAxis})` : ""}${ft ? " · F-T" : ""}`,
+                klr > 200 ? warn : ft ? "#0ea5e9" : navy,
+              )
+              break
+            }
+          }
+          continue
+        }
+
+        // Beyond here the member is RC — a steel report renders nothing on it.
+        if (isSteelReport) continue
 
         // Column members. Default report = two pills (interaction on +local-2,
         // shear on −local-2 — same sides as beams), with confinement/SCWB fail
@@ -3236,6 +3303,11 @@ export function StructuralCanvas({
           {(designReport === "col-confine" || designReport === "col-scwb") && (
             <p className="text-[10px] text-muted-foreground mt-1 pt-1 border-t border-border">
               {designReport === "col-confine" ? "✓ confinement OK · ✗ fail" : "SCWB ratio ≥ 1.0 OK · < 1.0 fail"}
+            </p>
+          )}
+          {designReport.startsWith("stl-") && (
+            <p className="text-[10px] text-muted-foreground mt-1 pt-1 border-t border-border">
+              Steel only (AISC 360-16) — concrete members are unlabelled here
             </p>
           )}
         </div>

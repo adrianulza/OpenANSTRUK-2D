@@ -161,6 +161,101 @@ export interface ColumnDesignResult {
   Mn?: number
 }
 
+/** Steel member check result (AISC 360-16). One station governs each channel. */
+export interface SteelDesignResult {
+  /** Section classification: "Compact" | "NonCompact" | "Slender". */
+  sectionClass: string
+  /** Classification for axial only (Table B4.1a) — can differ from flexure. */
+  axialClass: string
+  /** Governing combined-force ratio and which AISC equation produced it. */
+  ratio: number
+  equation: string
+  governing?: { combo: LoadComboId; x: number; Pr: number; Mr: number }
+  /** Available strengths, kN / kN·m (φ already applied). */
+  PcComp: number
+  PcTens: number
+  Mc33: number
+  Vc: number
+  /** Nominal values before φ, for the report deck. */
+  Pn: number
+  Mn: number
+  Mp: number
+  Vn: number
+  /** LTB parameters in METRES (undefined for shapes with no LTB limit state). */
+  Lp?: number
+  Lr?: number
+  Lb?: number
+  Cb?: number
+  /** Which flexural limit state governed. */
+  flexureLimit: string
+  /** Compression diagnostics. */
+  Fe?: number
+  Fcr?: number
+  Ae?: number
+  slenderness?: number
+  slendernessAxis?: "33" | "22"
+  /** Shear channel. */
+  Vr: number
+  shearRatio: number
+  /** Peak demands driving the governing ratio. */
+  PrMax: number
+  MrMax: number
+  /** Overall pass (interaction AND shear within the D/C limit). */
+  pass: boolean
+  /** Non-fatal advisories, e.g. KL/r > 200. */
+  warnings: string[]
+
+  // ── AISC E4 (torsional / flexural-torsional buckling) ──────────────────────
+  /** Pure torsional buckling stress Fez, MPa. Undefined for closed sections. */
+  Fez?: number
+  /** Which compression limit state set Fe. */
+  bucklingMode?: "flexural" | "flexural-torsional"
+
+  // ── Single angle (AISC F10 / H2) ───────────────────────────────────────────
+  /** φMn about the MAJOR and MINOR principal axes, kN·m. */
+  McW?: number
+  McZ?: number
+  /** Principal-axis rotation from geometric axis 3, radians. */
+  alphaPrincipal?: number
+  /** Monosymmetry property βw, mm (exactly 0 for an equal-leg angle). */
+  betaW?: number
+  /**
+   * The governing station's geometric M33 resolved onto the principal axes,
+   * kN·m — `Mw = M33·cos α`, `Mz = −M33·sin α`. Reported so the UI can show WHY
+   * a bending angle carries a high D/C: `Iz ≈ Iw/4`, so the minor-principal
+   * term usually dominates. See DESIGN_STEEL.md §S3.1.
+   */
+  MrW?: number
+  MrZ?: number
+
+  // ── Tee (AISC F9) ──────────────────────────────────────────────────────────
+  /** The governing station had the stem in compression (hogging). */
+  stemInCompression?: boolean
+  /**
+   * Both sign branches of a tee's capacity, kN·m (φ applied). A tee is the only
+   * shape whose strength depends on the sign of the moment, and showing one
+   * number hides that — `MnPos` is stem-in-tension (sagging), `MnNeg` is
+   * stem-in-compression (hogging).
+   */
+  McPos?: number
+  McNeg?: number
+
+  // ── Interaction-surface inputs (report decks) ───────────────────────────────
+  /**
+   * Every (Pr, Mr) pair actually checked, across combinations × stations. The
+   * interaction envelope is only meaningful with the demands that produced it,
+   * and P and M must be the ones acting TOGETHER — the same reason the strategy
+   * never envelopes them independently.
+   */
+  pmPairs?: { P: number; M: number; combo: LoadComboId }[]
+  /** φMn ignoring LTB, kN·m (the AISC H1.3a in-plane curve). */
+  Mc33NoLTB?: number
+  /** φMn at Cb = 1.0, capped at φMp, kN·m (the H1-2 out-of-plane curve). */
+  Mc33Cb1?: number
+  /** Weak-axis-only φPn, kN (the H1-2 out-of-plane curve). */
+  Pcy?: number
+}
+
 export interface MemberDesignResult {
   memberId: MemberId
   status: MemberDesignStatus
@@ -168,6 +263,12 @@ export interface MemberDesignResult {
   material?: DesignMaterial
   /** Beam vs column (set when designed). */
   kind?: "beam" | "column"
+  /**
+   * Why a member was refused, for `not-designable` / `not-implemented`. Surfaced
+   * as a run issue so a refusal is never silent — a member that simply vanishes
+   * from the results reads as a bug to the user.
+   */
+  note?: string
   mode?: DesignMode
   /** Governing axial compression, kN (positive = compression). */
   Pu?: number
@@ -176,6 +277,8 @@ export interface MemberDesignResult {
   dimensionChecks?: ArrangementCheck[]
   /** Column interaction result (when kind === "column"). */
   column?: ColumnDesignResult
+  /** Steel member result (when material === "steel"). */
+  steel?: SteelDesignResult
   /** Worst flexural D/C across zones (beam) or interaction D/C (column) — drives
    *  member colour via designColorForDC. */
   worstFlexureDC?: number
@@ -231,9 +334,16 @@ export type DesignReport =
   | "col-confine" // column transverse confinement pass/fail (Ash / ties)
   | "col-slender" // column non-sway slenderness δns + klu/r
   | "col-scwb" // strong-column-weak-beam ratio at joints (node badges)
+  // Steel (AISC 360-16). Scoped to steel members exactly as req-*/chk-* are
+  // scoped by RC mode: an RC member renders nothing under a stl-* report.
+  | "stl-dc" // combined-force D/C + governing AISC equation
+  | "stl-shear-dc" // shear D/C (Chapter G)
+  | "stl-capacity" // available strengths φPn / φMn / φVn
+  | "stl-limit" // governing flexural limit state + section classification
+  | "stl-slender" // KL/r and which buckling mode set Fe (E3 vs E4)
 
 export const DESIGN_REPORTS: {
-  group: "General" | "As required" | "As checked" | "Columns"
+  group: "General" | "As required" | "As checked" | "Columns" | "Steel"
   items: { id: DesignReport; label: string }[]
 }[] = [
   { group: "General", items: [{ id: "default", label: "Design summary (D/C)" }] },
@@ -261,6 +371,16 @@ export const DESIGN_REPORTS: {
       { id: "col-confine", label: "Confinement (Ash / ties)" },
       { id: "col-slender", label: "Slenderness δns" },
       { id: "col-scwb", label: "Strong-column-weak-beam" },
+    ],
+  },
+  {
+    group: "Steel",
+    items: [
+      { id: "stl-dc", label: "Combined D/C + equation" },
+      { id: "stl-shear-dc", label: "Shear D/C" },
+      { id: "stl-capacity", label: "Capacities φPn / φMn / φVn" },
+      { id: "stl-limit", label: "Limit state + classification" },
+      { id: "stl-slender", label: "Slenderness KL/r + mode" },
     ],
   },
 ]

@@ -3,7 +3,10 @@ import { cn } from "@/lib/utils"
 import type { SectionId, StructureModel } from "@/lib/model"
 import { designColorForDC, formatValue } from "@/lib/constants"
 import { materialOf, isSectionDesignable } from "@/lib/design/core/designability"
-import { asRcInput, type SectionDesignInputs } from "@/lib/design/core/section-input"
+import {
+  asRcInput, asSteelInput,
+  type SectionDesignInput, type SectionDesignInputs,
+} from "@/lib/design/core/section-input"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { DesignRunResult, MemberDesignResult, ElementType, DesignMode } from "@/lib/design/core/types"
 import type { RcSectionInput } from "@/lib/design/rc/types"
@@ -11,7 +14,8 @@ import type { RcSectionInput } from "@/lib/design/rc/types"
 interface DesignScheduleToolProps {
   model?: StructureModel
   inputs: SectionDesignInputs
-  onPatchInput: (id: SectionId, patch: Partial<RcSectionInput>) => void
+  /** Union-typed: this table edits both RC and steel sections. */
+  onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
   criteria: DesignCriteria
   designResult?: DesignRunResult | null
 }
@@ -35,7 +39,15 @@ interface MemberRow {
   geometry: string
   designable: boolean
   type: "beam" | "column" | null
+  /**
+   * RC only. Steel has no required/checked split — there is no rebar-style
+   * unknown to solve for — so a steel row shows its governing AISC equation
+   * here instead of a meaningless mode.
+   */
   mode: DesignMode | null
+  isSteel: boolean
+  /** Steel only: the AISC equation that governed, once a run has happened. */
+  equation: string | null
   dc: DC
 }
 
@@ -48,7 +60,11 @@ function memberDC(r: MemberDesignResult | undefined, designable: boolean): DC {
   if (r.status === "not-implemented") return NA
   if (r.status === "axial-exceeded") return { text: "axial >", color: "#ef4444" }
   if (r.status !== "designed") return NA
-  const value = r.kind === "column" ? r.column?.worstDC : r.worstFlexureDC
+  // Steel reports one combined-force ratio for beams and columns alike; only RC
+  // splits the column channel out into a separate interaction result.
+  const value = r.material === "steel"
+    ? r.steel?.ratio
+    : r.kind === "column" ? r.column?.worstDC : r.worstFlexureDC
   if (value === undefined) return NOT_RUN
   return { text: formatValue(value), value, color: designColorForDC(value) }
 }
@@ -87,9 +103,18 @@ export function DesignScheduleToolContent({
     return Object.values(model.members).map((m) => {
       const sec = model.sections[m.section]
       const designable = isSectionDesignable(sec)
-      const rc = asRcInput(inputs[m.section], m.section)
+      const isSteel = materialOf(sec) === "steel"
+      // Narrow to the right input union member — reading a steel section through
+      // `asRcInput` silently materialises an RC default and shows a mode that
+      // does not exist for steel.
+      const di = isSteel
+        ? asSteelInput(inputs[m.section], m.section)
+        : asRcInput(inputs[m.section], m.section)
+      const result = designResult?.members[m.id]
       const type = designable
-        ? rc.elementType === "column" ? "column" : "beam"
+        ? di.elementType === "column" ? "column"
+          : di.elementType === "beam" ? "beam"
+            : result?.kind ?? "beam"
         : null
       return {
         memberId: m.id,
@@ -99,8 +124,10 @@ export function DesignScheduleToolContent({
         geometry: geometryOf(model, m.section),
         designable,
         type,
-        mode: designable ? rc.mode : null,
-        dc: memberDC(designResult?.members[m.id], designable),
+        isSteel,
+        mode: designable && !isSteel ? (di as RcSectionInput).mode : null,
+        equation: isSteel ? result?.steel?.equation ?? null : null,
+        dc: memberDC(result, designable),
       }
     })
   }, [model, inputs, designResult])
@@ -198,7 +225,7 @@ function OverviewTable({ rows }: { rows: MemberRow[] }) {
             <th className={TH}>Class</th>
             <th className={TH}>Geometry</th>
             <th className={TH}>Type</th>
-            <th className={TH}>Mode</th>
+            <th className={TH}>Mode / Eq.</th>
             <th className={TH}>D/C</th>
           </tr>
         </thead>
@@ -213,7 +240,9 @@ function OverviewTable({ rows }: { rows: MemberRow[] }) {
               <td className={TD}>{r.material}</td>
               <td className={cn(TD, "font-mono")}>{r.geometry}</td>
               <td className={cn(TD, "capitalize")}>{r.type ?? "N.A."}</td>
-              <td className={TD}>{r.mode ? modeLabel(r.mode) : "N.A."}</td>
+              <td className={cn(TD, r.isSteel && "font-mono")}>
+                {r.isSteel ? (r.equation ?? "—") : r.mode ? modeLabel(r.mode) : "N.A."}
+              </td>
               <td className={TD}>{r.designable ? <DCCell dc={r.dc} /> : "N.A."}</td>
             </tr>
           ))}
@@ -237,6 +266,7 @@ interface SectionGroup {
   designable: boolean
   type: "beam" | "column" | null
   mode: DesignMode | null
+  isSteel: boolean
   members: MemberRow[]
   worstDC: DC
 }
@@ -254,6 +284,7 @@ function groupBySection(rows: MemberRow[]): SectionGroup[] {
         designable: r.designable,
         type: r.type,
         mode: r.mode,
+        isSteel: r.isSteel,
         members: [],
         worstDC: NA,
       }
@@ -286,7 +317,7 @@ function EditTable({
   rows, onPatchInput,
 }: {
   rows: MemberRow[]
-  onPatchInput: (id: SectionId, patch: Partial<RcSectionInput>) => void
+  onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
 }) {
   const groups = React.useMemo(() => groupBySection(rows), [rows])
 
@@ -319,13 +350,17 @@ function EditTable({
                 ) : "N.A."}
               </td>
               <td className={TD}>
-                {g.designable ? (
+                {/* Steel has no required/checked split — offering the toggle
+                    would write a field the steel input does not have. */}
+                {!g.designable ? "N.A." : g.isSteel ? (
+                  <span className="text-gray-400">check only</span>
+                ) : (
                   <MiniToggle
                     options={[["required", "Required"], ["checked", "Checked"]]}
                     value={g.mode ?? "required"}
                     onChange={(v) => onPatchInput(g.sectionId, { mode: v as DesignMode })}
                   />
-                ) : "N.A."}
+                )}
               </td>
               <td className={TD}>{g.designable ? <DCCell dc={g.worstDC} /> : "N.A."}</td>
             </tr>

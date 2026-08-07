@@ -161,6 +161,7 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     if (materialOf(sec) === "steel") {
       members[m.id] = designMemberSteel({
         memberId: m.id,
+        section: sec!,
         L,
         di: asSteelInput(di, m.section),
         cr: criteria.steel,
@@ -193,7 +194,34 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
 
   const anyDesigned = Object.values(members).some((r) => r.status === "designed")
   if (!anyDesigned) {
-    issues.push("No designable members found — RC design requires concrete rectangular or circular sections.")
+    issues.push(
+      "No designable members found — supported sections are concrete rectangular/circular, " +
+      "or steel IWF / RHS / CHS / tee / single angle with a yield stress defined.",
+    )
+  }
+
+  // Surface steel failures as text, so they are never silent even if the user
+  // never opens the report deck.
+  // A refused member must never disappear silently — say why it was refused.
+  for (const [id, r] of Object.entries(members)) {
+    if (r.note) issues.push(`Member ${id}: ${r.note}`)
+  }
+
+  for (const [id, r] of Object.entries(members)) {
+    const st = r.steel
+    if (!st) continue
+    if (st.ratio > 1) {
+      issues.push(
+        `Steel member ${id}: combined-force ratio ${st.ratio.toFixed(2)} > 1 ` +
+        `via ${st.equation} (AISC H1).`,
+      )
+    }
+    if (st.shearRatio > 1) {
+      issues.push(
+        `Steel member ${id}: shear ratio ${st.shearRatio.toFixed(2)} > 1 (AISC G).`,
+      )
+    }
+    for (const w of st.warnings) issues.push(`Steel member ${id}: ${w}`)
   }
 
   // Surface column shear / confinement failures as issues (never silent, even if
