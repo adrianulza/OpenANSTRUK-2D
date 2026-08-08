@@ -184,7 +184,8 @@ interface StructuralCanvasProps {
   canRedo?: boolean
   // Design tab (v1.1)
   designResult?: DesignRunResult | null
-  onRunDesign?: () => void
+  /** A deferred design edit is still settling — shows the "Updating…" chip. */
+  designStale?: boolean
   designReport?: DesignReport
   onDesignReportChange?: (r: DesignReport) => void
 }
@@ -238,7 +239,7 @@ export function StructuralCanvas({
   canUndo = false,
   canRedo = false,
   designResult = null,
-  onRunDesign,
+  designStale = false,
   designReport = "default",
   onDesignReportChange,
 }: StructuralCanvasProps) {
@@ -3300,16 +3301,18 @@ export function StructuralCanvas({
           </span>
         </div>
       )}
-      {/* Design tab: floating Run button — top-center of canvas */}
+      {/* Design tab: run status — top-center of canvas, where the Run Design
+          button used to sit. Design now recomputes on every edit, so the only
+          thing worth saying is whether the drawn result is settled; a silent
+          recompute would leave the user unsure anything happened. */}
       {activeTab === "Design" && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 pointer-events-auto">
-          <button
-            type="button"
-            onClick={() => onRunDesign?.()}
-            className="px-4 py-1.5 rounded-lg shadow-sm border border-border bg-[#2563eb] text-white text-xs font-medium hover:bg-[#1d4ed8] transition-all hover:scale-[1.02] active:scale-95 select-none"
-          >
-            Run Design
-          </button>
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 pointer-events-none">
+          {designStale && (
+            <div className="px-3 py-1 rounded-lg shadow-sm border border-border bg-background/95 flex items-center gap-1.5 select-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2563eb] animate-pulse" />
+              <span className="text-[11px] text-muted-foreground">Updating…</span>
+            </div>
+          )}
           {designResult && designResult.issues.length > 0 && (
             <div className="max-w-[340px] border rounded-lg px-2.5 py-1.5 shadow-sm bg-background/95 border-amber-300">
               {designResult.issues.map((issue, i) => (
