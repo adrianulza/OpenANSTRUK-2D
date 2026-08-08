@@ -17,10 +17,12 @@ import type { MemberEndForces } from "@/lib/solver"
 import { buildGravityCombo, envelopeMemberDemands, type MemberZoneDemands } from "./demands"
 import { isSectionDesignable, materialOf } from "./designability"
 import type { DesignCriteria } from "./criteria"
-import { asRcInput, asSteelInput, defaultSectionDesignInput, type SectionDesignInputs } from "./section-input"
+import { asRcInput, defaultSectionDesignInput, type SectionDesignInputs } from "./section-input"
 import type { DesignRunResult, JointCheckResult, MemberDesignResult } from "./types"
 import { designMemberRc } from "../rc/strategy"
 import { designMemberSteel } from "../steel/strategy"
+import { inferSteelRole } from "../steel/member-role"
+import { checkScwb, type ScwbBeam, type ScwbColumn } from "../steel/seismic"
 
 export interface DesignRunInput {
   model: StructureModel
@@ -75,6 +77,64 @@ function checkStrongColumnWeakBeam(
         }
       }
     }
+  }
+  return joints
+}
+
+/**
+ * AISC 341-16 §E3.4a strong-column-weak-beam, the steel analogue of the RC pass
+ * above. SMF only — §E2 (IMF) and §E1 (OMF) impose no moment ratio.
+ *
+ * Needs each member's section, so it reads `model.sections` rather than a stored
+ * capacity: unlike RC, `M*pc` depends on the joint's axial load and `M*pb` on
+ * the beam's expected strength, neither of which the member result carries.
+ */
+function checkSteelScwb(
+  model: StructureModel,
+  members: Record<MemberId, MemberDesignResult>,
+  frameType: string,
+  criteriaFy: number,
+): JointCheckResult[] {
+  if (frameType !== "SMF") return []
+  const adj: Record<string, MemberId[]> = {}
+  for (const m of Object.values(model.members)) {
+    ;(adj[m.a] ??= []).push(m.id)
+    ;(adj[m.b] ??= []).push(m.id)
+  }
+
+  const propsOf = (id: MemberId) => {
+    const sec = model.sections[model.members[id]?.section]
+    const d = sec?.derived
+    const Z33 = d?.Z33
+    const Ag = sec?.A
+    if (!(Z33 && Z33 > 0) || !(Ag && Ag > 0)) return undefined
+    return { Z33, Ag, Fy: sec?.strength?.fy ?? criteriaFy }
+  }
+
+  const joints: JointCheckResult[] = []
+  for (const [nodeId, ids] of Object.entries(adj)) {
+    const steelIds = ids.filter((id) => members[id]?.material === "steel")
+    const columnIds = steelIds.filter((id) => members[id]?.kind === "column")
+    const beamIds = steelIds.filter((id) => members[id]?.kind === "beam")
+    if (columnIds.length === 0 || beamIds.length === 0) continue
+
+    const columns: ScwbColumn[] = []
+    for (const id of columnIds) {
+      const p = propsOf(id)
+      if (p) columns.push({ ...p, Pu: members[id].steel?.PrMax ?? 0 })
+    }
+    const beams: ScwbBeam[] = []
+    for (const id of beamIds) {
+      const p = propsOf(id)
+      if (p) beams.push({ Z33: p.Z33, Fy: p.Fy })
+    }
+
+    const res = checkScwb(columns, beams)
+    if (!res) continue
+    joints.push({
+      nodeId, sumMnc: res.sumMpc, sumMnb: res.sumMpb,
+      ratio: res.ratio, pass: res.pass, columnIds, material: "steel",
+    })
   }
   return joints
 }
@@ -156,19 +216,19 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     const nb = model.nodes[m.b]
     const isVertical = Math.abs(nb.y - na.y) > Math.abs(nb.x - na.x)
 
-    const di = inputs[m.section as SectionId] ?? defaultSectionDesignInput(m.section, sec)
+    const di = inputs[m.section as SectionId] ?? defaultSectionDesignInput(m.section)
 
     if (materialOf(sec) === "steel") {
       members[m.id] = designMemberSteel({
         memberId: m.id,
         section: sec!,
         L,
-        di: asSteelInput(di, m.section),
         cr: criteria.steel,
         efByCombo,
         raw,
         Pu,
-        isVertical,
+        // Inferred from geometry, never from user input — see member-role.ts.
+        role: inferSteelRole(na.x, na.y, nb.x, nb.y),
       })
       continue
     }
@@ -239,14 +299,32 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     }
   }
 
-  // SMF strong-column-weak-beam joint check (post-pass; needs all members designed).
-  const joints = checkStrongColumnWeakBeam(model, members, criteria.rc.frameType)
+  // Strong-column-weak-beam joint checks (post-pass; need all members designed).
+  // Both materials run: a model may hold RC and steel frames at once, and the
+  // two rules have different ratio definitions (see JointCheckResult).
+  const joints = [
+    ...checkStrongColumnWeakBeam(model, members, criteria.rc.frameType),
+    ...checkSteelScwb(model, members, criteria.steel.frameType, criteria.steel.Fy),
+  ]
   for (const j of joints) {
-    if (!j.pass) {
-      issues.push(
-        `Strong-column-weak-beam at node ${j.nodeId}: ΣMnc ${j.sumMnc.toFixed(0)} < 1.2·ΣMnb ${(1.2 * j.sumMnb).toFixed(0)} kN·m (18.7.3.2).`,
-      )
-    }
+    if (j.pass) continue
+    issues.push(
+      j.material === "steel"
+        ? `Strong-column-weak-beam at node ${j.nodeId}: ΣM*pc ${j.sumMnc.toFixed(0)} < ΣM*pb ${j.sumMnb.toFixed(0)} kN·m (AISC 341 E3.4a).`
+        : `Strong-column-weak-beam at node ${j.nodeId}: ΣMnc ${j.sumMnc.toFixed(0)} < 1.2·ΣMnb ${(1.2 * j.sumMnb).toFixed(0)} kN·m (18.7.3.2).`,
+    )
+  }
+
+  // AISC 341 member detailing failures surface as run issues too — a ductility
+  // shortfall does not show up in any D/C number.
+  for (const r of Object.values(members)) {
+    const s = r.steel?.seismic
+    if (!s || s.ductilityPass) continue
+    const bad = s.elements.filter((e) => !e.pass).map((e) => e.name).join(", ")
+    issues.push(
+      `${r.memberId}: ${s.frameType} requires ${s.level === "high" ? "highly" : "moderately"} ` +
+      `ductile sections — ${bad} exceeds the AISC 341 Table D1.1 limit.`,
+    )
   }
 
   return { ok: true, issues, members, joints }

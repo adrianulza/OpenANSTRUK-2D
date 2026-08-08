@@ -1,50 +1,27 @@
 /**
- * Steel per-section design input. Pure domain module: no React imports.
+ * Steel design has **no per-section user input**. Pure domain module.
  *
- * Unlike RC there is no "required" vs "checked" mode. Steel design here is
- * always a CHECK of the section the user assigned — there is no rebar-style
- * "solve for the missing quantity". Auto-selecting a lighter section from a
- * catalogue is a separate feature and out of scope.
+ * Every quantity AISC needs beyond the section geometry is either computed or
+ * fixed by a documented convention, so there is nothing left for the user to
+ * set:
+ *
+ * | Quantity | Source |
+ * |----------|--------|
+ * | element type (beam/column/brace) | inferred from geometry — `member-role.ts` |
+ * | `Cb` | computed per combination from the moment diagram (F1-1) |
+ * | `Lb` | the full member length; subdivide a member to express bracing |
+ * | `K33`, `K22` | fixed at 1.0 — braced frames only |
+ *
+ * Unlike RC there is also no "required" vs "checked" split: there is no
+ * rebar-style unknown to solve for, so steel design is always a CHECK of the
+ * assigned section. Auto-selecting a lighter section from a catalogue is a
+ * separate feature and out of scope.
+ *
+ * The `SteelSectionInput` type that used to live here carried `elementType`,
+ * `Lb`, `Cb`, `K33` and `K22`. All five are gone: the first was on the wrong
+ * entity (role is per member, not per section) and advertised an effect it did
+ * not have; the rest are covered by the table above. See
+ * `docs/DESIGN_STEEL.md` §S11 and §S13.
  */
 
-import type { SectionId } from "@/lib/model"
-import type { ElementType } from "../core/types"
-
-export interface SteelSectionInput {
-  material: "steel"
-  sectionId: SectionId
-  /** Beam vs column (auto = by orientation + axial threshold). */
-  elementType: ElementType
-  /**
-   * Laterally-unbraced length for LTB, m. `undefined` or 0 means "use the full
-   * member length", which is the conservative default — OpenAnstruk has no
-   * intermediate lateral-brace concept, so a shorter Lb must be entered by
-   * hand when the real structure provides bracing.
-   */
-  Lb?: number
-  /**
-   * LTB modification factor Cb (AISC F1-1). `undefined` = compute it from the
-   * member's own moment diagram (the accurate default). A number overrides it;
-   * enter 1.0 for the conservative uniform-moment assumption.
-   */
-  Cb?: number
-  /**
-   * Effective length factors. Default 1.0 for both, which is what the AISC
-   * Direct Analysis Method prescribes (K = 1.0 always) and what a braced frame
-   * warrants. Sway-frame K2 via the alignment-chart nomograph is not computed.
-   */
-  K33?: number
-  K22?: number
-}
-
-export function defaultSteelSectionInput(sectionId: SectionId): SteelSectionInput {
-  return {
-    material: "steel",
-    sectionId,
-    elementType: "auto",
-    Lb: 0,
-    Cb: undefined, // auto-compute from the moment diagram
-    K33: 1.0,
-    K22: 1.0,
-  }
-}
+export {}

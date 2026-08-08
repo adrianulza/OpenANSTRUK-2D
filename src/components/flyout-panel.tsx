@@ -503,13 +503,12 @@ function FlyoutContent({
           />
         ) : null
       case "STEEL_DESIGN":
-        return model && onPatchSectionDesignInput && designCriteria ? (
+        // No `inputs`/`onPatchInput`: steel carries no per-section design input.
+        return model && designCriteria ? (
           <SteelDesignToolContent
             model={model}
             selectedSectionId={designSelectedSectionId ?? null}
             onSelectSection={onDesignSelectedSectionChange ?? (() => {})}
-            inputs={sectionDesignInputs ?? {}}
-            onPatchInput={onPatchSectionDesignInput}
             designResult={designResult ?? null}
             criteria={designCriteria}
           />

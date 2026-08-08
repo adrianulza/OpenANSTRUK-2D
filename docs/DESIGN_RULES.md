@@ -88,22 +88,26 @@ src/lib/design/
 │       ├── aci318-25/          rules, beam, column, report, index
 │       └── sni2847-19/         ACI 318-14 baseline (default code)
 └── steel/                      structural steel — see DESIGN_STEEL.md
-    ├── criteria.ts             SteelCriteria + defaultSteelCriteria
-    ├── types.ts                SteelSectionInput (elementType, Lb, Cb, K33, K22)
+    ├── criteria.ts             SteelCriteria (code, frameType, Fy/Fu/E, φ)
+    ├── types.ts                no per-section input — documents why
+    ├── member-role.ts          inferSteelRole — beam/column/brace from geometry
     ├── rules.ts                steelGeom + Table B4.1a/B4.1b classification
     ├── compression.ts          E3 flexural, E4 torsional/flexural-torsional,
     │                           E7 effective width/area, D2 tension
     ├── flexure.ts              F2/F3 (I-shape + LTB), F7 (box), F8 (round),
     │                           F9 (tee, SIGN-dependent), F10 (angle, principal axes)
     ├── shear.ts                G2 / G3 (tee + angle) / G4 / G5
-    ├── interaction.ts          H1-1a / H1-1b / H1-2, H1.3 alternative,
-    │                           H2-1 (unsymmetric — every angle, hogging tees)
+    ├── interaction.ts          H1-1a / H1-1b, H2-1 (unsymmetric — every angle,
+    │                           hogging tees). H1.3 deliberately NOT implemented
+    ├── seismic.ts              AISC 341 Table D1.1 ductility, D1.2 bracing,
+    │                           E3.4a SCWB. Inert for OMF/RMB
     ├── section-props.ts        Section → clause inputs; shared with the UI decks
     └── strategy.ts             designMemberSteel() — station sweep
 ```
 
-Steel needs **no `codes/<code>/` split**: SNI 1729:2020 is an adopted translation
-of AISC 360 with no formula deltas that reach the engine. RC does need one,
+Steel needs **no `codes/<code>/` split**: SNI 1729:2020 adopts AISC 360-16 and
+SNI 7860 adopts AISC 341-16, with no formula deltas that reach the engine, so
+`SteelCriteria.code` is a labelling axis only. RC does need one,
 because ACI 318-25 and SNI 2847:2019 genuinely diverge
 ([§5c](DESIGN_RC.md#5c-code-edition-deltas)).
 

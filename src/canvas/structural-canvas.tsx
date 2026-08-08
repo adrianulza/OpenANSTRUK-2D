@@ -696,10 +696,17 @@ export function StructuralCanvas({
             ? { text: `V ${st.shearRatio.toFixed(2)}`, color: st.shearRatio <= 1 ? navy : fail }
             : { text: "V O/S", color: fail }
           const flag = st.warnings.length > 0 ? " ⚠" : ""
+          // A section can satisfy Chapter H and still be unable to hinge, so
+          // ductility gets its own marker rather than riding the D/C colour.
+          const ductFail = st.seismic ? !st.seismic.ductilityPass : false
 
           switch (designReport) {
             case "default":
-              drawPill(midX + sspx * soff, midY + sspy * soff, angle, main.text + flag, main.color)
+              drawPill(
+                midX + sspx * soff, midY + sspy * soff, angle,
+                main.text + (ductFail ? " ⚠D1.1" : flag),
+                ductFail ? fail : main.color,
+              )
               drawPill(midX - sspx * soff, midY - sspy * soff, angle, vCell.text, vCell.color)
               break
             case "stl-dc":
@@ -727,6 +734,23 @@ export function StructuralCanvas({
                 midX, midY - 14 * s, angle,
                 `KL/r ${klr.toFixed(0)}${st.slendernessAxis ? `(${st.slendernessAxis})` : ""}${ft ? " · F-T" : ""}`,
                 klr > 200 ? warn : ft ? "#0ea5e9" : navy,
+              )
+              break
+            }
+            case "stl-ductility": {
+              // Blank for OMF/RMB — no seismic requirement applies, and drawing
+              // "n/a" on every member would be noise.
+              const sq = st.seismic
+              if (!sq) break
+              const worst = sq.elements.reduce(
+                (acc, e) => (e.limit > 0 && e.lambda / e.limit > acc.r
+                  ? { r: e.lambda / e.limit, name: e.name } : acc),
+                { r: 0, name: "—" },
+              )
+              drawPill(
+                midX, midY - 14 * s, angle,
+                `${sq.level === "high" ? "HD" : "MD"} ${worst.name} ${worst.r.toFixed(2)}`,
+                sq.ductilityPass ? navy : fail,
               )
               break
             }
@@ -830,10 +854,18 @@ export function StructuralCanvas({
         }
       }
 
-      // SCWB joint badges (node-level). Under col-scwb, show every joint's
-      // ΣMnc/ΣMnb ratio; under the default report, flag only failing joints.
-      if (designResult.joints && (designReport === "col-scwb" || designReport === "default")) {
+      // SCWB joint badges (node-level). Under col-scwb / stl-scwb show every
+      // joint's ratio for THAT material; under the default report, flag only
+      // failing joints, either material. Material scoping mirrors how member
+      // pills are scoped — an RC report must not draw steel results.
+      if (
+        designResult.joints &&
+        (designReport === "col-scwb" || designReport === "stl-scwb" || designReport === "default")
+      ) {
         for (const j of designResult.joints) {
+          const jointMaterial = j.material ?? "rc"
+          if (designReport === "col-scwb" && jointMaterial !== "rc") continue
+          if (designReport === "stl-scwb" && jointMaterial !== "steel") continue
           if (designReport === "default" && j.pass) continue
           const node = model.nodes[j.nodeId]
           if (!node) continue
