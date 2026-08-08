@@ -15,6 +15,8 @@
 import type { MemberId } from "@/lib/model"
 import type { LoadComboId } from "@/lib/load-cases"
 import type { ArrangementCheck } from "../rc/shared/types"
+import type { SteelMemberRole } from "../steel/member-role"
+import type { SeismicChecks } from "../steel/seismic"
 
 // ── Material family ───────────────────────────────────────────────────────────
 
@@ -248,12 +250,17 @@ export interface SteelDesignResult {
    * never envelopes them independently.
    */
   pmPairs?: { P: number; M: number; combo: LoadComboId }[]
-  /** φMn ignoring LTB, kN·m (the AISC H1.3a in-plane curve). */
-  Mc33NoLTB?: number
-  /** φMn at Cb = 1.0, capped at φMp, kN·m (the H1-2 out-of-plane curve). */
-  Mc33Cb1?: number
-  /** Weak-axis-only φPn, kN (the H1-2 out-of-plane curve). */
-  Pcy?: number
+  /**
+   * Geometric role, inferred from the member's orientation alone. Reported for
+   * the schedule and to pick a report deck — it does NOT change the check. See
+   * `steel/member-role.ts`.
+   */
+  role?: SteelMemberRole
+  /**
+   * AISC 341 detailing checks. **Absent for OMF/RMB**, where no seismic
+   * requirement applies and the member is governed by AISC 360 alone.
+   */
+  seismic?: SeismicChecks
 }
 
 export interface MemberDesignResult {
@@ -261,8 +268,12 @@ export interface MemberDesignResult {
   status: MemberDesignStatus
   /** Design material family (set when designed). */
   material?: DesignMaterial
-  /** Beam vs column (set when designed). */
-  kind?: "beam" | "column"
+  /**
+   * Member kind (set when designed). RC emits only `beam` / `column` — its two
+   * genuinely different formulations. Steel additionally emits `brace`, which is
+   * purely a label: see `steel/member-role.ts`.
+   */
+  kind?: SteelMemberRole
   /**
    * Why a member was refused, for `not-designable` / `not-implemented`. Surfaced
    * as a run issue so a refusal is never silent — a member that simply vanishes
@@ -290,18 +301,26 @@ export interface MemberDesignResult {
 }
 
 /** SMF/SRPMK strong-column-weak-beam verdict at one joint (18.7.3.2). */
+/**
+ * Strong-column-weak-beam at one joint. Shared by both materials; the ratio's
+ * DEFINITION differs, so `material` says which rule produced it:
+ *
+ *   rc     ACI 18.7.3.2   ratio = ΣMnc / (1.2·ΣMnb),  pass at ≥ 1  (6/5 rule)
+ *   steel  AISC E3.4a     ratio = ΣM*pc / ΣM*pb,      pass at > 1
+ */
 export interface JointCheckResult {
   nodeId: string
-  /** Σ column nominal flexural strengths at the joint, kN·m. */
+  /** RC: Σ column Mn. Steel: ΣM*pc. kN·m. */
   sumMnc: number
-  /** Σ beam nominal flexural strengths at the joint, kN·m. */
+  /** RC: Σ beam Mn. Steel: ΣM*pb. kN·m. */
   sumMnb: number
-  /** sumMnc / (1.2·sumMnb). */
+  /** The code ratio — see the table above. Unity is the threshold either way. */
   ratio: number
-  /** sumMnc ≥ 1.2·sumMnb (the 6/5 rule). */
   pass: boolean
   /** Column member ids framing into this joint. */
   columnIds: string[]
+  /** Which rule produced `ratio`. Absent ⇒ RC, for back-compat. */
+  material?: DesignMaterial
 }
 
 export interface DesignRunResult {
@@ -341,6 +360,8 @@ export type DesignReport =
   | "stl-capacity" // available strengths φPn / φMn / φVn
   | "stl-limit" // governing flexural limit state + section classification
   | "stl-slender" // KL/r and which buckling mode set Fe (E3 vs E4)
+  | "stl-ductility" // AISC 341 Table D1.1 ductility (blank for OMF/RMB)
+  | "stl-scwb" // AISC 341 E3.4a moment ratio at joints (node badges, SMF only)
 
 export const DESIGN_REPORTS: {
   group: "General" | "As required" | "As checked" | "Columns" | "Steel"
@@ -381,6 +402,8 @@ export const DESIGN_REPORTS: {
       { id: "stl-capacity", label: "Capacities φPn / φMn / φVn" },
       { id: "stl-limit", label: "Limit state + classification" },
       { id: "stl-slender", label: "Slenderness KL/r + mode" },
+      { id: "stl-ductility", label: "Seismic ductility (AISC 341)" },
+      { id: "stl-scwb", label: "Strong-column-weak-beam (E3.4a)" },
     ],
   },
 ]

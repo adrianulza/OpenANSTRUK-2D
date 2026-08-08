@@ -102,11 +102,6 @@ export interface FlexureResult {
    */
   outOfScope?: string
   /**
-   * Nominal strength with Cb forced to 1.0, kN·m — AISC H1-2 requires the
-   * out-of-plane check to be based on this, not on the Cb-scaled Mn.
-   */
-  MnCb1: number
-  /**
    * Single angle only: nominal strengths about the MAJOR (w) and MINOR (z)
    * PRINCIPAL axes, kN·m. `Mn` mirrors `MnW` so generic consumers still read
    * something meaningful, but the interaction check must use both — see
@@ -177,7 +172,6 @@ function iShape(inp: FlexureInput): FlexureResult {
   const cf = classifyFlexure(g, Fy, E)
   const Mp = Fy * Z33 // F2-1
   let Mn = Mp
-  let MnCb1 = Mp
   let governing: FlexureResult["governing"] = "yielding"
   let outOfScope: string | undefined
 
@@ -227,8 +221,6 @@ function iShape(inp: FlexureInput): FlexureResult {
       Mn = Mltb
       governing = Lb > Lr ? "LTB-elastic" : "LTB-inelastic"
     }
-    const Mltb1 = ltbAt(1.0)
-    if (Mltb1 !== undefined) MnCb1 = Math.min(MnCb1, Mltb1)
   }
 
   // ── Compression flange local buckling (F3.2) ──
@@ -247,7 +239,6 @@ function iShape(inp: FlexureInput): FlexureResult {
       Mflb = (0.9 * E * kc(g.hw, g.tw) * S33) / flange.lambda ** 2
     }
     MnNoLTB = Math.min(MnNoLTB, Mflb)
-    MnCb1 = Math.min(MnCb1, Mflb) // FLB is independent of Cb
     if (Mflb < Mn) {
       Mn = Mflb
       governing = "FLB"
@@ -265,7 +256,6 @@ function iShape(inp: FlexureInput): FlexureResult {
     governing,
     cls: cf.cls,
     MnNoLTB: MnNoLTB * NMM_TO_KNM,
-    MnCb1: MnCb1 * NMM_TO_KNM,
     outOfScope,
   }
 }
@@ -327,10 +317,10 @@ function boxShape(inp: FlexureInput): FlexureResult {
     }
   }
 
-  // Box sections have no LTB limit state, so MnNoLTB == MnCb1 == Mn.
+  // Box sections have no LTB limit state, so MnNoLTB == Mn.
   return {
     Mn: Mn * NMM_TO_KNM, Mp: Mp * NMM_TO_KNM,
-    governing, cls: cf.cls, MnNoLTB: Mn * NMM_TO_KNM, MnCb1: Mn * NMM_TO_KNM,
+    governing, cls: cf.cls, MnNoLTB: Mn * NMM_TO_KNM,
     outOfScope,
   }
 }
@@ -370,7 +360,7 @@ function roundShape(inp: FlexureInput): FlexureResult {
 
   return {
     Mn: Mn * NMM_TO_KNM, Mp: Mp * NMM_TO_KNM,
-    governing, cls: cf.cls, MnNoLTB: Mn * NMM_TO_KNM, MnCb1: Mn * NMM_TO_KNM,
+    governing, cls: cf.cls, MnNoLTB: Mn * NMM_TO_KNM,
     outOfScope,
   }
 }
@@ -391,7 +381,7 @@ function roundShape(inp: FlexureInput): FlexureResult {
  * F9-12), which is what makes a stem-in-compression tee so much weaker: the
  * bracket `B + √(1+B²)` collapses toward zero instead of growing.
  *
- * F9 carries NO Cb (unlike F2) — AISC F9-10 has no such term — so `MnCb1 = Mn`.
+ * F9 carries NO Cb (unlike F2) — AISC F9-10 has no such term.
  */
 function teeShape(inp: FlexureInput): FlexureResult {
   const { g, Fy, E, S33, Z33, I22, J, Lb } = inp
@@ -512,7 +502,6 @@ function teeShape(inp: FlexureInput): FlexureResult {
     Mn: Mn * NMM_TO_KNM, Mp: Mp * NMM_TO_KNM,
     Lp, Lr, governing, cls: cf.cls,
     MnNoLTB: MnNoLTB * NMM_TO_KNM,
-    MnCb1: Mn * NMM_TO_KNM, // F9 has no Cb term
     outOfScope,
   }
 }
@@ -547,7 +536,7 @@ function angleShape(inp: FlexureInput): FlexureResult {
 
   if (!principal || !(A && A > 0)) {
     return {
-      Mn: 0, Mp: 0, governing: "yielding", cls: cf.cls, MnNoLTB: 0, MnCb1: 0,
+      Mn: 0, Mp: 0, governing: "yielding", cls: cf.cls, MnNoLTB: 0,
       outOfScope:
         "Single angle is missing the principal-axis properties (Iw, Iz, βw) " +
         "AISC F10 requires. Re-create the section in the MATERIAL tool.",
@@ -638,7 +627,6 @@ function angleShape(inp: FlexureInput): FlexureResult {
     Mp: 1.5 * MyW * NMM_TO_KNM, // F10-1 yielding limit stands in for "Mp"
     governing, cls: cf.cls,
     MnNoLTB: Math.min(1.5 * MyW, MnWLocal) * NMM_TO_KNM,
-    MnCb1: MnW * NMM_TO_KNM,
     MnW: MnW * NMM_TO_KNM,
     MnZ: MnZ * NMM_TO_KNM,
   }

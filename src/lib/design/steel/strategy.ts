@@ -28,7 +28,8 @@ import { memberInternalForces } from "@/lib/solver"
 import type { MemberDesignResult, SteelDesignResult } from "../core/types"
 import type { MemberZoneDemands } from "../core/demands"
 import type { SteelCriteria } from "./criteria"
-import type { SteelSectionInput } from "./types"
+import type { SteelMemberRole } from "./member-role"
+import { checkSeismic } from "./seismic"
 import { classifyAxial, classifyFlexure, classLabel } from "./rules"
 import { compressionStrength, tensionStrength, type E4Input } from "./compression"
 import { cbFactor, flexuralStrength, type FlexureInput, type FlexureResult } from "./flexure"
@@ -44,32 +45,27 @@ export interface SteelMemberInput {
   memberId: MemberId
   section: Section
   L: number
-  di: SteelSectionInput
   cr: SteelCriteria
   efByCombo: Record<LoadComboId, MemberEndForces>
   raw: MemberZoneDemands
   Pu: number
-  isVertical: boolean
+  /**
+   * Geometric role, inferred by the caller from the member's end coordinates.
+   * Reported only — it selects no branch in this module, because AISC 360 runs
+   * the same Chapter H check for every member. See `member-role.ts`.
+   */
+  role: SteelMemberRole
 }
 
 /**
  * Cb from the member's own moment diagram (AISC F1-1).
  *
- * AISC F1-1 is defined on the UNBRACED SEGMENT, not on the member. When the
- * member IS the segment (Lb >= L) the two coincide and this is exact.
- *
- * When the user enters a shorter Lb we cannot know where the segment sits —
- * OpenAnstruk has no intermediate lateral-brace concept — and the full-member
- * value is NOT a conservative stand-in. For a member whose moment reverses
- * sign, the full-member Cb reaches 2.273 while the true Cb of the critical end
- * segment is 1.25: using the member value would inflate Mn by up to 1.82x in
- * the LTB range. So we fall back to Cb = 1.0, which is what SAP2000 itself does
- * when it cannot resolve the segment (CSI manual §3.5.3, "the program also
- * defaults Cb to 1.0 if the minor unbraced length ... is redefined"). The user
- * can still override Cb explicitly.
+ * AISC F1-1 is defined on the UNBRACED SEGMENT, not on the member. Because
+ * `Lb` is always the full member length (see `designMemberSteel`), the member IS
+ * the segment and this is exact — there is no shorter-segment case to guard
+ * against, and no user override.
  */
-function memberCb(ef: MemberEndForces, L: number, Lb: number): number {
-  if (Lb < L * 1000 - 1e-9) return 1.0
+function memberCb(ef: MemberEndForces, L: number): number {
   const at = (t: number) => Math.abs(memberInternalForces(ef, t * L, L).M)
   const MA = at(0.25)
   const MB = at(0.5)
@@ -79,7 +75,7 @@ function memberCb(ef: MemberEndForces, L: number, Lb: number): number {
 }
 
 export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
-  const { memberId, section, L, di, cr, efByCombo, Pu } = inp
+  const { memberId, section, L, cr, efByCombo, Pu, role } = inp
 
   // Material: the section's own strength wins over the global criteria default,
   // so a model can mix grades. Fall back to the criteria when absent.
@@ -100,9 +96,27 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
 
   const flexCls = classifyFlexure(g, Fy, E)
   const Lmm = L * 1000
-  const K33 = di.K33 ?? 1.0
-  const K22 = di.K22 ?? 1.0
-  const Lb = di.Lb && di.Lb > 0 ? di.Lb * 1000 : Lmm
+
+  /**
+   * Effective-length factors are fixed at 1.0 and the unbraced length is always
+   * the full member length. Both match SAP2000's own defaults for these members
+   * (`K1Major = K1Minor = K2Major = K2Minor = 1`, `XLLTB = 1`), measured via the
+   * bridge.
+   *
+   * `Lb = L` is CONSERVATIVE — a laterally braced beam has more capacity than
+   * this reports (measured: +27.3% on a 6 m IWF400x200 braced at third points).
+   * Bracing is an out-of-plane restraint and the model is 2D, so it cannot be
+   * inferred; **subdividing the member is how bracing is expressed**, since each
+   * sub-member then carries its own shorter Lb.
+   *
+   * `K = 1.0` is NOT conservative for sway frames. It is what the AISC Direct
+   * Analysis Method prescribes, but DAM also requires second-order analysis,
+   * reduced stiffness and notional loads, none of which this engine has — so the
+   * engine is limited to BRACED frames. See docs/DESIGN_STEEL.md §S13.
+   */
+  const K33 = 1.0
+  const K22 = 1.0
+  const Lb = Lmm
 
   /**
    * A single angle's principal axes are rotated from the geometric axis the
@@ -145,9 +159,10 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
   // Also, the maximum value of KL … is used in place of K22L22 or K33L33."
   //
   // Kz = K22 and Lz = the full member length, per CSI §3.5.2's stated defaults
-  // ("Kz … taken equal to KLTB", "Lz … taken equal to L22 by default"). A
-  // user-shortened Lb deliberately does NOT shorten Lz: that matches SAP2000's
-  // out-of-the-box behaviour, which is what the bridge compares against.
+  // ("Kz … taken equal to KLTB", "Lz … taken equal to L22 by default"). With
+  // K fixed at 1.0 every effective length here collapses to the member length,
+  // which is exactly what SAP2000 uses out of the box — the basis the bridge
+  // compares against.
   const KLmax = Math.max(K33 * Lmm, K22 * Lmm)
   const e4: E4Input | undefined =
     rs.J !== undefined && rs.Cw !== undefined
@@ -189,12 +204,6 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
   const PnTens = tensionStrength(Ag, Fy)
   const PcTens = 0.9 * PnTens // φt = 0.90, yielding on the gross section (D2)
 
-  // Weak-axis-only compressive strength, for the H1-2 out-of-plane check.
-  const compY = compressionStrength({
-    g, Ag, r33: rAx33, r22: rAx22, Fy, E, KL33: K22 * Lmm, KL22: K22 * Lmm, e4,
-  })
-  const Pcy = cr.phiC * compY.Pn
-
   // ── Shear (independent of station) ──
   const sh = shearStrength(g, Fy, E, Ag)
   const Vc = cr.phiV * sh.Vn
@@ -217,8 +226,6 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
     stemInCompression: false,
     /** Section class at the governing station — sign-dependent for a tee. */
     cls: flexCls.cls as string,
-    /** H1.3 / H1-2 capacities at the governing station, for the report deck. */
-    Mc33NoLTB: 0, Mc33Cb1: 0,
   }
   let VrMax = 0
   let PrMax = 0
@@ -241,7 +248,7 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
   const sinA = isUnsymmetric ? Math.sin(principal!.alpha) : 0
 
   for (const [comboId, ef] of Object.entries(efByCombo)) {
-    const Cb = di.Cb !== undefined && di.Cb > 0 ? di.Cb : memberCb(ef, L, Lb)
+    const Cb = memberCb(ef, L)
 
     // A tee needs BOTH sign branches; every other shape reuses one result for
     // all stations. Computed once per combination either way — the per-station
@@ -251,9 +258,6 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
 
     const capsOf = (flex: FlexureResult) => ({
       Mc33: cr.phiB * flex.Mn,
-      Mc33NoLTB: cr.phiB * flex.MnNoLTB,
-      // AISC H1-2 wants the Cb = 1.0 strength, capped at φMp (CSI §3.6.1b).
-      Mc33Cb1: Math.min(cr.phiB * flex.MnCb1, cr.phiB * flex.Mp),
     })
     const capPos = capsOf(flexPos)
     const capNeg = capsOf(flexNeg)
@@ -298,14 +302,9 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
           Pr, PcComp, PcTens, MrW: Mr, MrZ: 0, McW: cap.Mc33, McZ: 1,
         })
       } else {
+        // H1.1 only — the H1.3 alternative is not implemented (interaction.ts).
         res = interactionRatio({
           Pr, PcComp, PcTens, Mr33: Mr, Mc33: cap.Mc33,
-          Mc33NoLTB: cap.Mc33NoLTB, Mc33Cb1: cap.Mc33Cb1, Pcy, Cb,
-          // AISC H1.3 is titled "…ROLLED Compact Members" and our parametric IWF
-          // is modelled as built-up everywhere else in this engine. CSI applies
-          // the alternative regardless, so it is opt-in rather than assumed.
-          allowH13:
-            g.kind === "iwf" && flexCls.cls === "compact" && cr.h13ForBuiltUp === true,
         })
       }
 
@@ -326,7 +325,6 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
           MrW: Mr * cosA, MrZ: Mr * sinA,
           stemInCompression: hogging,
           cls: flex.cls,
-          Mc33NoLTB: cap.Mc33NoLTB, Mc33Cb1: cap.Mc33Cb1,
         }
       }
     }
@@ -339,6 +337,33 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
   }
   if (comp.slender) {
     warnings.push("Slender elements — capacity reduced per AISC E7")
+  }
+
+  // ── AISC 341 detailing (undefined for OMF/RMB, so an OMF run is unchanged) ──
+  //
+  // Uses PrMax — the worst COMPRESSION seen at any station — for Ca, matching
+  // D1.1's "required axial strength". Strength is already decided above; these
+  // checks neither feed nor alter it.
+  const seismic = checkSeismic({
+    frameType: cr.frameType,
+    g, Fy, E, Ag, Pu: PrMax, phiC: cr.phiC,
+    Lb: Lb / 1000,
+    ry: rAx22,
+    isBeam: role === "beam",
+  })
+  if (seismic) {
+    for (const e of seismic.elements.filter((x) => !x.pass)) {
+      warnings.push(
+        `${cr.frameType} requires ${seismic.level === "high" ? "highly" : "moderately"} ` +
+        `ductile: ${e.name} λ = ${e.lambda.toFixed(1)} > ${e.limit.toFixed(1)} (D1.1)`,
+      )
+    }
+    if (seismic.bracing && !seismic.bracing.pass) {
+      warnings.push(
+        `D1.2 bracing: Lb = ${seismic.bracing.Lb.toFixed(2)} m > ` +
+        `${seismic.bracing.LbMax.toFixed(2)} m — subdivide if really braced`,
+      )
+    }
   }
 
   const steel: SteelDesignResult = {
@@ -365,7 +390,12 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
     slenderness: comp.slenderness, slendernessAxis: comp.governingAxis,
     Vr: VrMax, shearRatio,
     PrMax, MrMax,
-    pass: best.ratio <= 1 && shearRatio <= 1,
+    // Overall COMPLIANCE, which is broader than the strength ratio: a section
+    // can satisfy Chapter H and still be unable to hinge. Ductility is folded in
+    // here but deliberately NOT into `ratio` — D/C is a strength quantity, and
+    // inflating it would misreport why the member failed. The canvas flags
+    // ductility separately, the way RC flags ⚠Ash.
+    pass: best.ratio <= 1 && shearRatio <= 1 && (seismic?.ductilityPass ?? true),
     warnings,
     Fez: comp.Fez,
     bucklingMode: comp.governingMode,
@@ -373,9 +403,8 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
     // D/C above is already decided; these let the UI draw the envelope the check
     // was made against and plot the demands on it.
     pmPairs,
-    Mc33NoLTB: best.Mc33NoLTB,
-    Mc33Cb1: best.Mc33Cb1,
-    Pcy,
+    role,
+    seismic,
     ...(isUnsymmetric
       ? {
           McW: best.McW, McZ: best.McZ,
@@ -389,16 +418,8 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
       : {}),
   }
 
-  // Element kind is reported for the canvas/report, but every steel member
-  // runs the SAME Chapter H check — unlike RC there is no separate beam and
-  // column formulation, only different demands.
-  const kind: "beam" | "column" =
-    di.elementType === "column" ? "column"
-      : di.elementType === "beam" ? "beam"
-        : inp.isVertical ? "column" : "beam"
-
   return {
-    memberId, status: "designed", material: "steel", kind, Pu,
+    memberId, status: "designed", material: "steel", kind: role, Pu,
     steel,
     worstFlexureDC: Math.max(best.ratio, 0),
     worstShearPass: shearRatio <= 1,

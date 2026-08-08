@@ -11,21 +11,22 @@
  *
  * The same two-branch form serves axial tension (H1.2), with Pc = φt·Pn.
  *
- * H1.3 — checking in-plane instability and out-of-plane buckling separately —
- * is an AISC-vs-CSI divergence, so it is gated by `allowH13` rather than
- * assumed. AISC H1.3 is titled "Doubly Symmetric ROLLED Compact Members" and
- * our parametric IWF is modelled as BUILT-UP throughout (that is why kc and
- * φv = 0.90 are used). CSI's manual §3.6.1 does not repeat the "rolled"
- * restriction and SAP2000 applies the alternative to built-up shapes anyway.
- * Since H1.3 returns a MINIMUM, granting it can only lower the reported D/C —
- * so it defaults OFF (AISC-strict) and is opt-in via
- * `SteelCriteria.h13ForBuiltUp` for users reconciling against SAP2000.
+ * **H1.3 is deliberately NOT implemented.** The alternative — checking in-plane
+ * instability and out-of-plane buckling (H1-2) separately — is an optional
+ * relaxation of H1.1, never a requirement, so omitting it is conservative by
+ * construction: H1-1 is the general provision and is always permitted. Measured
+ * cost of the omission is 7–28% higher reported D/C over a representative sweep.
+ *
+ * It was removed rather than corrected. The previous implementation took the
+ * MINIMUM of the two limit states where AISC requires BOTH to be satisfied, and
+ * fed the governing (weak-axis) Pc into the in-plane branch where the clause
+ * calls for the in-plane value — two errors in opposite directions, neither
+ * covered by any assertion. Deleting the clause removes the whole class.
  */
 
 export type InteractionEquation =
   | "H1-1a"
   | "H1-1b"
-  | "H1-2"
   /** Unsymmetric section (single angle) or a tee under negative major moment. */
   | "H2-1"
   /** No axial force at all — the check degenerates to Mr33/Mc33. */
@@ -44,23 +45,6 @@ export interface InteractionInput {
   Mr33: number
   /** Available major-axis flexural strength φMn, kN·m. */
   Mc33: number
-  /** φMn ignoring lateral-torsional buckling, kN·m (H1.3a). */
-  Mc33NoLTB?: number
-  /** Available out-of-plane compressive strength φPn (weak axis), kN. */
-  Pcy?: number
-  /**
-   * φMn for H1-2 computed with **Cb = 1.0** and capped at φMp, kN·m.
-   * AISC H1-2 / CSI §3.6.1(b) is explicit: "Mc33 = available lateral-torsional
-   * strength … determined in accordance with Chapter F using Cb = 1.0. The
-   * limit of Mp33 is imposed on Mc33." The equation then divides by Cb·Mc33,
-   * so passing the Cb-scaled Mn here would apply Cb TWICE and understate the
-   * out-of-plane ratio. Falls back to Mc33 only when not supplied.
-   */
-  Mc33Cb1?: number
-  /** Cb used for the H1-2 out-of-plane check. */
-  Cb?: number
-  /** True when the section is doubly-symmetric and compact (H1.3 gate). */
-  allowH13?: boolean
 }
 
 export interface InteractionResult {
@@ -91,37 +75,10 @@ export function interactionRatio(inp: InteractionInput): InteractionResult {
     return { ratio: m, equation: "flexure-only", pRatio: 0, mRatio: m }
   }
 
+  // H1.1 for every member, in compression or tension. The H1.3 alternative is
+  // not implemented — see the module header.
   const Pc = Pr > 0 ? PcComp : PcTens
-  const base = h11(Pr, Pc, Mr33, Mc33)
-
-  // AISC H1.3 - for doubly-symmetric compact members in flexure + COMPRESSION
-  // with negligible minor-axis moment, in-plane instability and out-of-plane
-  // buckling may be checked separately, and the LOWER of the two approaches
-  // governs. Only applies in compression.
-  if (!inp.allowH13 || Pr <= 0) return base
-
-  // (a) In-plane instability: same equations, but Mc33 excludes LTB.
-  const inPlane = inp.Mc33NoLTB !== undefined
-    ? h11(Pr, PcComp, Mr33, inp.Mc33NoLTB)
-    : base
-
-  // (b) Out-of-plane buckling (H1-2):
-  //     Pr/Pcy·(1.5 − 0.5·Pr/Pcy) + (Mr33/(Cb·Mc33))² ≤ 1.0
-  // Mc33 here is the Cb = 1.0 strength capped at φMp (see Mc33Cb1) — Cb enters
-  // ONCE, through the explicit factor in the denominator.
-  let outOfPlane = base
-  if (inp.Pcy !== undefined && inp.Pcy > 0) {
-    const py = Pr / inp.Pcy
-    const cb = inp.Cb && inp.Cb > 0 ? inp.Cb : 1.0
-    const McOut = inp.Mc33Cb1 ?? Mc33
-    const mTerm = McOut > 0 ? Mr33 / (cb * McOut) : (Mr33 > 0 ? Infinity : 0)
-    const ratio = py * (1.5 - 0.5 * py) + mTerm ** 2
-    outOfPlane = { ratio, equation: "H1-2", pRatio: py * (1.5 - 0.5 * py), mRatio: mTerm ** 2 }
-  }
-
-  const alt = inPlane.ratio <= outOfPlane.ratio ? inPlane : outOfPlane
-  // H1.3 permits the alternative only if it is LESS than the H1-1 result.
-  return alt.ratio < base.ratio ? alt : base
+  return h11(Pr, Pc, Mr33, Mc33)
 }
 
 // ── H2 — unsymmetric members ────────────────────────────────────────────────

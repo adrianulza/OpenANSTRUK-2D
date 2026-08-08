@@ -4,11 +4,12 @@ import type { SectionId, StructureModel } from "@/lib/model"
 import { designColorForDC, formatValue } from "@/lib/constants"
 import { materialOf, isSectionDesignable } from "@/lib/design/core/designability"
 import {
-  asRcInput, asSteelInput,
+  asRcInput,
   type SectionDesignInput, type SectionDesignInputs,
 } from "@/lib/design/core/section-input"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { DesignRunResult, MemberDesignResult, ElementType, DesignMode } from "@/lib/design/core/types"
+import { inferSteelRole, steelRoleLabel, type SteelMemberRole } from "@/lib/design/steel/member-role"
 import type { RcSectionInput } from "@/lib/design/rc/types"
 
 interface DesignScheduleToolProps {
@@ -38,7 +39,8 @@ interface MemberRow {
   material: string
   geometry: string
   designable: boolean
-  type: "beam" | "column" | null
+  /** RC: the user's beam/column choice. Steel: the inferred geometric role. */
+  type: SteelMemberRole | null
   /**
    * RC only. Steel has no required/checked split — there is no rebar-style
    * unknown to solve for — so a steel row shows its governing AISC equation
@@ -104,18 +106,20 @@ export function DesignScheduleToolContent({
       const sec = model.sections[m.section]
       const designable = isSectionDesignable(sec)
       const isSteel = materialOf(sec) === "steel"
-      // Narrow to the right input union member — reading a steel section through
-      // `asRcInput` silently materialises an RC default and shows a mode that
-      // does not exist for steel.
-      const di = isSteel
-        ? asSteelInput(inputs[m.section], m.section)
-        : asRcInput(inputs[m.section], m.section)
+      const di = asRcInput(inputs[m.section], m.section)
       const result = designResult?.members[m.id]
-      const type = designable
-        ? di.elementType === "column" ? "column"
-          : di.elementType === "beam" ? "beam"
-            : result?.kind ?? "beam"
-        : null
+      // Steel role is INFERRED from geometry and is not user-settable, so it can
+      // be resolved without a run. RC keeps its explicit beam/column choice,
+      // which genuinely selects the formulation.
+      const na = model.nodes[m.a]
+      const nb = model.nodes[m.b]
+      const type: SteelMemberRole | null = !designable
+        ? null
+        : isSteel
+          ? (na && nb ? inferSteelRole(na.x, na.y, nb.x, nb.y) : "beam")
+          : di.elementType === "column" ? "column"
+            : di.elementType === "beam" ? "beam"
+              : result?.kind ?? "beam"
       return {
         memberId: m.id,
         sectionId: m.section,
@@ -264,7 +268,8 @@ interface SectionGroup {
   material: string
   geometry: string
   designable: boolean
-  type: "beam" | "column" | null
+  /** RC: the user's beam/column choice. Steel: the inferred geometric role. */
+  type: SteelMemberRole | null
   mode: DesignMode | null
   isSteel: boolean
   members: MemberRow[]
@@ -341,13 +346,24 @@ function EditTable({
               <td className={TD}>{g.sectionName}</td>
               <td className={TD}>{g.material}</td>
               <td className={TD}>
-                {g.designable ? (
+                {/* Steel role is inferred from each member's own geometry and
+                    changes no capacity, so it is read-only — and a per-SECTION
+                    toggle could not express it anyway when one section serves
+                    members of different orientations. RC's choice is real: it
+                    selects the formulation. */}
+                {!g.designable ? "N.A." : g.isSteel ? (
+                  <span className="text-gray-500" title="Inferred from member orientation">
+                    {g.members.length > 1 && new Set(g.members.map((m) => m.type)).size > 1
+                      ? "mixed"
+                      : steelRoleLabel(g.type ?? "beam")}
+                  </span>
+                ) : (
                   <MiniToggle
                     options={[["beam", "Beam"], ["column", "Column"]]}
                     value={g.type ?? "beam"}
                     onChange={(v) => onPatchInput(g.sectionId, { elementType: v as ElementType })}
                   />
-                ) : "N.A."}
+                )}
               </td>
               <td className={TD}>
                 {/* Steel has no required/checked split — offering the toggle

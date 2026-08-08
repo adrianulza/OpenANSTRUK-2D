@@ -178,11 +178,11 @@ export default function App() {
   const handlePatchSectionDesignInput = useCallback(
     (id: SectionId, patch: Partial<SectionDesignInput>) => {
       setSectionDesignInputs((prev) => {
-        const base = prev[id] ?? defaultSectionDesignInput(id, model.sections[id])
+        const base = prev[id] ?? defaultSectionDesignInput(id)
         return { ...prev, [id]: { ...base, ...patch } as SectionDesignInput }
       })
     },
-    [model],
+    [],
   )
 
   // Design is manually triggered (no auto-compute): solves all cases itself,
@@ -202,6 +202,8 @@ export default function App() {
 
   // Stale-result invalidation: any input change clears the run. The Run click
   // itself only sets designResult (not a dep here), so it never self-clears.
+  // Every remaining section input genuinely affects the result — steel now has
+  // none at all — so plain object identity is the correct trigger.
   useEffect(() => {
     setDesignResult((r) => (r === null ? r : null))
   }, [model, loadCases, combinations, designCriteria, sectionDesignInputs, shearDeformation])

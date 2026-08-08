@@ -15,17 +15,15 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import type { Section, SectionId, StructureModel } from "@/lib/model"
-import type { SectionDesignInputs } from "@/lib/design/core/section-input"
-import { asSteelInput } from "@/lib/design/core/section-input"
-import type { SteelSectionInput } from "@/lib/design/steel/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
-import type { DesignRunResult, ElementType, MemberDesignResult } from "@/lib/design/core/types"
+import type { DesignRunResult, MemberDesignResult } from "@/lib/design/core/types"
 import {
   isSectionDesignable, isSectionInTargetMatrix, materialOf,
 } from "@/lib/design/core/designability"
-import { NumericInput } from "@/components/ui/numeric-input"
+import { inferSteelRole, steelRoleLabel, type SteelMemberRole } from "@/lib/design/steel/member-role"
+import { ductilityLabel, type SeismicChecks } from "@/lib/design/steel/seismic"
 import { SectionSelect } from "@/components/flyout-shared"
-import { designColorForDC } from "@/lib/constants"
+import { COLOR_DESIGN_FAIL, designColorForDC } from "@/lib/constants"
 import { SteelSectionPreview } from "./preview"
 import { SteelBeamReportDeck } from "./beam/report"
 import { SteelColumnReportDeck } from "./column/report"
@@ -36,50 +34,12 @@ export interface SteelDesignToolProps {
   model: StructureModel
   selectedSectionId: SectionId | null
   onSelectSection: (id: SectionId) => void
-  inputs: SectionDesignInputs
-  onPatchInput: (id: SectionId, patch: Partial<SteelSectionInput>) => void
   designResult: DesignRunResult | null
   criteria: DesignCriteria
 }
 
-function Row({ label, children, hint }: { label: React.ReactNode; children: React.ReactNode; hint?: string }) {
-  return (
-    <div className="space-y-0.5">
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-[10px] text-gray-600">{label}</label>
-        <div className="w-24">{children}</div>
-      </div>
-      {hint && <p className="text-[9px] text-gray-400 leading-snug">{hint}</p>}
-    </div>
-  )
-}
-
-function ModeButton({
-  active, onClick, title, children,
-}: {
-  active: boolean
-  onClick: () => void
-  title?: string
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={cn(
-        "h-7 rounded text-[11px] font-medium transition-colors px-1",
-        active
-          ? "border-2 border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]"
-          : "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function SteelDesignToolContent({
-  model, selectedSectionId, onSelectSection, inputs, onPatchInput, designResult, criteria,
+  model, selectedSectionId, onSelectSection, designResult, criteria,
 }: SteelDesignToolProps) {
   const [showDeck, setShowDeck] = React.useState(false)
 
@@ -104,7 +64,6 @@ export function SteelDesignToolContent({
     ? selectedSectionId
     : steelIds[0]
   const section: Section = model.sections[sid]
-  const di = asSteelInput(inputs[sid], sid)
   const designable = isSectionDesignable(section)
   const planned = !designable && isSectionInTargetMatrix(section, "steel")
 
@@ -118,16 +77,21 @@ export function SteelDesignToolContent({
   const governing = members[0]
   const st = governing?.steel
 
-  // Which deck to show. `auto` resolves the same way the engine does — by
-  // orientation — so the preview matches what will actually be reported.
-  const resolvedKind: "beam" | "column" =
-    governing?.kind ??
-    (di.elementType === "column" ? "column"
-      : di.elementType === "beam" ? "beam"
-        : autoKind(model, sid))
+  // Role per member using this section, inferred from geometry. Resolvable
+  // without a design run, and never user-set — see steel/member-role.ts.
+  // Not memoised: this sits after an early return, and a hook here would break
+  // the rules of hooks. The walk is O(members) on a flyout render.
+  const roles = sectionRoles(model, sid)
 
-  const Lb = di.Lb && di.Lb > 0 ? di.Lb : (st?.Lb ?? 0)
-  const Cb = di.Cb && di.Cb > 0 ? di.Cb : (st?.Cb ?? 1)
+  // Which deck to show. Braces get the column deck: like a column they are
+  // axial-dominated, so the interaction envelope is the informative view.
+  const governingRole: SteelMemberRole =
+    governing?.kind ?? roles[0]?.role ?? "beam"
+  const deckKind: "beam" | "column" =
+    governingRole === "beam" ? "beam" : "column"
+
+  const Lb = st?.Lb ?? 0
+  const Cb = st?.Cb ?? 1
 
   return (
     <div className="space-y-3">
@@ -147,65 +111,50 @@ export function SteelDesignToolContent({
         <>
           <SteelSectionPreview section={section} />
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-gray-600">Element Type</label>
-            <div className="grid grid-cols-3 gap-1">
-              {(["auto", "beam", "column"] as ElementType[]).map((t) => (
-                <ModeButton
-                  key={t}
-                  active={di.elementType === t}
-                  onClick={() => onPatchInput(sid, { elementType: t })}
-                  title={
-                    t === "auto"
-                      ? "By member orientation — vertical members are columns"
-                      : t === "beam" ? "Force beam" : "Force column"
-                  }
+          <div className="space-y-1.5 rounded border border-gray-200 px-2 py-2">
+            <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
+              Member role
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {roles.map((r) => (
+                <span
+                  key={r.memberId}
+                  className="font-mono text-[9px] px-1 py-0.5 rounded bg-gray-50 text-gray-600"
+                  title={`${r.memberId}: ${steelRoleLabel(r.role)} (from orientation)`}
                 >
-                  {t === "auto" ? "Auto" : t === "beam" ? "Beam" : "Column"}
-                </ModeButton>
+                  {r.memberId} {steelRoleLabel(r.role)}
+                </span>
               ))}
+              {roles.length === 0 && (
+                <span className="text-[9px] text-gray-400">No members use this section.</span>
+              )}
             </div>
             <p className="text-[9px] text-gray-400 leading-snug">
-              Steel runs the same Chapter H check either way — unlike RC there is
-              no separate beam and column formulation. The choice selects the
-              report and the canvas label, not the math.
+              Inferred from each member’s orientation — not a setting. AISC 360 is
+              organised by limit state, not member type: every steel member runs
+              the same Chapter H check, and a beam simply reaches it with
+              P<sub>r</sub> = 0. The role picks the report and the canvas label.
             </p>
           </div>
 
-          <div className="space-y-2 rounded border border-gray-200 px-2 py-2">
-            <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
-              Member parameters
+          <div className="space-y-1 rounded bg-gray-50 border border-gray-200 px-2 py-2">
+            <p className="text-[10px] font-semibold text-gray-600">Member parameters</p>
+            <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+              <dt className="text-gray-500">L<sub>b</sub></dt>
+              <dd className="text-right font-mono">
+                {Lb > 0 ? `${Lb.toFixed(2)} m` : "full length"}
+              </dd>
+              <dt className="text-gray-500">C<sub>b</sub> (F1-1)</dt>
+              <dd className="text-right font-mono">{st ? Cb.toFixed(3) : "auto"}</dd>
+              <dt className="text-gray-500">K<sub>33</sub> / K<sub>22</sub></dt>
+              <dd className="text-right font-mono">1.0 / 1.0</dd>
+            </dl>
+            <p className="text-[9px] text-gray-400 leading-snug">
+              Members are taken as laterally unbraced over their full length —
+              <strong> subdivide a member to model bracing</strong>. C<sub>b</sub>
+              {" "}is computed per combination from the moment diagram. K = 1.0
+              limits the engine to <strong>braced frames</strong>.
             </p>
-            <Row
-              label={<>Unbraced length L<sub>b</sub> (m)</>}
-              hint="0 = use the full member length (conservative). There is no intermediate brace concept in the model, so enter the real braced length yourself."
-            >
-              <NumericInput
-                value={di.Lb ?? 0}
-                onChange={(v: number) => onPatchInput(sid, { Lb: Math.max(0, v) })}
-              />
-            </Row>
-            <Row
-              label={<>C<sub>b</sub></>}
-              hint="0 = computed from the member's own moment diagram (AISC F1-1). Enter 1.0 to force the conservative uniform-moment value. Single angles are pinned to 1.0 by F10."
-            >
-              <NumericInput
-                value={di.Cb ?? 0}
-                onChange={(v: number) => onPatchInput(sid, { Cb: v > 0 ? v : undefined })}
-              />
-            </Row>
-            <Row label={<>K major (K<sub>33</sub>)</>} hint="1.0 per the AISC Direct Analysis Method. Sway-frame K is not computed.">
-              <NumericInput
-                value={di.K33 ?? 1}
-                onChange={(v: number) => onPatchInput(sid, { K33: v > 0 ? v : 1 })}
-              />
-            </Row>
-            <Row label={<>K minor (K<sub>22</sub>)</>}>
-              <NumericInput
-                value={di.K22 ?? 1}
-                onChange={(v: number) => onPatchInput(sid, { K22: v > 0 ? v : 1 })}
-              />
-            </Row>
           </div>
 
           <button
@@ -217,7 +166,7 @@ export function SteelDesignToolContent({
                 : "border border-gray-200 text-gray-500 hover:border-[#2563eb] hover:text-[#2563eb]",
             )}
           >
-            {showDeck ? "Hide" : "Show"} Advanced Report — {resolvedKind === "column" ? "Column" : "Beam"}
+            {showDeck ? "Hide" : "Show"} Advanced Report — {steelRoleLabel(governingRole)}
           </button>
 
           {st ? (
@@ -264,6 +213,8 @@ export function SteelDesignToolContent({
                   {st.slenderness?.toFixed(0) ?? "—"} ({st.slendernessAxis ?? "—"})
                 </dd>
               </dl>
+
+              {st.seismic && <SeismicCard s={st.seismic} />}
               {members.length > 1 && (
                 <div className="pt-1 border-t border-gray-100">
                   <p className="text-[9px] text-gray-400 pb-0.5">
@@ -302,7 +253,7 @@ export function SteelDesignToolContent({
             </p>
           )}
 
-          {resolvedKind === "column" ? (
+          {deckKind === "column" ? (
             <SteelColumnReportDeck
               open={showDeck}
               section={section}
@@ -326,14 +277,92 @@ export function SteelDesignToolContent({
   )
 }
 
-/** Orientation rule the engine uses for `elementType: "auto"`. */
-function autoKind(model: StructureModel, sid: SectionId): "beam" | "column" {
+/**
+ * AISC 341 detailing for the governing member. Rendered only when a seismic
+ * framing type is selected — for OMF/RMB the engine returns no seismic block at
+ * all, so nothing appears and the tool reads exactly as it did before.
+ */
+function SeismicCard({ s }: { s: SeismicChecks }) {
+  const fail = !s.ductilityPass
+  return (
+    <div
+      className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-1"
+      data-testid="steel-seismic"
+    >
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
+          Seismic — AISC 341
+        </p>
+        <span
+          className="text-[9px] font-medium"
+          style={{ color: fail ? COLOR_DESIGN_FAIL : "#16a34a" }}
+        >
+          {ductilityLabel(s.level)}: {fail ? "not met" : "OK"}
+        </span>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+        <dt className="text-gray-500">C<sub>a</sub> = P<sub>u</sub>/φ<sub>c</sub>P<sub>y</sub></dt>
+        <dd className="text-right font-mono">{s.Ca.toFixed(3)}</dd>
+        <dt className="text-gray-500">R<sub>y</sub> applied</dt>
+        <dd className="text-right font-mono">{s.Ry.toFixed(2)}</dd>
+      </dl>
+
+      {/* λ against its Table D1.1 limit, element by element. */}
+      <div className="space-y-0.5">
+        {s.elements.map((e) => (
+          <div key={e.name} className="flex items-baseline gap-2 text-[10px]">
+            <span className="flex-1 text-gray-500">{e.name}</span>
+            <span
+              className="font-mono"
+              style={{ color: e.pass ? undefined : COLOR_DESIGN_FAIL }}
+            >
+              λ {e.lambda.toFixed(1)} / {e.limit.toFixed(1)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {s.bracing && (
+        <div className="flex items-baseline gap-2 text-[10px]">
+          <span className="flex-1 text-gray-500">D1.2 bracing</span>
+          <span
+            className="font-mono"
+            style={{ color: s.bracing.pass ? undefined : "#d97706" }}
+          >
+            L<sub>b</sub> {s.bracing.Lb.toFixed(2)} / {s.bracing.LbMax.toFixed(2)} m
+          </span>
+        </div>
+      )}
+
+      <ul className="space-y-0.5 pt-0.5">
+        {s.notes.map((n) => (
+          <li key={n} className="text-[9px] text-gray-400 leading-snug">{n}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+interface MemberRole {
+  memberId: string
+  role: SteelMemberRole
+}
+
+/**
+ * Role of every member using this section, resolved from geometry through the
+ * SAME function the engine uses — so the flyout can never disagree with the run.
+ * Columns sort first: a section serving both is usually of interest as a column.
+ */
+function sectionRoles(model: StructureModel, sid: SectionId): MemberRole[] {
+  const out: MemberRole[] = []
   for (const m of Object.values(model.members)) {
     if (m.section !== sid) continue
     const a = model.nodes[m.a]
     const b = model.nodes[m.b]
     if (!a || !b) continue
-    if (Math.abs(b.y - a.y) > Math.abs(b.x - a.x)) return "column"
+    out.push({ memberId: m.id, role: inferSteelRole(a.x, a.y, b.x, b.y) })
   }
-  return "beam"
+  const rank: Record<SteelMemberRole, number> = { column: 0, brace: 1, beam: 2 }
+  return out.sort((p, q) => rank[p.role] - rank[q.role] || p.memberId.localeCompare(q.memberId))
 }

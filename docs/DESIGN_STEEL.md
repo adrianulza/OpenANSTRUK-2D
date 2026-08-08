@@ -36,10 +36,11 @@ Steel has **no "As required" / "As checked" split**. There is no rebar-style
 unknown to solve for, so every run is a *check* of the assigned section. Section
 selection from a catalogue is not implemented.
 
-Every steel member runs the **same combined-force check** regardless of whether
-it is tagged beam or column — unlike RC there is no separate beam and column
-formulation, only different demands. The `kind` tag exists for the canvas and
-report only.
+Every steel member runs the **same combined-force check** regardless of its role
+tag — unlike RC there is no separate beam and column formulation, only different
+demands. This is measured, not assumed ([§S11.2](#s112-member-role)), and it is
+why the role is **inferred from geometry and read-only**, and why steel carries
+**no per-section design input at all** ([§S11.3](#s113-fixed-member-parameters)).
 
 **Two shapes break the "one Mn per section" assumption** the other three hold to,
 and most of the tee/angle work is a consequence of that:
@@ -57,9 +58,10 @@ and most of the tee/angle work is a consequence of that:
 
 ```
 src/lib/design/steel/
-├── criteria.ts       SteelCriteria { code, Fy, Fu, E, phiB, phiV, phiC,
-│                     h13ForBuiltUp } + defaultSteelCriteria
-├── types.ts          SteelSectionInput { elementType, Lb, Cb, K33, K22 }
+├── criteria.ts       SteelCriteria { code, Fy, Fu, E, phiB, phiV, phiC }
+│                     + defaultSteelCriteria
+├── types.ts          (no per-section input — documents why)
+├── member-role.ts    inferSteelRole() — beam / column / brace from geometry
 ├── rules.ts          steelGeom() + classifyFlexure/classifyAxial
 │                     (Table B4.1b / B4.1a), kc()
 ├── compression.ts    E3 flexural buckling, E4 torsional / flexural-torsional
@@ -69,8 +71,8 @@ src/lib/design/steel/
 │                     F9 (tee, sign-dependent), F10 (angle, principal axes),
 │                     cbFactor, lpLength, lrLength, fcrLTB
 ├── shear.ts          G2 (I-shape), G4 (box), G5 (round), G3 (tee + angle)
-├── interaction.ts    H1-1a / H1-1b / H1-2, H1.2 tension, H1.3 alternative,
-│                     h2Ratio (H2-1, unsymmetric)
+├── interaction.ts    H1-1a / H1-1b, H1.2 tension, h2Ratio (H2-1, unsymmetric).
+│                     H1.3 is deliberately NOT implemented — see §S8.1
 ├── section-props.ts  resolveSteelSection() + steelFlexureInput() — the single
 │                     mapping from a Section to Chapter F/E inputs, shared by
 │                     the strategy AND the report decks
@@ -418,18 +420,22 @@ Cb = 12.5·Mmax / (2.5·Mmax + 3·MA + 4·MB + 3·MC) ≤ 3.0
 `MA`, `MB`, `MC` are absolute moments at the quarter, mid and three-quarter
 points of the **unbraced segment**.
 
-- **`Lb ≥ L`** (the default — the member is its own segment): quarter-point
-  moments are sampled from the member's own diagram. Exact.
-- **`Lb < L`** (user entered a shorter unbraced length): **`Cb = 1.0`.**
+`Cb` is **always computed, never entered.** Because `Lb` is always the full
+member length ([§S11.3](#s113-fixed-member-parameters)), the member *is* its own
+unbraced segment, so the quarter-point moments come from its own diagram and
+F1-1 is exact. It is re-evaluated per load combination, and the governing
+station keeps the `Cb` that produced it.
 
-The full-member value is *not* a conservative stand-in for a shorter segment.
-For a member whose moment reverses sign, the full-member Cb reaches **2.273**
-while the true Cb of the critical end segment is **1.25** — using the member
-value would inflate `Mn` by up to **1.82×** in the LTB range. OpenAnstruk has no
-intermediate lateral-brace concept, so it cannot know where the segment sits.
-Falling back to 1.0 is what SAP2000 itself does when it cannot resolve the
-segment (CSI §3.5.3: "the program also defaults Cb to 1.0 if the minor unbraced
-length … is redefined"). An explicit `Cb` override in the tool always wins.
+There is no user override, and no `Lb < L` fallback branch — the condition
+cannot arise. (Earlier revisions carried both: an override field, and a
+`Cb = 1.0` fallback for a shortened `Lb`, because the full-member value is *not*
+a conservative stand-in for a shorter segment — on a moment-reversing member the
+full-member `Cb` reaches 2.273 against a true end-segment value of 1.25.)
+
+Two clause-level exceptions stand: **F9** (tees) and **F10** (single angles)
+carry no `Cb` term at all, and F10 pins it to 1.0. The result reports the value
+the clause actually used, not the diagram-derived one — a distinction the
+SAP2000 comparison caught.
 
 ### S6.3 F9 — tees, the sign-dependent shape
 
@@ -523,12 +529,16 @@ yielding capped by leg local buckling.
   writes it in terms of the actual `Ag`, `rz` and `t`, which is what we use — 9.5 %
   lower, i.e. conservative.
 
-### S6.5 `MnCb1`
+### S6.5 `MnNoLTB`
 
-`flexuralStrength` returns `MnCb1` alongside `Mn` — the same evaluation with
-`Cb` forced to 1.0. AISC H1-2 requires it ([§S8](#s8-combined-forces-chapter-h)).
-FLB is independent of Cb and caps both. F9 carries no `Cb` term at all, so for a
-tee `MnCb1 ≡ Mn`.
+`flexuralStrength` returns `MnNoLTB` alongside `Mn` — the yielding/local-buckling
+capacity with the LTB limit state excluded. It is **reporting only**: the beam
+deck's limit-state ladder shows it so a reader can see how much capacity LTB is
+costing on this member. No check consumes it.
+
+(A companion `MnCb1` — the same evaluation with `Cb` forced to 1.0 — existed for
+AISC H1-2 and was removed with the H1.3 alternative; see
+[§S8.1](#s81-h13-is-not-implemented).)
 
 ---
 
@@ -596,32 +606,45 @@ straight linear interaction, **harsher** than H1-1a's 8/9 factor and H1-1b's
 which is the point of CSI §3.6.2. Angles and tees are not granted the H1.3
 alternative.
 
-### S8.1 The H1.3 alternative — and why it is opt-in
+### S8.1 H1.3 is not implemented
 
-H1.3 permits checking in-plane instability and out-of-plane buckling separately
-and taking the **lower** of that and H1-1:
+**Every member is checked with H1.1 (or H2).** The H1.3 alternative — checking
+in-plane instability and out-of-plane buckling (H1-2) as separate limit states —
+is **deliberately absent**.
 
-```
-(a) in-plane    : H1-1a/H1-1b with Mc33 replaced by Mc33,NoLTB
-(b) out-of-plane: Pr/Pcy·(1.5 − 0.5·Pr/Pcy) + (Mr33/(Cb·Mc33))² ≤ 1.0   (H1-2)
-```
+This is conservative by construction. H1.1 is the general provision and is always
+permitted; H1.3 is an optional relaxation, so declining it can only *raise* the
+reported D/C. Measured cost on a compact IWF at `Lb = 0.8 Lr`:
 
-**`Mc33` in H1-2 is the `Cb = 1.0` strength, capped at `φMp`.** CSI §3.6.1(b) is
-explicit: *"Mc33 = available lateral-torsional strength for strong axis flexure
-determined in accordance with Chapter F **using Cb = 1.0**. The limit of Mp33 is
-imposed on Mc33."* The equation then multiplies by `Cb`. Feeding the Cb-scaled
-`Mn` into that slot would apply `Cb` **twice** and understate the out-of-plane
-ratio — measured at 0.232 instead of 0.248 on a `Cb = 1.5` case. `strategy.ts`
-passes `Mc33Cb1 = min(φb·MnCb1, φb·Mp)`.
+| `Pr/Pc` | H1-1 (reported) | H1.3 would give | Relief forgone |
+|---------|-----------------|-----------------|----------------|
+| 0.03 | 0.5168 | 0.3696 | 28% |
+| 0.14 | 0.5673 | 0.4427 | 22% |
+| 0.27 | 0.7135 | 0.6174 | 13% |
+| 0.47 | 0.9153 | 0.8454 | 8% |
 
-**Applicability is a genuine AISC-vs-tool divergence.** AISC H1.3 is titled
-*"Doubly Symmetric **Rolled** Compact Members…"*, and this engine models its
-parametric IWF as built-up throughout. CSI §3.6.1 does not repeat the "rolled"
-restriction and SAP2000 applies the alternative to built-up shapes anyway. Since
-H1.3 returns a minimum, granting it can only **lower** the reported D/C. It is
-therefore gated by **`SteelCriteria.h13ForBuiltUp`, default `false`**
-(AISC-strict), with a checkbox in DESIGN CRITERIA for users reconciling against
-SAP2000.
+**It was removed rather than corrected**, which is the part worth recording. The
+previous implementation had two defects pointing in opposite directions:
+
+1. It took `min(in-plane, out-of-plane)` where AISC requires **both** limit
+   states to be satisfied — i.e. `max`. **Unconservative**, by up to 18.9%.
+2. Its in-plane branch used the governing (weak-axis) `PcComp` where the clause
+   calls for the strength "determined in the plane of bending". **Conservative**,
+   and large: 0.7259 against 0.4471 at `Pr = 600 kN`.
+
+Defect 2 was masking defect 1 — fixing only the `Pc` would have taken the error
+at that load from −6.2% to −42%. Neither had any validation coverage; the sole
+H1.3-adjacent assertion tested a `Cb` double-count, not the branch selection.
+Deleting the clause removes the class rather than trading three fixes for a
+relaxation the engine does not need.
+
+Applicability was also a live AISC-vs-tool question: AISC H1.3 is titled *"Doubly
+Symmetric **Rolled** Compact Members…"* and this engine models its parametric IWF
+as built-up throughout, while CSI §3.6.1 omits the "rolled" restriction and
+SAP2000 applies the alternative anyway. That question is now moot.
+
+`validation/steel_boundary_sweep.mts` §K asserts the removal — no axial level may
+produce an `H1-2` result.
 
 ---
 
@@ -673,26 +696,26 @@ does not apply.
 ## S11. Criteria, inputs, results & UI
 
 **`SteelCriteria`** (DESIGN CRITERIA flyout — global): `Fy`, `Fu`, `E`,
-`phiB` = 0.90, `phiV` = 0.90, `phiC` = 0.90, `h13ForBuiltUp` = false. A section
-carrying its own `strength.fy` overrides `Fy` per member, so a model can mix
-grades.
+`phiB` = 0.90, `phiV` = 0.90, `phiC` = 0.90. A section carrying its own
+`strength.fy` overrides `Fy` per member, so a model can mix grades.
 
 `frameType` exists on the type but has **no UI and no effect** — AISC 341-16
 seismic detailing is not implemented, and offering OMF/IMF/SMF would imply a
 check that does not run.
 
-**`SteelSectionInput`** (STEEL flyout — per section): `elementType`
-(`auto` default), `Lb` (0 = full member length), `Cb` (undefined = auto per
-[§S6.2](#s62-cb-policy-f1-1)), `K33`, `K22` (both 1.0 = AISC Direct Analysis
-Method).
+**There is no per-section steel design input.** `SteelSectionInput` is gone: it
+carried `elementType`, `Lb`, `Cb`, `K33` and `K22`, and all five were removed —
+the first because role is inferred ([§S11.2](#s112-member-role)) and the rest
+because they are computed or fixed ([§S11.3](#s113-fixed-member-parameters)). RC
+still has one; `SectionDesignInput` is now an alias for `RcSectionInput`.
 
 **`SteelDesignResult`** carries `sectionClass`, `axialClass`, `ratio`,
 `equation`, `governing {combo, x, Pr, Mr}`, `PcComp`, `PcTens`, `Mc33`, `Vc`,
 `Pn`, `Mn`, `Mp`, `Vn`, `Lp`, `Lr`, `Lb`, `Cb`, `flexureLimit`, `Fe`, `Fcr`,
 `Ae`, `slenderness`, `slendernessAxis`, `Vr`, `shearRatio`, `PrMax`, `MrMax`,
-`pass`, `warnings`, plus the **presentation block** the report decks read:
-`pmPairs` (every `(P, M)` actually checked), `Mc33NoLTB`, `Mc33Cb1`, `Pcy`,
-`McW`/`McZ`/`MrW`/`MrZ` (angle), `McPos`/`McNeg` (tee).
+`pass`, `warnings`, `role`, plus the **presentation block** the report decks
+read: `pmPairs` (every `(P, M)` actually checked), `McW`/`McZ`/`MrW`/`MrZ`
+(angle), `McPos`/`McNeg` (tee).
 
 > **`Lp`, `Lr` and `Lb` are all in METRES** on the result object, consistent with
 > its kN and kN·m. Chapter F works in mm internally. They were briefly mixed
@@ -708,7 +731,7 @@ SVG and chart primitives (`tools/chart-text.tsx`, `tools/chart-utils.ts`,
 
 | File | What it renders |
 |---|---|
-| `steel-design-tool.tsx` | Section picker, **element type** (auto/beam/column), `Lb`/`Cb`/`K33`/`K22`, governing-member summary, per-member D/C chips |
+| `steel-design-tool.tsx` | Section picker, **read-only member role** per member, the fixed member parameters, governing-member summary, per-member D/C chips. No editable design input — see §S11.2/§S11.3 |
 | `preview.tsx` | Live cross-section for all five shapes from `shape.dims` alone. An **angle also gets its principal axes drawn at `α`** — the clearest way to show why one geometric moment produces two components |
 | `beam/report.tsx` | **`Mn` vs `Lb` curve** over `0 → 2Lr` with the three LTB zones shaded, `Lp`/`Lr` verticals, `φMp` reference and a marker at the member's own `Lb`; limit-state ladder; `φMn`/`φVn` utilisation bars. A **tee draws two curves** (sagging/hogging), an **angle draws `MnW` and `MnZ`** |
 | `column/report.tsx` | **H1 interaction envelope** — exact and piecewise-linear, `M = (9/8)Mc(1 − Pr/Pc)` above `Pr/Pc = 0.2` and `M = Mc(1 − Pr/2Pc)` below, with the kink marked — every checked `(P, M)` pair plotted, plus the Chapter E ladder `KL/r → Fe vs Fez → Fcr → Ae → φPn`. An angle or hogging tee draws the **H2** line instead |
@@ -733,6 +756,157 @@ nothing under `req-*`/`chk-*`.
 (visible as `DCLimit` in its PMM table), which is a tool preference rather than a
 code requirement.
 
+### S11.2 Member role
+
+`lib/design/steel/member-role.ts`. Every steel member is labelled **beam**,
+**column** or **brace**, inferred from its end coordinates:
+
+```
+|angle from horizontal| ≤ 15°  →  beam
+|angle from vertical|   ≤ 15°  →  column
+otherwise                      →  brace
+```
+
+`ROLE_ANGLE_TOL_DEG = 15` is a **declared convention, not a clause** — it matches
+the design-orientation rule SAP2000/ETABS use. The rule reads `|Δx|`, `|Δy|`, so
+it is invariant under swapping the member's i and j nodes.
+
+**Role changes no capacity.** AISC 360 is organised by limit state (Chapters
+D/E/F/G/H), not by member type: every member runs the same Chapter H check, and a
+beam simply reaches it with `Pr = 0`, where H1-1b degenerates to `Mr/Mc`. This
+was confirmed against SAP2000 — three simply supported beams with zero axial
+returned `RatioType = PMM`, equation `(H1-1b)`, `PRatio = 0`, and a fully
+computed `PcComp`. SAP carries the same distinction (`DesignType = Beam`) and it
+selects no equation there either.
+
+Role therefore exists only to label the DESIGN SCHEDULE and to pick a report deck
+(**brace uses the column deck** — like a column it is axial-dominated, so the
+interaction envelope is the informative view). It is **read-only**: there is no
+control, because a control would advertise an effect it does not have, and
+because role is a per-MEMBER property that a per-section field cannot express
+when one section serves both a beam and a column.
+
+`validation/steel_member_role.mts` asserts the boundaries, the i↔j invariance,
+and — the assertion that matters — that `ratio`, `equation`, `PcComp`, `Mc33`,
+`Vc`, `Cb`, `Fcr` and `Fe` are **identical** across all three roles.
+
+> **Known limitation.** A portal-frame rafter pitched more than 15° reads as
+> `brace`, which is structurally wrong — it is a beam-column. Harmless while role
+> is presentational. It becomes real with AISC 341, where a misclassified rafter
+> would draw the wrong Table D1.1 ductility limits; the seismic axis there is
+> SFRS membership, which is a user declaration rather than a geometric fact.
+
+### S11.3 Fixed member parameters
+
+Three quantities AISC needs are **fixed by documented convention** rather than
+entered. All three match SAP2000's own defaults for the same members, measured
+through the bridge (`XLLTB = 1`, `K1Major = K1Minor = K2Major = K2Minor = 1`).
+
+| | Value | Direction |
+|---|---|---|
+| `Lb` | the full member length | conservative |
+| `Cb` | computed per combination (F1-1) | exact |
+| `K33`, `K22` | 1.0 | **not conservative** — see below |
+
+**`Lb` — every member is laterally unbraced over its full length.** Bracing is an
+out-of-plane restraint and the model is 2D, so it cannot be inferred from the
+geometry. **Subdividing a member is how bracing is expressed**: each sub-member
+carries its own shorter `Lb`, and subdivision is analysis-neutral for a straight
+member. Measured cost of not doing so, on a 6 m IWF400x200 (`Lp = 2.291 m`,
+`Lr = 6.792 m`):
+
+| bracing | `Lb` | `φMn` | vs unbraced |
+|---|---|---|---|
+| continuous (deck) | 0 m | 289.34 kN·m | +27.3% |
+| third points | 2 m | 289.34 kN·m | +27.3% |
+| mid-span only | 3 m | 272.25 kN·m | +19.8% |
+| **unbraced (used)** | 6 m | 227.20 kN·m | — |
+
+**`K = 1.0` limits the engine to BRACED frames.** ⚠ This is the one assumption
+here that is *not* conservative. `K = 1.0` is what the AISC Direct Analysis
+Method prescribes — but DAM also requires second-order analysis, reduced
+stiffness (`0.8τb·EI`) and notional loads, and none of those exist here. A sway
+column therefore gets an overestimated `Pc` and an underestimated D/C. The
+exposure is pre-existing (there is no P-Δ analysis to fix it with) and removing
+the input only made it unmitigable, which is why it is stated in the DESIGN
+CRITERIA flyout and the STEEL tool rather than left to this document.
+
+### S11.4 Seismic — AISC 341-16 / SNI 7860
+
+`lib/design/steel/seismic.ts`. **Opt-in, and inert by default:** the framing type
+defaults to OMF/RMB, for which `checkSeismic` returns `undefined` and the result
+is byte-identical to a run with no seismic code at all. This is asserted, not
+assumed — `validation/steel_seismic.mts` §B checks that `ratio`, `equation`,
+`PcComp`, `Mc33`, `Vc` and `shearRatio` are unchanged between OMF and SMF.
+
+**Moment frames only, three classes:**
+
+| Frame | §  | Requirement |
+|---|---|---|
+| OMF / RMB (Biasa) | E1 | none — AISC 360 alone |
+| IMF / RMM (Menengah) | E2 | moderately ductile sections + D1.2 beam bracing |
+| SMF / RMK (Khusus) | E3 | highly ductile sections + D1.2 + SCWB (E3.4a) |
+
+Braced-frame systems (OCBF/SCBF/EBF/BRBF) are **absent by design** — they need
+the brace mechanism analyses of F2.3, which this engine cannot run.
+
+**The code axis is labels only.** SNI 1729:2020 adopts AISC 360-16 and SNI 7860
+adopts AISC 341-16, so no steel clause differs between the two editions;
+`SteelCriteria.code` selects the framing nomenclature the user sees and nothing
+else. This is **unlike the RC side**, where ACI 318-25 and SNI 2847:2019 genuinely
+diverge — do not assume the steel pattern mirrors it.
+
+**What is checked**
+
+- **D1.1 / Table D1.1** — width-to-thickness against `λmd` or `λhd`, per element.
+  The I-shape web is the only `Ca`-dependent row, with `Ca = Pu/(φc·Ry·Fy·Ag)`
+  taken from the worst compression at any station.
+- **D1.2** — beam bracing, `Lb ≤ coefficient·E·ry/(Ry·Fy)`. Reported as an
+  **advisory**, because `Lb` is always the full member length
+  ([§S11.3](#s113-fixed-member-parameters)): a failure here usually means the
+  model has not been subdivided at its real brace points, not that the beam is
+  deficient. The note travels with the result.
+- **E3.4a SCWB** — `ΣM*pc / ΣM*pb > 1.0`, SMF only, as a joint post-pass sharing
+  `DesignRunResult.joints` with the RC check. `JointCheckResult.material` says
+  which rule produced the ratio.
+
+**What is deliberately absent:** `R`, `Ωo` and `Cd`. Without overstrength load
+combinations the amplified column demands of D1.4a cannot be formed, so
+everything here is a **detailing** check on the section and the frame — "can this
+member hinge, and will the mechanism form in the beams?" — never a force
+question. Ductility folds into `pass` but **not** into `ratio`: D/C is a strength
+quantity, and inflating it would misreport why a member failed. The canvas flags
+it separately as `⚠D1.1`, the way RC flags `⚠Ash`.
+
+> ### ⚠ S11.4.1 Coefficient provenance — read before relying on this
+>
+> **No copy of AISC 341-16 or SNI 7860 exists in this repository.** Every numeric
+> limit in `seismic.ts` is transcribed from working knowledge and carries an
+> `@unverified` tag at its definition. They are isolated in the `D1_1` and `D1_2`
+> constants so correcting them is a single-file edit.
+>
+> `validation/steel_seismic.mts` therefore asserts **structure, not values**:
+> class distinctness, `λhd < λmd` everywhere, monotonicity and continuity of the
+> web limit in `Ca`, the floor, and the OMF inertness invariant. A coefficient
+> typo survives most of that; a structural error does not.
+>
+> **It already caught one.** AISC writes the web's two `Ca` branches to meet at
+> the break point. The moderate set closes to five decimals
+> (`3.96(1−3.04·0.114) = 2.58762` vs `1.29(2.12−0.114) = 2.58774`); the highly
+> ductile set leaves ~0.3% (`2.26530` vs `2.25808`), so **at least one of the
+> four `high` web constants is mis-transcribed.** Recorded at the definition and
+> bounded by §D of the suite rather than tolerated silently.
+>
+> `Ry` is a second known gap: A3.2 tabulates it **by ASTM designation**, and this
+> engine has no grade field, so `expectedRy` infers it from `Fy`. That is a
+> **program convention, not a code provision** — it is surfaced in the result and
+> stated in the UI.
+
+Also omitted from SCWB: the `Muv` term of `ΣM*pb`, which needs a plastic-hinge
+location and therefore a connection model this engine does not have. Omitting it
+makes `ΣM*pb` smaller and the ratio **optimistic** — a marginal joint here may not
+comply. Reported rather than absorbed.
+
 ---
 
 ## S12. Validation
@@ -747,12 +921,14 @@ against ours.
 |---|---|---|
 | `validation/steel_flexure_verify.mts` | AISC 360-16 Example 0001 — W18x50, LTB at `Lb` = 5 / 11.667 / 35 ft spanning all three zones: flange & web λ/λp, `Lp` = 5.835 ft, `Lr` = 16.966 ft, `Mp` = 5050 k-in, `Cb` = 1.002 / 1.014 / 1.136, `φMn` = 378.750 / 306.657 / 94.218 k-ft. Feeds **catalogue** W18x50 properties, isolating the LTB math from our parametric geometry | **14/14** |
 | `validation/steel_column_verify.mts` | AISC 360-16 Example 0002 — built-up W-shape with a **slender web**: `λ` flange 4.0 / web 60.0 vs `λr` 35.9, `KL/ry` = 86.6, `Fe` = 38.18 ksi, `Fcr` = 28.9 ksi, `c1` = 0.18, `be` = 12.6 in, `Aeff` = 19.1 in², `φcPn` = 497.9 kips | **15/15** |
-| `validation/steel_boundary_sweep.mts` | Boundary, continuity and degenerate-input behaviour: E7 inert on compact sections, `Lb → 0 ⇒ Mn = Mp`, continuity across `Lp` and `Lr`, elastic-LTB tail, monotonicity of `Mn(Lb)` and `Pn(KL/r)`, CHS F8 branch continuity + the `0.45E/Fy` limit, RHS G4 `Cv2` across all three branches, F7 branch continuity, H1-1a ≡ H1-1b at exactly `Pr/Pc = 0.2` | **86/86** |
+| `validation/steel_boundary_sweep.mts` | Boundary, continuity and degenerate-input behaviour: E7 inert on compact sections, `Lb → 0 ⇒ Mn = Mp`, continuity across `Lp` and `Lr`, elastic-LTB tail, monotonicity of `Mn(Lb)` and `Pn(KL/r)`, CHS F8 branch continuity + the `0.45E/Fy` limit, RHS G4 `Cv2` across all three branches, F7 branch continuity, H1-1a ≡ H1-1b at exactly `Pr/Pc = 0.2`, and that no axial level yields an `H1-2` result (H1.3 removal) | **87/87** |
 | `validation/steel_pipeline_smoke.mts` | End-to-end **wiring** through the real `runDesign()`: unit sanity, `Lp < Lb < Lr` branch agreement, pipeline `Mn` ≡ a direct capacity call, mixed RC + steel in one run, refusal paths. Asserts **invariants** (doubling the load doubles the D/C exactly; capacity is load-independent) rather than transcribed numbers, so it cannot reproduce a transcription error | **41/41** |
 | `validation/steel_angle_tee_props.mts` | **Angle + tee section geometry**, every reference recomputed here by exact polygon contour integration (Green's theorem + 4-point Gauss-Legendre, exact for the degree-≤4 integrands), sharing no code with `principal.ts`. Covers `A, Ix, Iy, Ixy, α, Iw, Iz, Sw, Sz, βw`, shear centre, both leg orientations, the `{b,t}` back-compat path, and the `βw = 0` / `z0 = 0` identities for equal legs | **68/68** |
 | `validation/steel_angle_tee_clauses.mts` | **F9 / F10 / E4 / G3 / H2 branch + continuity sweep.** F9 sign split and both LTB handovers, the F9-9 dimensional check, F10 branch continuity and the `βw = 0` collapse, `E4-4 → min(Fe22, E4-3)` plus `Pn` continuity across the branch, the cubic residual, G3's `Cv2` boundaries, and H2 ≥ H1 at three axial levels | **79/79** |
+| `validation/steel_seismic.mts` | **AISC 341 detailing — structure, not coefficients** (see [§S11.4.1](#-s1141-coefficient-provenance--read-before-relying-on-this)). OMF produces no seismic block and an OMF run is byte-identical to an SMF run in every strength field; the three classes are distinct; every `λhd` is strictly below its `λmd` twin; the web limit is monotonic, continuous and floored in `Ca`; `Ca` round-trips through its own definition; tension gives `Ca = 0`; D1.2 applies to beams only; SCWB responds to axial and to the `1.1·Ry` beam term. **It is what found the mis-transcribed highly-ductile web coefficient** | **39/39** |
+| `validation/steel_member_role.mts` | **Member role.** Classification at and around both 15° boundaries, i↔j swap invariance over 360 sampled angles, translation invariance, the degenerate zero-length case — and the invariant that matters: `ratio`, `equation`, `PcComp`, `PcTens`, `Mc33`, `Vc`, `shearRatio`, `Cb`, `Lb`, `slenderness`, `Fcr`, `Fe` are **identical** for the same member run as beam, column and brace. Also pins `Lb = L` and `Cb` = the F1-1 value | **31/31** |
 | `validation/sap2000-bridge/compare_props.py` | Our section properties vs **SAP2000's own** `GetSectProps`, for IWF, two tees and three angles including **both** unequal orientations — the stage that pinned down the axis mapping empirically | **all match @ 0.5 %**, `J` a bounded known delta |
-| `validation/steel_ui_smoke.mts` | **Render smoke test for the STEEL UI.** `npm run build` type-checks the decks but never runs them, so a bad index or a divide-by-zero in a chart scale would ship silently. Renders the preview, both charts and the tool to static markup with `react-dom/server` across all five shapes plus the degenerate inputs a user can actually produce (shapeless section, `t ≥ leg`, zero dims, no result yet); asserts finite curve values, monotonic `φMn(Lb)` and no `NaN` in any SVG coordinate. **It is what found the F9-10 cancellation** ([§S6.3](#s63-f9--tees-the-sign-dependent-shape)) | **86/86** |
+| `validation/steel_ui_smoke.mts` | **Render smoke test for the STEEL UI.** `npm run build` type-checks the decks but never runs them, so a bad index or a divide-by-zero in a chart scale would ship silently. Renders the preview, both charts and the tool to static markup with `react-dom/server` across all five shapes plus the degenerate inputs a user can actually produce (shapeless section, `t ≥ leg`, zero dims, no result yet); asserts finite curve values, monotonic `φMn(Lb)` and no `NaN` in any SVG coordinate. **It is what found the F9-10 cancellation** ([§S6.3](#s63-f9--tees-the-sign-dependent-shape)). Also asserts the element-type control is *absent* and that a 45° member routes to the brace report | **94/94** |
 | `validation/sap2000-bridge/probe_angle_ltb.py` | **The designed experiment that settled §S14.1 B and C**, kept as a regression stage. 19 variants in one SAP session: the angle across 5 spans × 3 thicknesses × 3 leg sizes × 3 load patterns, and a hogging tee across 6 `d/tw` values. Asserts the *characterisation* — `Mn` linear in `√Lb`, `My` = the midline-toe modulus, `Mcr·Lb` = `0.46E·b²t²`, `0.46 ≡ 9/8·2/√24`, and `McMajor ≡ φ·Fy·S33` at every tee slenderness | **23/23** |
 | `validation/sap2000-bridge/run_all.py` | Eight stages: bridge vs published PDFs (14), axis/sign mapping over four orientations (21), simply-supported beam (45), portal frame canary (63), **steel design IWF + RHS + CHS** (21), **section properties tee + angle** (13 sections), **steel design tee + angle** (35), **divergence characterisation** (23) | **all 8 stages; design 21/21 @ 0.000 % and 35/35 @ 2 % with 6 declared deltas** |
 | `validation/run_all.mjs` | Unattended aggregator: every `*.mts`/`*.mjs` suite + `npm run build` + `npm run lint` in one command, `--with-sap` to chain the bridge. Lint is gated against a recorded baseline so a pre-existing hooks-rule error does not mask a new one | **20 suites** |
@@ -808,17 +984,17 @@ would otherwise be silently mis-designed, it is refused ([§S10](#s10-refusals--
 | # | Item | What is missing | Why deferred |
 |---|---|---|---|
 | 1 | **Double angle** | Its own F9/E4 variants (AISC treats double angles alongside tees), plus a `SectionShape` entry and connector/spacing modelling | Not in the target matrix. The single angle now carries all the principal-axis machinery a double angle would reuse |
-| 2 | **AISC 341-16 seismic** | Panel-zone shear, continuity and doubler plates, steel strong-column-weak-beam, reduced beam section (RBS), protected zones, OMF/IMF/SMF width-thickness limits of Table D1.1 | A separate specification, roughly the size of the Chapter F–H work already done. `SteelCriteria.frameType` is deliberately left with **no UI** so it cannot imply a check that does not run |
+| 2 | **AISC 341-16 — the parts still absent** | Panel-zone shear, continuity and doubler plates, reduced beam section (RBS), protected zones, demand-critical welds, column splices; braced-frame systems (OCBF/SCBF/EBF/BRBF) and their brace mechanism analyses; `D1.4a` amplified column demands | Member ductility (D1.1), beam bracing (D1.2) and SCWB (E3.4a) **are now implemented** — see [§S11.4](#s114-seismic--aisc-341-16--sni-7860). What remains is either connection detailing (no connection model exists) or needs the overstrength load combinations that `R`/`Ωo`/`Cd` would bring |
 | 3 | **AISC F4** — noncompact-web I-shapes | `Rpc` web-plastification factor, `Mn = Rpc·My`, `Lp` per F4-7 (uses `rt`, not `r22`), `Lr` per F4-8, compression-flange yielding / LTB / FLB / tension-flange yielding branches | Refused instead ([§S10](#s10-refusals--sections-the-engine-declines-to-design)). Common enough in a deep built-up girder that it is the most likely of these to be wanted next |
 | 4 | **AISC F5** — slender-web I-shapes | `Rpg` bending-strength reduction and its four limit states | Refused instead. Rare in a sensibly proportioned member |
 | 5 | **Tension rupture (D2-2)** | `Ae` from a net section: bolt-hole geometry, shear lag factor `U`, connection type | No connection model exists anywhere in OpenAnstruk. `Ae = Ag` and only yielding is checked |
-| 6 | **Sway-frame K** | CSI §2.10's `K2` alignment-chart nomograph: joint-stiffness summation across the whole model and the `tan α` transcendental solve | `K33 = K22 = 1.0` (AISC Direct Analysis Method, the manual's own recommended default), user-overridable per section |
+| 6 | **Sway-frame K** | CSI §2.10's `K2` alignment-chart nomograph: joint-stiffness summation across the whole model and the `tan α` transcendental solve | `K33 = K22 = 1.0`, **fixed and not overridable** — the engine is limited to braced frames ([§S11.3](#s113-fixed-member-parameters)) |
 | 7 | **Second-order amplification** | `B1` (member `P-δ`) and `B2` (storey `P-Δ`) multipliers of AISC Appendix 8 | The solver is first-order. For a sway-sensitive frame the user must supply amplified demands |
 | 8 | **Torsion (H3)** | Box/pipe torsional strength, and combined torsion + shear + flexure | The 2D solver has no torsional DOF, so there is no torsional demand to check against. Permanent |
 | 9 | **AISC E5** — single-angle end-condition slenderness | The modified `KL/r` of E5 for angles connected through one leg | Needs connection data (number of fasteners, which leg, restraint at the far end) that no model in OpenAnstruk carries. CSI skips it for the same reason. E3 on `rz` is used instead, which is the conservative route CSI names |
 | 10 | **Angle out-of-plane moment** | The `M22` an unsymmetric section genuinely develops under in-plane load | **Permanent** — the frame element has one bending DOF. Our `M22 = 0` makes the minor-principal component larger, so the D/C is conservative ([§S3.1](#s31-the-angle-carve-out--one-moment-two-components)) |
 | 11 | **Catalogue section selection** | Auto-selecting an economical shape from a section list | Steel is always a *check* of the assigned section. The CSI manual frames selection as picking from a predefined list, which is out of scope |
-| 12 | **Intermediate lateral bracing** | A model concept for brace points along a member, so `Cb` and `Lb` could be resolved per segment | Drives the `Cb = 1.0` fallback of [§S6.2](#s62-cb-policy-f1-1). A real modelling addition, not just a design one |
+| 12 | **Intermediate lateral bracing** | A model concept for brace points along a member, so `Cb` and `Lb` could be resolved per segment | `Lb ≡ L` ([§S11.3](#s113-fixed-member-parameters)); subdividing a member is the workaround. Also what makes the AISC 341 D1.2 check advisory rather than binding |
 | 13 | **Minor-axis flexure (F6), minor shear (G6), geometric `Mr22/Mc22`** | — | **Permanently** unreachable: one bending DOF means the *geometric* `Mu22 ≡ 0`. Exact, not an approximation — but note the angle carve-out at [§S3.1](#s31-the-angle-carve-out--one-moment-two-components), where a geometric moment still produces two *principal* components |
 | 14 | **Steel in Save/Load** | Design criteria, section inputs and results are App state only | Same boundary as RC and as load cases/combinations ([§13](DESIGN_RULES.md#13-known-limitations)) |
 | 15 | **In-app steel example** | None of the five static examples uses a steel section, so there is no one-click smoke test | A steel section must be authored via the MATERIAL tool to exercise the tab |

@@ -6,6 +6,85 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.6] — 2026-08-08
+
+**Steel gets seismic detailing, and the criteria panel finally matches the RC one.** Until now a user designing an RC frame got a full Chapter 18 path — SRPMB/SRPMM/SRPMK, capacity-design shear, confinement, strong-column-weak-beam — while the same user designing a steel frame got nothing, with `SteelCriteria.frameType` sitting unread in the type and deliberately hidden from the UI. That asymmetry is closed.
+
+**It is opt-in and inert by default.** The framing type defaults to OMF/RMB, for which the engine emits no seismic block at all and every result is byte-identical to a run with no seismic code. That is asserted, not assumed.
+
+### Criteria
+
+- A steel **design-code dropdown** — `SNI 1729:2020` and `AISC 360/341-16` — and a **framing-type dropdown** whose labels follow it: **RMK / RMM / RMB** for SNI, **SMF / IMF / OMF** for AISC. The engine enum stays `OMF|IMF|SMF` internally, exactly as on the RC side.
+- **The code axis is labels only.** SNI 1729:2020 adopts AISC 360-16 and SNI 7860 adopts AISC 341-16, so no steel clause differs between the two editions. This is *unlike* RC, where ACI 318-25 and SNI 2847:2019 genuinely diverge — a difference now documented in three places, because the RC precedent sets the opposite expectation.
+- The descriptive blurb above the material fields is removed.
+
+### What is checked
+
+Moment frames only. Braced-frame systems are absent by design: they need the F2.3 brace mechanism analyses this engine cannot run.
+
+- **D1.1 / Table D1.1** — width-to-thickness against `λmd` or `λhd` per element, with `Ca = Pu/(φc·Ry·Fy·Ag)` driving the I-shape web.
+- **D1.2** — beam lateral bracing, reported as an **advisory**: because `Lb` is always the full member length, a failure here usually means the model was not subdivided at its real brace points rather than that the beam is deficient. The note travels with the result.
+- **E3.4a strong-column-weak-beam** — `ΣM*pc / ΣM*pb > 1.0`, SMF only, as a joint post-pass sharing `DesignRunResult.joints` with the RC check and disambiguated by a new `JointCheckResult.material`. Joint badges are now material-scoped, so an RC report never draws steel joints.
+
+No `R`, `Ωo` or `Cd`. Without overstrength load combinations the amplified column demands of D1.4a cannot be formed, so this is purely a detailing layer — it asks whether a member can hinge and whether the mechanism forms in the beams, never what force the earthquake delivers. Ductility folds into `pass` but **not** into `ratio`: D/C is a strength quantity, and inflating it would misreport why a member failed, so the canvas flags `⚠D1.1` the way RC flags `⚠Ash`. New canvas reports `stl-ductility` and `stl-scwb`.
+
+### Coefficient provenance — read this before relying on the numbers
+
+**No copy of AISC 341-16 or SNI 7860 exists in this repository.** Every numeric limit is transcribed from working knowledge and tagged `@unverified` at its definition, isolated in two constants so correcting them is a single-file edit.
+
+`steel_seismic.mts` (39, new) therefore asserts **structure, not values**: that OMF is inert, that the three classes are distinct, that every `λhd` is strictly below its `λmd` twin, that the web limit is monotonic, continuous and floored in `Ca`, that `Ca` round-trips through its own definition, that tension gives `Ca = 0`, and that SCWB responds both to axial load and to the beam-side expected-strength factor.
+
+**It found a real defect.** AISC writes the web's two `Ca` branches to meet at the break point. The moderately ductile pair closes to five decimals; the highly ductile pair leaves about 0.3 %, so one of those four constants is mis-transcribed. Recorded at the definition and bounded by the suite rather than tolerated silently.
+
+Two further gaps, both surfaced in the UI rather than hidden. `Ry` is tabulated by ASTM designation and this engine has no grade field, so it is inferred from `Fy` — a **program convention, not a code provision**. And `Muv` is omitted from `ΣM*pb` because it needs a plastic-hinge location and therefore a connection model, which makes SCWB **optimistic**.
+
+### Notes
+
+- The DSM solver and model math remain untouched.
+- **23 suites pass**, lint at the recorded 6-error / 28-warning baseline.
+- Still deferred: panel zones, continuity and doubler plates, RBS, protected zones, column splices, braced-frame systems, and D1.4a amplified demands.
+
+---
+
+## [1.1.5] — 2026-08-08
+
+**Steel design loses every input it did not need, gains a role it should never have asked for, and one clause was deleted rather than repaired.** Three changes that read as separate but share a spine: each removes something that misrepresented the code. The beam/column control advertised an effect it did not have. `Lb`, `Cb`, `K33` and `K22` implied a precision the engine cannot deliver. AISC H1.3 was implemented with two defects and no test covering either.
+
+### Member role is inferred, not chosen
+
+AISC 360 is organised by **limit state** — Chapters D, E, F, G, H — not by member type. Every steel member runs the same Chapter H check, and a beam simply arrives at it with `Pr = 0`, where H1-1b degenerates to `Mr/Mc`. There is no branch to select, so a control that appeared to select one was misleading.
+
+This was measured rather than argued. Three simply supported beams with exactly zero axial force were run through SAP2000: all three reported `RatioType = PMM`, the two closed shapes named equation `(H1-1b)`, every `PRatio` was 0, and `PcComp` was computed in full — SAP evaluates the compression capacity of a member carrying no compression. SAP does carry a beam/column designation; it selects no equation either.
+
+- **`steel/member-role.ts`** — role from geometry alone: within 15° of horizontal is a **beam**, within 15° of vertical a **column**, anything else a **brace**. It reads `|Δx|` and `|Δy|`, so which node was clicked first cannot change the answer. The tolerance is a declared convention matching SAP/ETABS design orientation, not a clause.
+- The old control was wrong twice over. Beyond advertising a phantom effect, it lived on the **per-section** input while role is a **per-member** property — one IWF serving as both a beam and a column could only hold one answer.
+- `MemberDesignResult.kind` widens to include `brace`; RC never emits it. Braces route to the column report deck, since like columns they are axial-dominated.
+
+### AISC H1.3 removed
+
+H1.3 permits in-plane instability and out-of-plane buckling to be checked separately in lieu of H1.1. It is an optional relaxation, never a requirement, so **declining it is conservative** — measured at 7–28 % higher reported D/C across a representative sweep.
+
+It was deleted rather than corrected, and the reason is worth recording. The implementation took the **minimum** of the two limit states where AISC requires **both** to be satisfied — unconservative by up to 18.9 %. Its in-plane branch then used the governing weak-axis `PcComp` where the clause calls for the in-plane value — conservative, and masking the first: correcting only the `Pc` would have taken the error at `Pr = 600 kN` from −6.2 % to −42 %. Neither defect had a single assertion covering it. Removing the clause removes the class.
+
+Gone with it: `h13ForBuiltUp`, `Mc33NoLTB` / `Mc33Cb1` / `Pcy` on the result, `FlexureResult.MnCb1`, a redundant compression evaluation per member, and the rolled-vs-built-up applicability divergence carried as an open question since the shapes landed.
+
+### No per-section steel input at all
+
+After the element type went, and `Lb`, `Cb`, `K33`, `K22` with it, `SteelSectionInput` held only its own discriminator and id — so the type is deleted. `SectionDesignInput` is now an alias for `RcSectionInput`. Each fixed value reproduces what SAP2000 itself uses by default for the same members, measured through the bridge:
+
+- **`Cb`** — computed per combination from the moment diagram (F1-1). No numerical change; the field was a pure override on a real computation. The `Lb < L ⇒ Cb = 1.0` guard became unreachable and was removed.
+- **`Lb`** — always the full member length. Conservative: a 6 m IWF400×200 really braced at third points has **27.3 % more** `φMn` than this reports. Bracing is an out-of-plane restraint and the model is 2D, so it cannot be inferred — **subdividing a member is how bracing is expressed**, since each sub-member then carries its own shorter `Lb`.
+- **`K33` / `K22` = 1.0** — the one assumption here that is **not** conservative. It is what the AISC Direct Analysis Method prescribes, but DAM also requires second-order analysis, reduced stiffness and notional loads, none of which exist here. The engine is therefore limited to **braced frames**, and that is now stated in the DESIGN CRITERIA flyout and the STEEL tool rather than left to the documentation.
+
+### Validation
+
+- **`steel_member_role.mts`** (31, new) — classification at and around both 15° boundaries, i↔j swap invariance across 360 sampled angles, translation invariance, the degenerate zero-length case. Its central assertion is that `ratio`, `equation`, `PcComp`, `PcTens`, `Mc33`, `Vc`, `shearRatio`, `Cb`, `Lb`, `slenderness`, `Fcr` and `Fe` are **identical** for one member run as beam, column and brace. If anyone ever branches the engine on role, it fails.
+- **`steel_boundary_sweep.mts`** 86 → **87** — §K rewritten to assert H1.3 cannot return: no axial level may produce an `H1-2` result.
+- **`steel_ui_smoke.mts`** 86 → **94** — asserts the element-type control is *absent*, that a 45° member routes to the brace report, and that no result ever prints `H1-2`.
+- Every capacity anchor unchanged: flexure 14/14, column 15/15, angle/tee props 68/68, clauses 80/80, pipeline 58/58, all `rc_*`. The SAP2000 bridge re-runs **8/8 stages** with the IWF/RHS/CHS design comparison still **21/21 at 0.000 %** — including `Cb` at 1.1364 and `McMajor` at 227.2018, which is what confirms the hard-coded `Lb` and `K` reproduce SAP's own defaults rather than departing from them.
+
+---
+
 ## [1.1.4] — 2026-08-08
 
 **Steel design covers five shapes, has its own UI, and every disagreement with SAP2000 now has a named cause.** Tee and single angle join IWF, RHS and CHS, which means the engine has to handle two things it never had to before: a section whose strength depends on which way it bends, and a section that resists a single moment about two axes at once. The steel flyout, which until now was a section picker and four number boxes, becomes a real tool with a live cross-section and two report decks. And the four measured gaps against SAP2000 — carried since the shapes landed, one of them written up as *"not fully explained"* — were chased down by experiment rather than argument. No engine math changed to close them: where SAP2000 departs from the AISC text we follow the text and declare the difference, so all four remain, bounded and direction-checked.

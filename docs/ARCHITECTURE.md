@@ -55,12 +55,14 @@ OpenAnstruk-2D/
 │   │       ├── rc/                    # RC strategy: criteria, types, strategy
 │   │       │   ├── shared/            #   code-agnostic geometry (rebar, bar-geometry, column-grid)
 │   │       │   └── codes/<code>/      #   per-code math (rules, beam, column, report) — aci318-25, sni2847-19
-│   │       └── steel/                 # steel strategy (AISC 360-16 / SNI 1729:2020)
+│   │       └── steel/                 # steel strategy (AISC 360/341-16 / SNI 1729:2020)
+│   │           ├── member-role.ts     #   inferSteelRole — beam/column/brace
 │   │           ├── rules.ts           #   steelGeom + Table B4.1a/B4.1b classification
 │   │           ├── compression.ts     #   E3 / E4 / E7 / D2
 │   │           ├── flexure.ts         #   F2, F3, F7, F8, F9 (tee), F10 (angle)
 │   │           ├── shear.ts           #   G2 / G3 / G4 / G5
-│   │           ├── interaction.ts     #   H1-1a/b, H1-2, H1.3, H2-1
+│   │           ├── interaction.ts     #   H1-1a/b, H2-1 (no H1.3)
+│   │           ├── seismic.ts         #   AISC 341 D1.1 / D1.2 / E3.4a SCWB
 │   │           ├── section-props.ts   #   Section → clause inputs (shared with the UI decks)
 │   │           └── strategy.ts        #   designMemberSteel — station sweep + envelope
 │   │

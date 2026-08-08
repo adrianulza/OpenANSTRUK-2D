@@ -135,9 +135,6 @@ export function SteelColumnReportDeck({
           <DRow label="Axial classification" value={result.axialClass} />
           <DRow label={<>φP<sub>n</sub> compression</>} value={`${fmt(result.PcComp, 0)} kN`} strong color={NAVY} />
           <DRow label={<>φP<sub>n</sub> tension (D2)</>} value={`${fmt(result.PcTens, 0)} kN`} />
-          {result.Pcy !== undefined && (
-            <DRow label={<>φP<sub>ny</sub> weak-axis (H1-2)</>} value={`${fmt(result.Pcy, 0)} kN`} />
-          )}
         </DList>
       </Card>
 

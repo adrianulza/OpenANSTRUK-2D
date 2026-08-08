@@ -8,7 +8,7 @@ import {
 import { FRAME_TYPES, type DesignMaterial, type FrameType } from "@/lib/design/core/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { RcCriteria } from "@/lib/design/rc/criteria"
-import type { SteelCriteria } from "@/lib/design/steel/criteria"
+import { STEEL_CODE_LABELS, type SteelCode, type SteelCriteria } from "@/lib/design/steel/criteria"
 import { RC_CODE_LABELS, type RcCode } from "@/lib/design/rc/codes"
 
 /**
@@ -45,22 +45,79 @@ interface SteelCriteriaFieldsProps {
 }
 
 /**
- * STEEL criteria (AISC 360-16 / SNI 1729:2020). Global defaults — a section
- * that carries its own fy overrides Fy per member, so a model can mix grades.
+ * Framing-type labels per steel code. SNI 7860 uses RMK/RMM/RMB, AISC 341-16
+ * uses SMF/IMF/OMF; the engine `frameType` enum stays OMF|IMF|SMF internally,
+ * exactly as on the RC side.
+ */
+const STEEL_FRAME_LABELS_AISC: Record<FrameType, string> = {
+  OMF: "Ordinary Moment Frame (OMF)",
+  IMF: "Intermediate Moment Frame (IMF)",
+  SMF: "Special Moment Frame (SMF)",
+}
+const STEEL_FRAME_LABELS_SNI: Record<FrameType, string> = {
+  OMF: "RMB (Biasa)",
+  IMF: "RMM (Menengah)",
+  SMF: "RMK (Khusus)",
+}
+function steelFrameLabels(code: SteelCode): Record<FrameType, string> {
+  return code === "SNI1729-2020" ? STEEL_FRAME_LABELS_SNI : STEEL_FRAME_LABELS_AISC
+}
+
+/**
+ * STEEL criteria. Global defaults — a section that carries its own fy overrides
+ * Fy per member, so a model can mix grades.
  *
- * `frameType` is deliberately absent: AISC 341-16 seismic detailing is not
- * implemented, so offering OMF/IMF/SMF here would imply a check that does not
- * run.
+ * The code dropdown is a **labelling axis only**: SNI 1729:2020 adopts AISC
+ * 360-16 and SNI 7860 adopts AISC 341-16, so no steel clause differs between the
+ * two. This is unlike the RC side, where the editions genuinely diverge.
  */
 function SteelCriteriaFields({ criteria, onChange }: SteelCriteriaFieldsProps) {
   return (
     <div className="space-y-3">
-      <div className="rounded bg-gray-50 border border-gray-200 px-2 py-2">
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Design Code</Label>
+        <Select
+          value={criteria.code}
+          onValueChange={(v) => onChange({ code: v as SteelCode })}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {(Object.keys(STEEL_CODE_LABELS) as SteelCode[]).map((c) => (
+              <SelectItem key={c} value={c}>{STEEL_CODE_LABELS[c]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-gray-600">Framing Type</Label>
+        <Select
+          value={criteria.frameType}
+          onValueChange={(v) => onChange({ frameType: v as FrameType })}
+        >
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {FRAME_TYPES.map((f) => (
+              <SelectItem key={f.id} value={f.id}>
+                {steelFrameLabels(criteria.code)[f.id]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <p className="text-[10px] text-gray-500 leading-snug">
-          AISC 360-16 / SNI 1729:2020. Applies to IWF, RHS, CHS, tee and single
-          angle sections. A section with its own f<sub>y</sub> overrides the
-          value below.
+          {criteria.frameType === "OMF"
+            ? "No seismic ductility requirement — members are governed by AISC 360 alone."
+            : criteria.frameType === "SMF"
+              ? "Highly ductile sections (Table D1.1), beam bracing (D1.2), and strong-column-weak-beam at every joint (E3.4a)."
+              : "Moderately ductile sections (Table D1.1) and beam bracing (D1.2). No moment-ratio requirement."}
         </p>
+        {criteria.frameType !== "OMF" && (
+          <p className="text-[9px] text-amber-700 leading-snug">
+            ⚠ Table D1.1 limits are transcribed from working knowledge, not from
+            the standard text — verify before relying on them. Moment frames
+            only; braced-frame systems are not modelled.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -77,25 +134,25 @@ function SteelCriteriaFields({ criteria, onChange }: SteelCriteriaFieldsProps) {
         <CriteriaInput label="Compression (E1)" symbol="φc" value={criteria.phiC} unit="" min={0.01} max={1} onCommit={(v) => onChange({ phiC: v })} />
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs font-semibold" style={{ color: "#1a2f5e" }}>Interaction</Label>
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={criteria.h13ForBuiltUp}
-            onChange={(e) => onChange({ h13ForBuiltUp: e.target.checked })}
-          />
-          <span className="text-[10px] text-gray-600 leading-snug">
-            Apply the H1.3 alternative to built-up I-shapes
-            <span className="block text-[9px] text-gray-400">
-              AISC H1.3 is written for <em>rolled</em> compact shapes and this
-              engine models its IWF as built-up, so it is off by default.
-              SAP2000 applies it regardless — enable to reconcile. It reports a
-              minimum, so enabling can only lower the D/C.
-            </span>
-          </span>
-        </label>
+      <div className="rounded bg-gray-50 border border-gray-200 px-2 py-2">
+        <p className="text-[10px] text-gray-600 leading-snug font-medium">Assumptions</p>
+        <ul className="mt-1 space-y-0.5 text-[9px] text-gray-500 leading-snug">
+          <li>
+            <strong>Braced frames only.</strong> K<sub>33</sub> = K<sub>22</sub> = 1.0.
+            Sway stability (P-Δ, notional loads) is not analysed.
+          </li>
+          <li>
+            <strong>Members are laterally unbraced</strong> over their full length
+            (L<sub>b</sub> = L). Subdivide a member to model bracing.
+          </li>
+          <li>
+            C<sub>b</sub> is computed per combination from the moment diagram (F1-1).
+          </li>
+          <li>
+            Combined forces use H1.1 / H2 only — the H1.3 alternative is not
+            applied, which is conservative.
+          </li>
+        </ul>
       </div>
     </div>
   )
