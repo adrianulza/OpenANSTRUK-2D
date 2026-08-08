@@ -695,7 +695,7 @@ does not apply.
 
 ## S11. Criteria, inputs, results & UI
 
-**`SteelCriteria`** (DESIGN CRITERIA flyout — global): `Fy`, `Fu`, `E`,
+**`SteelCriteria`** (STEEL tool → PREFERENCES pane — global): `Fy`, `Fu`, `E`,
 `phiB` = 0.90, `phiV` = 0.90, `phiC` = 0.90. A section carrying its own
 `strength.fy` overrides `Fy` per member, so a model can mix grades.
 

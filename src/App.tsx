@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+﻿import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { ToolSidebar } from "@/components/tool-sidebar"
 import { FlyoutPanel } from "@/components/flyout-panel"
@@ -90,7 +90,8 @@ import {
   type SectionDesignInput,
   type SectionDesignInputs,
 } from "@/lib/design/core/section-input"
-import { runDesign } from "@/lib/design/core/run-design"
+import { designFromCases } from "@/lib/design/core/run-design"
+import type { DesignPane } from "@/tabs/design/tools/shared/pane-switch"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
 import { useModelHistory } from "@/hooks/use-model-history"
 
@@ -168,8 +169,10 @@ export default function App() {
   const [designCriteria, setDesignCriteria] = useState<DesignCriteria>(defaultDesignCriteria)
   const [sectionDesignInputs, setSectionDesignInputs] = useState<SectionDesignInputs>({})
   const [designSelectedSectionId, setDesignSelectedSectionId] = useState<SectionId | null>(null)
-  const [designResult, setDesignResult] = useState<DesignRunResult | null>(null)
   const [designReport, setDesignReport] = useState<DesignReport>("default")
+  // Which pane of the RC / Steel design tools is showing. Shared by both tools
+  // so switching material keeps you on the same step of the flow.
+  const [designPane, setDesignPane] = useState<DesignPane>("preferences")
 
   const handleDesignCriteriaChange = useCallback((patch: Partial<DesignCriteria>) => {
     setDesignCriteria((prev) => ({ ...prev, ...patch }))
@@ -184,29 +187,6 @@ export default function App() {
     },
     [],
   )
-
-  // Design is manually triggered (no auto-compute): solves all cases itself,
-  // independent of the Analyze tab's lazy memo.
-  const handleRunDesign = useCallback(() => {
-    setDesignResult(
-      runDesign({
-        model,
-        loadCases,
-        combinations,
-        criteria: designCriteria,
-        inputs: sectionDesignInputs,
-        shearDeformation,
-      }),
-    )
-  }, [model, loadCases, combinations, designCriteria, sectionDesignInputs, shearDeformation])
-
-  // Stale-result invalidation: any input change clears the run. The Run click
-  // itself only sets designResult (not a dep here), so it never self-clears.
-  // Every remaining section input genuinely affects the result — steel now has
-  // none at all — so plain object identity is the correct trigger.
-  useEffect(() => {
-    setDesignResult((r) => (r === null ? r : null))
-  }, [model, loadCases, combinations, designCriteria, sectionDesignInputs, shearDeformation])
 
   // While a placement tool is active, the flyout's active load case drives the
   // canvas "Show Load" filter so users never place into a hidden case. Off-case
@@ -436,23 +416,34 @@ export default function App() {
   // and envelope are derived by linear superposition. See
   // src/lib/analysis-pipeline.ts.
   //
-  // Lazy gate (v1.0.6): the solver only runs while the Analyze tab is active.
-  // Editing in Model/Load tabs no longer triggers solves whose results would
-  // never be drawn — entering the Analyze tab is the implicit "Analyze"
-  // trigger. Edits while on Analyze still re-solve live (memo dep includes
-  // model/loadCases), preserving the no-button UX inside the tab.
+  // Lazy gate (v1.0.6): the solver only runs while a tab that draws results is
+  // active. Editing in Model/Load tabs no longer triggers solves whose results
+  // would never be drawn — entering the tab is the implicit trigger. Edits
+  // while on it still re-solve live (memo dep includes model/loadCases),
+  // preserving the no-button UX inside the tab.
+  //
+  // Design shares this memo (v1.2.0): it needs exactly the same solve, so
+  // gating both tabs here means switching Analyze ↔ Design reuses the
+  // factorization instead of repeating it.
   const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
-    () => activeTab === "Analyze" ? solveAllCases(model, loadCases, { shearDeformation }) : {},
+    () => activeTab === "Analyze" || activeTab === "Design"
+      ? solveAllCases(model, loadCases, { shearDeformation })
+      : {},
     [activeTab, model, loadCases, shearDeformation],
   )
 
+  // Analyze-only: the Design tab shares `caseResults` above but combines the
+  // cases itself, per enabled combination, inside the design run. Without this
+  // gate every design keystroke would also rebuild the full display combination
+  // set — work nothing on the Design tab ever draws.
   const comboResults = useMemo(() => {
     const out: Record<LoadComboId, AnalysisResult | null> = {}
+    if (activeTab !== "Analyze") return out
     for (const [id, c] of Object.entries(combinations)) {
       out[id] = combineResults(caseResults, c)
     }
     return out
-  }, [caseResults, combinations])
+  }, [activeTab, caseResults, combinations])
 
   const envelopeResult = useMemo(
     () => envelopeResults(comboResults, envelopeComboIds, combinations),
@@ -470,6 +461,40 @@ export default function App() {
     ),
     [analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
   )
+
+  // ── Design run (automatic) ─────────────────────────────────────────────────
+  // There is no Run button (v1.2.0). Entering the Design tab is the implicit
+  // trigger, and every subsequent input change re-runs the check — exactly how
+  // the Analyze tab already behaves inside its own tab.
+  //
+  // Stage 2 only: `caseResults` above is the shared solve, so a rebar or
+  // criteria edit never re-factorizes the stiffness matrix. See run-design.ts
+  // for why the stages split where they do.
+  //
+  // The two inputs a user edits at typing speed — criteria fields and rebar
+  // counts, both of which commit live — are deferred, so a keystroke paints
+  // immediately and the design pass runs behind it at lower priority. Model and
+  // load edits are NOT deferred: those arrive one commit at a time.
+  const deferredCriteria = useDeferredValue(designCriteria)
+  const deferredInputs = useDeferredValue(sectionDesignInputs)
+
+  const designResult = useMemo<DesignRunResult | null>(
+    () => activeTab === "Design"
+      ? designFromCases(caseResults, {
+          model,
+          loadCases,
+          combinations,
+          criteria: deferredCriteria,
+          inputs: deferredInputs,
+        })
+      : null,
+    [activeTab, caseResults, model, loadCases, combinations, deferredCriteria, deferredInputs],
+  )
+
+  // True while a deferred edit has not yet been folded into `designResult` —
+  // drives the canvas "Updating…" chip that took the Run button's place.
+  const designStale =
+    deferredCriteria !== designCriteria || deferredInputs !== sectionDesignInputs
 
   // ── Diagnostics (always reactive) ──────────────────────────────────────────
   // Cheap structural pre-flight: empty model, reaction count, connectivity,
@@ -547,6 +572,10 @@ export default function App() {
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
     setActiveTool(tab === "Analyze" ? "REACTION" : tab === "Design" ? "SECTION_DESIGN" : null)
+    // Entering Design lands on step 1: the code rules come before the section
+    // they govern. Switching material mid-session keeps whichever pane you are
+    // on — that reset lives here, on tab entry, not on tool change.
+    if (tab === "Design") setDesignPane("preferences")
     setPendingFrameStart(null)
     setSelection(emptySelection())
     setSelectedLoadId(null)
@@ -577,7 +606,6 @@ export default function App() {
     setDesignCriteria(defaultDesignCriteria())
     setSectionDesignInputs({})
     setDesignSelectedSectionId(null)
-    setDesignResult(null)
   }, [resetHistory])
 
   // Save the current model as a downloadable JSON file. JSON round-trips the
@@ -628,7 +656,6 @@ export default function App() {
           setSelectedLoadId(null)
           setSectionDesignInputs({})
           setDesignSelectedSectionId(null)
-          setDesignResult(null)
         } catch {
           window.alert("Could not load file: invalid or corrupted JSON.")
         }
@@ -658,7 +685,6 @@ export default function App() {
     setSelectedLoadId(null)
     setSectionDesignInputs({})
     setDesignSelectedSectionId(null)
-    setDesignResult(null)
   }, [resetHistory])
 
   const handleExampleConfirm = useCallback((model: StructureModel, section: Section) => {
@@ -676,7 +702,6 @@ export default function App() {
     setSelectedLoadId(null)
     setSectionDesignInputs({})
     setDesignSelectedSectionId(null)
-    setDesignResult(null)
     setShowExamplesModal(false)
   }, [resetHistory])
 
@@ -718,7 +743,6 @@ export default function App() {
     setSelectedLoadId(null)
     setSectionDesignInputs({})
     setDesignSelectedSectionId(null)
-    setDesignResult(null)
     setTemplateModal(null)
   }, [resetHistory])
 
@@ -1432,6 +1456,8 @@ export default function App() {
             designSelectedSectionId={designSelectedSectionId}
             onDesignSelectedSectionChange={setDesignSelectedSectionId}
             designResult={designResult}
+            designPane={designPane}
+            onDesignPaneChange={setDesignPane}
           />
 
           <StructuralCanvas
@@ -1481,7 +1507,7 @@ export default function App() {
             canUndo={canUndo}
             canRedo={canRedo}
             designResult={designResult}
-            onRunDesign={handleRunDesign}
+            designStale={designStale}
             designReport={designReport}
             onDesignReportChange={setDesignReport}
           />

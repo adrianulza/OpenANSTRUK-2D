@@ -6,6 +6,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.0] — 2026-08-08
+
+**The Design tab loses its Run button and its floating criteria panel.** Two changes that turn out to be the same change: design criteria only mean something once you know the material they apply to, and a design result is only trustworthy if it is current. Both are now structural rather than remembered.
+
+### Criteria belong to their material
+
+The standalone **DESIGN CRITERIA** tool is gone, and with it the RC/Steel toggle inside it. The Design tab now carries three tools instead of four — **REINFORCED CONCRETE**, **STEEL**, **DESIGN SCHEDULE** — and each material tool is two steps:
+
+**① PREFERENCES → ② SECTION.** Preferences is the old criteria content for that material; Section is the old per-material tool. The step switch is a numbered sequence, not a plain toggle, because the order is real: the preferences decide which clauses the section is then checked against. The old criteria tool's sliders icon and the two section glyphs move onto the switch, so the merged tools stay recognisable.
+
+`DesignCriteria.material` is **deleted**, not merely hidden. It existed only to tell the standalone tool which block to edit; with each material's preferences living inside that material's own tool, the active tool *is* the answer and the field had no readers left.
+
+A one-line **context strip** binds the two steps: each shows a summary of what the other decided — `SNI 2847:2019 · SRPMB · fy 420` while you are in Section, `Beam 300x500 · Beam · as required` while you are in Preferences — and clicking it jumps there. Checks are meaningless without knowing which standard produced them, and preferences are abstract until you see the section they are about to govern.
+
+### Results carry their own verdict
+
+The Section step is grouped into collapsible cards, and each **header states its own outcome**: `Checks ✓ 7`, `Results D/C 0.28` in its capacity-band colour, `Reinforcement 3D19 / 2D19`, `Seismic — Highly ductile: OK`. You read the answer with everything closed and expand only for the reasoning. Groups toggle independently — rebar and its checks are meant to be visible together.
+
+In **as-required** mode the Results header reads *adequate* / *enlarge section* rather than a ratio. The engine's `dc` is a flag in that mode (0 when the section carries the demand, `Infinity` when it does not), so printing "D/C 0.00" would have been a number that means nothing.
+
+RC required mode gains a real **per-zone results card** — Mu, required As top/bottom, Aᵥ/s with a suggested stirrup, per zone — where it previously said only "Run Design Check to get required As".
+
+### No Run button
+
+Opening the Design tab evaluates every member; every edit afterwards re-evaluates immediately. This is how the Analyze tab has always behaved inside its own tab, and the stale-result invalidation that used to blank `designResult` on every input change is deleted along with the button.
+
+**This is affordable because `run-design.ts` now splits in two.** `solveDesignCases()` holds the only expensive step — one stiffness factorization per enabled load case — and depends solely on the model, the cases and the shear-deformation flag. `designFromCases()` takes those solved cases plus the criteria and section inputs and does the combination, envelope and clause work. A rebar keystroke re-runs only the second stage. `runDesign()` composes both for callers holding no cache.
+
+Two further consequences fall out of the split:
+
+- The Design tab now **shares the Analyze tab's solve memo** rather than solving independently, so switching Analyze ↔ Design reuses the factorization. The combination/envelope memos stay gated to Analyze — the design run combines the cases itself, and rebuilding the display set on every keystroke would be work nothing on the Design tab draws.
+- Criteria and section inputs — the two things edited at typing speed, both of which commit live — go through `useDeferredValue`, so a keystroke paints before the design pass runs. That deferral is also what powers the **Updating…** chip that took the Run button's place: a silent recompute would leave you unsure anything happened.
+
+Both design tools widen to 355px, since each now holds two panes.
+
+---
+
 ## [1.1.6] — 2026-08-08
 
 **Steel gets seismic detailing, and the criteria panel finally matches the RC one.** Until now a user designing an RC frame got a full Chapter 18 path — SRPMB/SRPMM/SRPMK, capacity-design shear, confinement, strong-column-weak-beam — while the same user designing a steel frame got nothing, with `SteelCriteria.frameType` sitting unread in the type and deliberately hidden from the UI. That asymmetry is closed.
