@@ -16,6 +16,7 @@ import { ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { designColorForDC } from "@/lib/constants"
 import type { ArrangementCheck } from "@/lib/design/rc/shared/types"
+import { VerdictGroupExpandAll } from "./verdict-group-context"
 
 const NAVY = "#1a2f5e"
 
@@ -30,7 +31,8 @@ interface VerdictGroupProps {
 export function VerdictGroup({
   title, verdict, defaultOpen = false, children,
 }: VerdictGroupProps) {
-  const [open, setOpen] = React.useState(defaultOpen)
+  const expandAll = React.useContext(VerdictGroupExpandAll)
+  const [open, setOpen] = React.useState(expandAll ?? defaultOpen)
 
   return (
     <div className="rounded border border-gray-200 overflow-hidden">
