@@ -23,10 +23,18 @@ import { DiagramToolContent } from "@/tabs/analyze/tools/diagram-tool"
 import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
-import { DesignCriteriaToolContent } from "@/tabs/design/tools/design-criteria-tool"
 import { DesignScheduleToolContent } from "@/tabs/design/tools/design-schedule-tool"
 import { SectionDesignToolContent } from "@/tabs/design/tools/rc/rc-design-tool"
 import { SteelDesignToolContent } from "@/tabs/design/tools/steel/steel-design-tool"
+import { RcPreferencesPane, rcFrameShortLabel } from "@/tabs/design/tools/rc/preferences"
+import { SteelPreferencesPane, steelFrameShortLabel } from "@/tabs/design/tools/steel/preferences"
+import { PaneSwitch, type DesignPane } from "@/tabs/design/tools/shared/pane-switch"
+import { ContextStrip } from "@/tabs/design/tools/shared/context-strip"
+import { rcSectionIcon, steelSectionIcon } from "./tool-sidebar"
+import { RC_CODE_LABELS } from "@/lib/design/rc/codes"
+import { STEEL_CODE_LABELS } from "@/lib/design/steel/criteria"
+import { materialOf } from "@/lib/design/core/designability"
+import { asRcInput } from "@/lib/design/core/section-input"
 import type { DesignRunResult } from "@/lib/design/core/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { SectionDesignInput, SectionDesignInputs } from "@/lib/design/core/section-input"
@@ -133,8 +141,11 @@ interface FlyoutPanelProps {
   onPatchSectionDesignInput?: (id: SectionId, patch: Partial<SectionDesignInput>) => void
   designSelectedSectionId?: SectionId | null
   onDesignSelectedSectionChange?: (id: SectionId | null) => void
-  /** Last design run — feeds the column advanced report's demand markers. */
+  /** Latest design run — feeds the reports' demand markers and group verdicts. */
   designResult?: DesignRunResult | null
+  /** Which step of the RC / Steel tools is showing. Shared by both tools. */
+  designPane?: DesignPane
+  onDesignPaneChange?: (p: DesignPane) => void
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -242,19 +253,22 @@ export function FlyoutPanel({
   designSelectedSectionId,
   onDesignSelectedSectionChange,
   designResult,
+  designPane = "preferences",
+  onDesignPaneChange,
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
   const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION" || activeTool === "DESIGN_SCHEDULE"
-  const medium = activeTool === "SECTION_DESIGN"
-  const criteria = activeTool === "DESIGN_CRITERIA"
+  // Both design tools now hold two panes each, so both take the wider column —
+  // the preferences pane used to be 215px on its own and reflows fine.
+  const medium = activeTool === "SECTION_DESIGN" || activeTool === "STEEL_DESIGN"
 
   return (
     <div
       data-flyout-root
       className={cn(
         "absolute top-3 left-3 right-3 bg-white rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-gray-100 z-20",
-        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[355px]" : criteria ? "sm:right-auto sm:w-[215px]" : "sm:right-auto sm:w-[215px]",
+        wide ? "md:right-auto md:w-[515px]" : medium ? "sm:right-auto sm:w-[355px]" : "sm:right-auto sm:w-[215px]",
         "animate-in fade-in slide-in-from-left-2 duration-150 ease-out",
         "flex flex-col max-h-[calc(100dvh-5rem)]"
       )}
@@ -366,10 +380,62 @@ export function FlyoutPanel({
           designSelectedSectionId={designSelectedSectionId}
           onDesignSelectedSectionChange={onDesignSelectedSectionChange}
           designResult={designResult}
+          designPane={designPane}
+          onDesignPaneChange={onDesignPaneChange}
         />
       </div>
     </div>
   )
+}
+
+/**
+ * The section a material tool will actually land on.
+ *
+ * `designSelectedSectionId` is shared by both material tools, so it can point
+ * at the *other* material's section — matching on id alone would let the steel
+ * strip advertise a concrete section. Both section panes resolve this the same
+ * way (keep the selection only if it belongs to this material, else fall back
+ * to the first that does), and the strip has to agree with them or it promises
+ * a section the user never arrives at.
+ */
+function resolveSectionFor(
+  material: "rc" | "steel",
+  model: StructureModel | undefined,
+  selectedId: SectionId | null,
+): SectionId | null {
+  const sections = model?.sections ?? {}
+  if (selectedId && sections[selectedId] && materialOf(sections[selectedId]) === material) {
+    return selectedId
+  }
+  return Object.keys(sections).find((s) => materialOf(sections[s]) === material) ?? null
+}
+
+/** Context-strip summary of the RC SECTION pane, shown while PREFERENCES is open. */
+function rcSectionSummary(
+  model: StructureModel | undefined,
+  selectedId: SectionId | null,
+  inputs: SectionDesignInputs,
+): (string | null)[] {
+  const id = resolveSectionFor("rc", model, selectedId)
+  if (!id) return ["no concrete section"]
+  const input = asRcInput(inputs[id], id)
+  return [
+    model!.sections[id].name,
+    input.elementType === "column" ? "Column" : "Beam",
+    input.mode === "checked" ? "as checked" : "as required",
+  ]
+}
+
+/** Context-strip summary of the STEEL SECTION pane. Steel has no per-section
+ *  input, so the section's own name and shape are all there is to report. */
+function steelSectionSummary(
+  model: StructureModel | undefined,
+  selectedId: SectionId | null,
+): (string | null)[] {
+  const id = resolveSectionFor("steel", model, selectedId)
+  if (!id) return ["no steel section"]
+  const sec = model!.sections[id]
+  return [sec.name, sec.shape?.kind?.toUpperCase() ?? null]
 }
 
 function getToolTitle(tool: ToolType, activeTab?: TabType): string {
@@ -480,38 +546,94 @@ function FlyoutContent({
   designSelectedSectionId,
   onDesignSelectedSectionChange,
   designResult,
+  designPane = "preferences",
+  onDesignPaneChange,
 }: FlyoutContentProps) {
   if (activeTab === "Design") {
     switch (activeTool) {
-      case "DESIGN_CRITERIA":
-        return designCriteria && onDesignCriteriaChange ? (
-          <DesignCriteriaToolContent
-            criteria={designCriteria}
-            onChange={onDesignCriteriaChange}
-          />
-        ) : null
+      // Both material tools are two-step: PREFERENCES (the code rules for that
+      // material) then SECTION (applying them). The switch and the context
+      // strip are identical in both; only the panes differ.
       case "SECTION_DESIGN":
         return designCriteria && onPatchSectionDesignInput && onDesignSelectedSectionChange ? (
-          <SectionDesignToolContent
-            model={model}
-            selectedSectionId={designSelectedSectionId ?? null}
-            onSelectSection={onDesignSelectedSectionChange}
-            inputs={sectionDesignInputs ?? {}}
-            onPatchInput={onPatchSectionDesignInput}
-            criteria={designCriteria}
-            designResult={designResult}
-          />
+          <div className="space-y-2.5">
+            <PaneSwitch
+              pane={designPane}
+              onPaneChange={onDesignPaneChange ?? (() => {})}
+              sectionIcon={rcSectionIcon}
+            />
+            <ContextStrip
+              onJump={() => onDesignPaneChange?.(designPane === "preferences" ? "section" : "preferences")}
+              target={designPane === "preferences" ? "Section" : "Preferences"}
+              parts={
+                designPane === "preferences"
+                  ? rcSectionSummary(model, designSelectedSectionId ?? null, sectionDesignInputs ?? {})
+                  : [
+                      RC_CODE_LABELS[designCriteria.rc.code],
+                      rcFrameShortLabel(designCriteria.rc),
+                      `fy ${designCriteria.rc.fy}`,
+                    ]
+              }
+            />
+            {designPane === "preferences" ? (
+              <RcPreferencesPane
+                criteria={designCriteria.rc}
+                onChange={(p) =>
+                  onDesignCriteriaChange?.({ rc: { ...designCriteria.rc, ...p } })
+                }
+              />
+            ) : (
+              <SectionDesignToolContent
+                model={model}
+                selectedSectionId={designSelectedSectionId ?? null}
+                onSelectSection={onDesignSelectedSectionChange}
+                inputs={sectionDesignInputs ?? {}}
+                onPatchInput={onPatchSectionDesignInput}
+                criteria={designCriteria}
+                designResult={designResult}
+              />
+            )}
+          </div>
         ) : null
       case "STEEL_DESIGN":
         // No `inputs`/`onPatchInput`: steel carries no per-section design input.
         return model && designCriteria ? (
-          <SteelDesignToolContent
-            model={model}
-            selectedSectionId={designSelectedSectionId ?? null}
-            onSelectSection={onDesignSelectedSectionChange ?? (() => {})}
-            designResult={designResult ?? null}
-            criteria={designCriteria}
-          />
+          <div className="space-y-2.5">
+            <PaneSwitch
+              pane={designPane}
+              onPaneChange={onDesignPaneChange ?? (() => {})}
+              sectionIcon={steelSectionIcon}
+            />
+            <ContextStrip
+              onJump={() => onDesignPaneChange?.(designPane === "preferences" ? "section" : "preferences")}
+              target={designPane === "preferences" ? "Section" : "Preferences"}
+              parts={
+                designPane === "preferences"
+                  ? steelSectionSummary(model, designSelectedSectionId ?? null)
+                  : [
+                      STEEL_CODE_LABELS[designCriteria.steel.code],
+                      steelFrameShortLabel(designCriteria.steel),
+                      `Fy ${designCriteria.steel.Fy}`,
+                    ]
+              }
+            />
+            {designPane === "preferences" ? (
+              <SteelPreferencesPane
+                criteria={designCriteria.steel}
+                onChange={(p) =>
+                  onDesignCriteriaChange?.({ steel: { ...designCriteria.steel, ...p } })
+                }
+              />
+            ) : (
+              <SteelDesignToolContent
+                model={model}
+                selectedSectionId={designSelectedSectionId ?? null}
+                onSelectSection={onDesignSelectedSectionChange ?? (() => {})}
+                designResult={designResult ?? null}
+                criteria={designCriteria}
+              />
+            )}
+          </div>
         ) : null
       case "DESIGN_SCHEDULE":
         return designCriteria && onPatchSectionDesignInput ? (

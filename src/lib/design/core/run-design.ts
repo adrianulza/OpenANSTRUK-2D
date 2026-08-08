@@ -1,19 +1,28 @@
 /**
- * Design-run orchestrator. Solves all load cases itself (the Analyze tab's memo
- * is empty unless that tab is active), combines per enabled combination, builds
- * each member's demand context, then dispatches to the material strategy
- * (RC or Steel) keyed by the section's materialClass.
+ * Design-run orchestrator. Solves all load cases, combines per enabled
+ * combination, builds each member's demand context, then dispatches to the
+ * material strategy (RC or Steel) keyed by the section's materialClass.
  *
  * A mixed concrete + steel model is designed in one run: each member uses the
  * criteria block matching its material. The orchestrator stays material-agnostic
  * (solve → combine → envelope → dispatch); all engineering lives in the
  * per-material strategies (`../rc/strategy.ts`, `../steel/strategy.ts`).
+ *
+ * **Two stages, split at the solver seam.** `solveDesignCases` holds the only
+ * expensive step — one stiffness factorization per enabled load case — and
+ * depends on nothing but the model, the cases and the shear-deformation flag.
+ * `designFromCases` is linear algebra over already-solved cases plus the
+ * per-member clause work, and takes the criteria and section inputs.
+ *
+ * The Design tab recomputes on every input change with no Run button, so the
+ * split is what keeps a rebar keystroke off the solver: only stage 2 re-runs.
+ * `runDesign` composes both for callers that just want a one-shot run.
  */
 
 import type { StructureModel, MemberId, SectionId } from "@/lib/model"
 import type { LoadCase, LoadCaseId, LoadCombination, LoadComboId } from "@/lib/load-cases"
 import { combineResults, solveAllCases } from "@/lib/analysis-pipeline"
-import type { MemberEndForces } from "@/lib/solver"
+import type { MemberEndForces, SolverResult } from "@/lib/solver"
 import { buildGravityCombo, envelopeMemberDemands, type MemberZoneDemands } from "./demands"
 import { isSectionDesignable, materialOf } from "./designability"
 import type { DesignCriteria } from "./criteria"
@@ -32,6 +41,16 @@ export interface DesignRunInput {
   inputs: SectionDesignInputs
   shearDeformation: boolean
 }
+
+/** Stage-2 input: everything `runDesign` needs once the cases are solved. */
+export type DesignFromCasesInput = Omit<DesignRunInput, "shearDeformation">
+
+/**
+ * Solved load cases, ready for `designFromCases`. Cache this on
+ * `(model, loadCases, shearDeformation)` — it is the expensive half, and
+ * criteria or rebar edits do not invalidate it.
+ */
+export type DesignCaseResults = Record<LoadCaseId, SolverResult>
 
 function memberLength(model: StructureModel, memberId: MemberId): number {
   const m = model.members[memberId]
@@ -141,9 +160,32 @@ function checkSteelScwb(
 
 // ── Main entry ───────────────────────────────────────────────────────────────
 
-export function runDesign(input: DesignRunInput): DesignRunResult {
+/**
+ * STAGE 1 — solve every enabled load case once. The only expensive step in a
+ * design run, and the only one independent of criteria and section inputs.
+ */
+export function solveDesignCases(
+  model: StructureModel,
+  loadCases: Record<LoadCaseId, LoadCase>,
+  shearDeformation: boolean,
+): DesignCaseResults {
+  return solveAllCases(model, loadCases, { shearDeformation })
+}
+
+/**
+ * STAGE 2 — combine, envelope and design against already-solved cases. Cheap
+ * enough to re-run on every rebar keystroke; holds every criteria- and
+ * input-dependent step.
+ *
+ * Takes the raw solved cases rather than a pre-digested wrapper so the UI can
+ * hand it the very same memo the Analyze tab uses; the per-case failure
+ * messages are derived here, from the `loadCases` this input already carries.
+ */
+export function designFromCases(
+  caseResults: DesignCaseResults,
+  input: DesignFromCasesInput,
+): DesignRunResult {
   const { model, loadCases, combinations, criteria, inputs } = input
-  const issues: string[] = []
   const members: Record<MemberId, MemberDesignResult> = {}
 
   const enabledCombos = Object.values(combinations).filter((c) => c.enabled !== false)
@@ -155,10 +197,7 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
     }
   }
 
-  // Solve every enabled case once, then combine.
-  const caseResults = solveAllCases(model, loadCases, {
-    shearDeformation: input.shearDeformation,
-  })
+  const issues: string[] = []
   for (const [id, r] of Object.entries(caseResults)) {
     if (!r.ok) issues.push(`Load case "${loadCases[id]?.name ?? id}" failed to solve: ${r.reason}`)
   }
@@ -329,3 +368,15 @@ export function runDesign(input: DesignRunInput): DesignRunResult {
 
   return { ok: true, issues, members, joints }
 }
+
+/**
+ * One-shot run: solve, then design. The UI drives the two stages separately so
+ * it can cache the solve; this composition is for callers that hold no cache.
+ */
+export function runDesign(input: DesignRunInput): DesignRunResult {
+  return designFromCases(
+    solveDesignCases(input.model, input.loadCases, input.shearDeformation),
+    input,
+  )
+}
+

@@ -427,10 +427,14 @@ tabs/
 
 ## Design Engine (`src/lib/design/`)
 
-A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019) and **steel member checks** (classification, axial, flexure + LTB, shear, Chapter H interaction; AISC 360-16 / SNI 1729:2020). It is a *consumer* of the solver — the DSM math is untouched. `runDesign()` (in `design/core/`) solves the enabled combinations itself (it does not depend on the Analyze tab's lazy memo), envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in RC "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
+A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019) and **steel member checks** (classification, axial, flexure + LTB, shear, Chapter H interaction; AISC 360-16 / SNI 1729:2020). It is a *consumer* of the solver — the DSM math is untouched. It envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in RC "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
+
+**Two stages, split at the solver seam** (`design/core/run-design.ts`). `solveDesignCases()` holds the only expensive step — one stiffness factorization per enabled load case — and depends solely on the model, the cases and the shear-deformation flag. `designFromCases()` takes those solved cases plus the criteria and section inputs, and does the combination, envelope and clause work. `runDesign()` composes both for one-shot callers.
+
+The split exists because the Design tab has no Run button: it recomputes on every input change, so a rebar keystroke must not re-factorize the stiffness matrix. `App.tsx` drives the stages separately and feeds stage 2 the *same* `caseResults` memo the Analyze tab uses, so switching Analyze ↔ Design reuses the factorization rather than repeating it.
 
 The engine is split along two axes so new work is additive, not invasive (v1.1.2):
-- **`design/core/`** — material-agnostic orchestrator, demands, designability matrix, result types, and `DesignCriteria { material, rc, steel }`.
+- **`design/core/`** — material-agnostic orchestrator, demands, designability matrix, result types, and `DesignCriteria { rc, steel }`.
 - **`design/rc/`** — the RC strategy, itself split into **`shared/`** (code-agnostic bar/grid geometry, single-sourced) and **`codes/<code>/`** (the clause math — `aci318-25`, `sni2847-19` — duplicated per code edition, resolved at runtime via `getRcCode(criteria.rc.code)`).
 - **`design/steel/`** — the steel strategy: five shapes (IWF, RHS, CHS, tee, single angle), one Chapter H check for beams and columns alike. Unlike RC there is no required/checked split — steel is always a *check* of the assigned section.
 

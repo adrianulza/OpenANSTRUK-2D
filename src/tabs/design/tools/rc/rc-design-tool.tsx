@@ -16,7 +16,7 @@ import {
 import type { ArrangementCheck, TransverseChecks } from "@/lib/design/rc/shared/types"
 import { getRcCode } from "@/lib/design/rc/codes"
 import { type DesignMode, type ElementType } from "@/lib/design/core/types"
-import type { DesignRunResult } from "@/lib/design/core/types"
+import type { DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/core/types"
 import { isSectionDesignable, materialOf } from "@/lib/design/core/designability"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import { asRcInput, type SectionDesignInputs } from "@/lib/design/core/section-input"
@@ -29,12 +29,16 @@ import type {
   RebarArrangement,
 } from "@/lib/design/rc/types"
 import { isCircle } from "@/lib/design/rc/types"
+import { designColorForDC } from "@/lib/constants"
 import type { ColumnGeom } from "@/lib/design/rc/shared/types"
 import { RcSectionPreview } from "./beam/preview"
 import { RcColumnPreview } from "./column/preview"
 import { AdvancedPill } from "@/tabs/model/tools/material/advanced-pill"
 import { AdvancedReportDeck } from "./beam/report"
 import { ColumnAdvancedReportDeck } from "./column/report"
+import {
+  VerdictGroup, VerdictDC, VerdictStatus, VerdictTally, VerdictText,
+} from "../shared/verdict-group"
 
 type ZoneKey = "support" | "midspan"
 
@@ -45,14 +49,21 @@ interface SectionDesignToolProps {
   inputs: SectionDesignInputs
   onPatchInput: (id: SectionId, patch: Partial<RcSectionInput>) => void
   criteria: DesignCriteria
-  /** Last design run — feeds the column advanced report's demand markers. */
+  /** Latest design run — feeds the column report's demand markers and the
+   *  Results group's verdict. Recomputed automatically; never stale. */
   designResult?: DesignRunResult | null
 }
 
 /**
- * SECTION DESIGN — per-RC-section reinforcement input with a live cross-section
- * preview. Rebar is defined per section with two arrangements (Support zone =
- * member ends over 2h, Midspan = in between), book Tabel 5-7 style.
+ * RC SECTION — per-RC-section reinforcement input with a live cross-section
+ * preview, step 2 of the RC design tool. Rebar is defined per section with two
+ * arrangements (Support zone = member ends over 2h, Midspan = in between), book
+ * Tabel 5-7 style.
+ *
+ * The body is grouped into collapsible cards whose headers carry their own
+ * verdict — see `../shared/verdict-group.tsx` for why. Inputs stay in the
+ * Reinforcement group, which is the one open by default; everything else is
+ * evidence, readable from its header without expanding.
  */
 export function SectionDesignToolContent({
   model,
@@ -185,57 +196,109 @@ export function SectionDesignToolContent({
     return { pairs, governing, result, joint }
   }, [designResult, selectedSectionId, model])
 
+  // Worst designed member using this section — drives the Results group's
+  // header verdict and the per-zone beam card. Design now runs automatically,
+  // so this is always current with the inputs above it.
+  const govMember = React.useMemo(() => {
+    if (!designResult || !selectedSectionId || !model) return null
+    let worst: MemberDesignResult | null = null
+    for (const m of Object.values(model.members)) {
+      if (m.section !== selectedSectionId) continue
+      const r = designResult.members[m.id]
+      if (!r || r.status !== "designed") continue
+      if (!worst || (r.worstFlexureDC ?? 0) > (worst.worstFlexureDC ?? 0)) worst = r
+    }
+    return worst
+  }, [designResult, selectedSectionId, model])
+
+  // Detailing checks are computed here rather than inline in the JSX, so the
+  // group header can tally them without the body being expanded.
+  const beamLongChecks = designable && input && sec && effectiveType === "beam" && input.mode === "checked"
+    ? code.checkArrangement(b, h, input.cover, input[zone], { fy: rc.fy, frameType: rc.frameType })
+    : []
+  const beamTransverse = designable && input && sec && effectiveType === "beam" && input.mode === "checked"
+    ? code.checkTransverse(b, h, input.cover, input[zone], zone, {
+        frameType: rc.frameType,
+        fyt: rc.fyt,
+        fc: sec.strength?.fc ?? 0,
+        legs: rc.stirrupLegs,
+      })
+    : null
+  const colChecks = designable && input && sec && effectiveType === "column" && input.mode === "checked" && colArr
+    ? code.checkColumnArrangement(colGeom, input.cover, colArr, { frameType: rc.frameType })
+    : []
+
+  const allChecks: ArrangementCheck[] = [
+    ...beamLongChecks,
+    ...(beamTransverse?.checks ?? []),
+    ...colChecks,
+    ...beamDimChecks,
+    ...(colDemand.result?.confinement ?? []),
+  ]
+
+  const showAdvanced = input?.mode === "checked"
+
   return (
-    <div className="space-y-3">
-      {/* Section picker — only RC-designable sections are listed */}
-      <div className="space-y-1.5">
-        <Label className="text-xs text-gray-600">Section</Label>
-        <Select
-          value={selectedSectionId ?? ""}
-          onValueChange={(v) => onSelectSection(v as SectionId)}
-        >
-          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select section…" /></SelectTrigger>
-          <SelectContent>
-            {designableIds.map((id) => (
-              <SelectItem key={id} value={id}>{sections[id].name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {designableIds.length === 0 && (
-          <p className="text-[10px] text-amber-600 leading-snug">
-            No designable sections. RC beam design requires a concrete rectangular
-            section (Model tab → MATERIAL).
-          </p>
-        )}
-      </div>
-
-      {/* Element type — user picks beam vs column */}
-      {designable && input && (
+    <div className="space-y-2">
+      {/* ── Step A: what is being designed ─────────────────────────────────── */}
+      <VerdictGroup
+        title="Section & Type"
+        defaultOpen={!designable || !selectedSectionId}
+        verdict={
+          <VerdictText>
+            {sec?.name ?? "none"}
+            {designable && input && ` · ${effectiveType === "column" ? "Column" : "Beam"}`}
+          </VerdictText>
+        }
+      >
+        {/* Section picker — only RC-designable sections are listed */}
         <div className="space-y-1.5">
-          <Label className="text-xs text-gray-600">Element Type</Label>
-          <div className="grid grid-cols-2 gap-1">
-            <ModeButton
-              active={effectiveType === "beam"}
-              onClick={() => patch({ elementType: "beam" as ElementType })}
-              title="Design this section as a flexural beam"
-            >
-              Beam
-            </ModeButton>
-            <ModeButton
-              active={effectiveType === "column"}
-              onClick={() => patch({ elementType: "column" as ElementType })}
-              title="Design this section as an axial-flexure column"
-            >
-              Column
-            </ModeButton>
-          </div>
+          <Label className="text-xs text-gray-600">Section</Label>
+          <Select
+            value={selectedSectionId ?? ""}
+            onValueChange={(v) => onSelectSection(v as SectionId)}
+          >
+            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select section…" /></SelectTrigger>
+            <SelectContent>
+              {designableIds.map((id) => (
+                <SelectItem key={id} value={id}>{sections[id].name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {designableIds.length === 0 && (
+            <p className="text-[10px] text-amber-600 leading-snug">
+              No designable sections. RC beam design requires a concrete rectangular
+              section (Model tab → MATERIAL).
+            </p>
+          )}
         </div>
-      )}
 
-      {designable && input && sec && (
-        <>
-          {/* Design mode */}
-          <div className="space-y-1.5 pt-2 border-t border-gray-200">
+        {/* Element type — user picks beam vs column */}
+        {designable && input && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-gray-600">Element Type</Label>
+            <div className="grid grid-cols-2 gap-1">
+              <ModeButton
+                active={effectiveType === "beam"}
+                onClick={() => patch({ elementType: "beam" as ElementType })}
+                title="Design this section as a flexural beam"
+              >
+                Beam
+              </ModeButton>
+              <ModeButton
+                active={effectiveType === "column"}
+                onClick={() => patch({ elementType: "column" as ElementType })}
+                title="Design this section as an axial-flexure column"
+              >
+                Column
+              </ModeButton>
+            </div>
+          </div>
+        )}
+
+        {/* Design mode */}
+        {designable && input && sec && (
+          <div className="space-y-1.5">
             <Label className="text-xs text-gray-600">Design Mode</Label>
             <div className="grid grid-cols-2 gap-1">
               <ModeButton
@@ -254,150 +317,209 @@ export function SectionDesignToolContent({
               </ModeButton>
             </div>
           </div>
+        )}
+      </VerdictGroup>
 
-          {effectiveType === "beam" ? (
-            input.mode === "required" ? (
-            <>
-              {/* As-required: cover to rebar centroid → fixed d′ */}
-              <CoverInput
-                label="Cover to rebar centroid"
-                min={1}
-                value={input.dPrime}
-                onCommit={(v) => patch({ dPrime: v })}
-              />
-              <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-0.5">
-                <p className="text-[10px] text-gray-600 font-mono">
-                  d = h − d′ = {h} − {input.dPrime} = {(h - input.dPrime).toFixed(1)} mm
-                </p>
-                <p className="text-[10px] text-gray-500 leading-snug">
-                  Run Design Check to get required As (top/bottom) and stirrup Av/s per zone.
-                </p>
-              </div>
-              {beamDimChecks.length > 0 && <DimensionChecksCard checks={beamDimChecks} />}
-            </>
-          ) : (
-            <>
-              {/* As-checked: cover + per-zone arrangements */}
-              <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-gray-600">Reinforcement Zone</Label>
-                <div className="grid grid-cols-2 gap-1">
-                  <ModeButton active={zone === "support"} onClick={() => setZone("support")} title="End zones (2h from each member end)">
-                    Support
-                  </ModeButton>
-                  <ModeButton active={zone === "midspan"} onClick={() => setZone("midspan")} title="Between the end zones">
-                    Midspan
-                  </ModeButton>
-                </div>
-              </div>
-
-              <ArrangementEditor
-                arrangement={input[zone]}
-                b={b}
-                h={h}
-                cover={input.cover}
-                onPatch={(p) => patchArrangement(zone, p)}
-              />
-
-              <RcSectionPreview b={b} h={h} cover={input.cover} arrangement={input[zone]} />
-
-              <DetailingChecksCard
-                longitudinal={code.checkArrangement(b, h, input.cover, input[zone], {
-                  fy: rc.fy,
-                  frameType: rc.frameType,
-                })}
-                transverse={code.checkTransverse(b, h, input.cover, input[zone], zone, {
-                  frameType: rc.frameType,
-                  fyt: rc.fyt,
-                  fc: sec.strength?.fc ?? 0,
-                  legs: rc.stirrupLegs,
-                })}
-              />
-
-              {beamDimChecks.length > 0 && <DimensionChecksCard checks={beamDimChecks} />}
-
-              {/* Advanced Capacity Report — pill + portal deck (checked mode only) */}
-              <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
-              <AdvancedReportDeck
-                open={advancedOpen}
-                b={b}
-                h={h}
-                cover={input.cover}
-                arrangement={input[zone]}
-                zone={zone}
-                fc={sec.strength?.fc ?? 0}
-                criteria={rc}
-              />
-            </>
-          )
-          ) : input.mode === "required" ? (
-            <>
-              {/* Column As-required: cover + representative-ring bar/tie sizes */}
-              <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
-              <SizeSelectRow
-                label="Bar size"
-                value={input.column.required.barSize}
-                options={REBAR_SIZES}
-                onChange={(s) => patchColumnReq({ barSize: s })}
-              />
-              <SizeSelectRow
-                label="Tie size"
-                value={input.column.required.tieSize}
-                options={STIRRUP_SIZES}
-                onChange={(s) => patchColumnReq({ tieSize: s })}
-              />
-              <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5">
-                <p className="text-[10px] text-gray-500 leading-snug">
-                  Run Design Check to size the longitudinal ratio ρg (1–8%) and Aₛₜ on a
-                  symmetric perimeter ring for the worst (P, M).
-                </p>
-              </div>
-              {colDemand.result && (
-                <ColumnRequiredResultsCard result={colDemand.result} joint={colDemand.joint} />
-              )}
-            </>
-          ) : (
-            <>
-              {/* Column As-checked: bar grid/ring + preview + checks + P–M report */}
-              <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
-              {colArr && isCircle(colArr) ? (
-                <ColumnRingEditor arr={colArr} onPatch={patchColumnChecked} />
+      {designable && input && sec && (
+        <>
+          {/* ── Step B: the reinforcement itself ───────────────────────────── */}
+          <VerdictGroup
+            title="Reinforcement"
+            defaultOpen
+            verdict={
+              <VerdictText>
+                {arrangementSummary(input, effectiveType, zone, colArr)}
+              </VerdictText>
+            }
+          >
+            {effectiveType === "beam" ? (
+              input.mode === "required" ? (
+                <>
+                  {/* As-required: cover to rebar centroid → fixed d′ */}
+                  <CoverInput
+                    label="Cover to rebar centroid"
+                    min={1}
+                    value={input.dPrime}
+                    onCommit={(v) => patch({ dPrime: v })}
+                  />
+                  <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5">
+                    <p className="text-[10px] text-gray-600 font-mono">
+                      d = h − d′ = {h} − {input.dPrime} = {(h - input.dPrime).toFixed(1)} mm
+                    </p>
+                  </div>
+                </>
               ) : (
-                colArr && <ColumnGridEditor arr={colArr} onPatch={patchColumnChecked} />
-              )}
-              {colArr && (
-                <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={colArr} />
-              )}
-              {colArr && (
-                <ColumnDetailingCard
-                  checks={code.checkColumnArrangement(colGeom, input.cover, colArr, {
-                    frameType: rc.frameType,
-                  })}
+                <>
+                  {/* As-checked: cover + per-zone arrangements */}
+                  <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-gray-600">Reinforcement Zone</Label>
+                    <div className="grid grid-cols-2 gap-1">
+                      <ModeButton active={zone === "support"} onClick={() => setZone("support")} title="End zones (2h from each member end)">
+                        Support
+                      </ModeButton>
+                      <ModeButton active={zone === "midspan"} onClick={() => setZone("midspan")} title="Between the end zones">
+                        Midspan
+                      </ModeButton>
+                    </div>
+                  </div>
+
+                  <ArrangementEditor
+                    arrangement={input[zone]}
+                    b={b}
+                    h={h}
+                    cover={input.cover}
+                    onPatch={(p) => patchArrangement(zone, p)}
+                  />
+
+                  <RcSectionPreview b={b} h={h} cover={input.cover} arrangement={input[zone]} />
+                </>
+              )
+            ) : input.mode === "required" ? (
+              <>
+                {/* Column As-required: cover + representative-ring bar/tie sizes */}
+                <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
+                <SizeSelectRow
+                  label="Bar size"
+                  value={input.column.required.barSize}
+                  options={REBAR_SIZES}
+                  onChange={(s) => patchColumnReq({ barSize: s })}
+                />
+                <SizeSelectRow
+                  label="Tie size"
+                  value={input.column.required.tieSize}
+                  options={STIRRUP_SIZES}
+                  onChange={(s) => patchColumnReq({ tieSize: s })}
+                />
+                <p className="text-[10px] text-gray-500 leading-snug">
+                  ρg (1–8%) and Aₛₜ are sized on a symmetric perimeter ring for the
+                  worst (P, M) — see Results.
+                </p>
+              </>
+            ) : (
+              <>
+                {/* Column As-checked: bar grid/ring + preview */}
+                <CoverInput value={input.cover} onCommit={(v) => patch({ cover: v })} />
+                {colArr && isCircle(colArr) ? (
+                  <ColumnRingEditor arr={colArr} onPatch={patchColumnChecked} />
+                ) : (
+                  colArr && <ColumnGridEditor arr={colArr} onPatch={patchColumnChecked} />
+                )}
+                {colArr && (
+                  <RcColumnPreview b={b} h={h} cover={input.cover} arrangement={colArr} />
+                )}
+              </>
+            )}
+          </VerdictGroup>
+
+          {/* ── Step C: detailing verdicts ─────────────────────────────────── */}
+          {allChecks.length > 0 && (
+            <VerdictGroup title="Checks" verdict={<VerdictTally checks={allChecks} />}>
+              {beamTransverse && (
+                <DetailingChecksCard
+                  longitudinal={beamLongChecks}
+                  transverse={beamTransverse}
                 />
               )}
-              <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
-              {colArr && (
-              <ColumnAdvancedReportDeck
-                open={advancedOpen}
-                b={b}
-                h={h}
-                cover={input.cover}
-                arrangement={colArr}
-                fc={sec.strength?.fc ?? 0}
-                criteria={rc}
-                demandPairs={colDemand.pairs}
-                governing={colDemand.governing}
-                result={colDemand.result}
-                joint={colDemand.joint}
-              />
-              )}
-            </>
+              {colChecks.length > 0 && <ColumnDetailingCard checks={colChecks} />}
+              {beamDimChecks.length > 0 && <DimensionChecksCard checks={beamDimChecks} />}
+            </VerdictGroup>
+          )}
+
+          {/* ── Step D: what the run produced ──────────────────────────────── */}
+          {/* In "as required" mode the engine's dc is a flag, not a ratio (0 when
+              the section can carry the demand, Infinity when it cannot), so the
+              header states adequacy instead of printing a meaningless 0.00. */}
+          <VerdictGroup
+            title="Results"
+            verdict={
+              !govMember ? (
+                <VerdictText>—</VerdictText>
+              ) : input.mode === "required" ? (
+                <VerdictStatus
+                  ok={Number.isFinite(govMember.worstFlexureDC ?? Infinity)}
+                  okText="adequate"
+                  failText="enlarge section"
+                />
+              ) : (
+                <VerdictDC dc={govMember.worstFlexureDC} />
+              )
+            }
+          >
+            {govMember ? (
+              <>
+                <p className="text-[10px] text-gray-500">
+                  Governing member —{" "}
+                  <span className="font-mono text-gray-700">{govMember.memberId}</span>
+                </p>
+                {effectiveType === "column" && colDemand.result ? (
+                  <ColumnRequiredResultsCard result={colDemand.result} joint={colDemand.joint} />
+                ) : (
+                  govMember.zones && <BeamZoneResultsCard member={govMember} />
+                )}
+              </>
+            ) : (
+              <p className="text-[10px] text-gray-400 leading-snug">
+                No result for this section yet — it is not used by any member, or
+                no load combination produced demands. Design runs automatically.
+              </p>
+            )}
+          </VerdictGroup>
+
+          {/* Advanced Capacity Report — pill + portal deck (checked mode only) */}
+          {showAdvanced && (
+            <AdvancedPill open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} />
+          )}
+          {showAdvanced && effectiveType === "beam" && (
+            <AdvancedReportDeck
+              open={advancedOpen}
+              b={b}
+              h={h}
+              cover={input.cover}
+              arrangement={input[zone]}
+              zone={zone}
+              fc={sec.strength?.fc ?? 0}
+              criteria={rc}
+            />
+          )}
+          {showAdvanced && effectiveType === "column" && colArr && (
+            <ColumnAdvancedReportDeck
+              open={advancedOpen}
+              b={b}
+              h={h}
+              cover={input.cover}
+              arrangement={colArr}
+              fc={sec.strength?.fc ?? 0}
+              criteria={rc}
+              demandPairs={colDemand.pairs}
+              governing={colDemand.governing}
+              result={colDemand.result}
+              joint={colDemand.joint}
+            />
           )}
         </>
       )}
     </div>
   )
+}
+
+/** One-line description of the current arrangement, for the group header. */
+function arrangementSummary(
+  input: RcSectionInput,
+  type: "beam" | "column",
+  zone: ZoneKey,
+  colArr: ColumnArrangement | null,
+): string {
+  if (input.mode === "required") return "as required"
+  if (type === "column") {
+    if (!colArr) return "—"
+    return isCircle(colArr)
+      ? `${colArr.n}${colArr.size}`
+      : `${2 * colArr.nx + 2 * colArr.ny - 4}${colArr.size}`
+  }
+  const a = input[zone]
+  return `${a.top.count}${a.top.size} / ${a.bottom.count}${a.bottom.size}`
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -850,7 +972,94 @@ function ColumnDetailingCard({ checks }: { checks: ArrangementCheck[] }) {
   )
 }
 
-/** Required-mode column results from the last Run (the governing column member of
+const ZONE_LABEL: Record<ZoneId, string> = {
+  "end-i": "End i",
+  midspan: "Midspan",
+  "end-j": "End j",
+}
+
+/**
+ * Per-zone beam results for the governing member using this section. Required
+ * mode reports the steel the code demands (As top/bottom, Av/s + a suggested
+ * stirrup); checked mode reports the capacity of the bars the user drew
+ * (φMn per face, D/C, φVn). One row per zone, worst face first.
+ */
+function BeamZoneResultsCard({ member }: { member: MemberDesignResult }) {
+  const zones = member.zones
+  if (!zones) return null
+  const r1 = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? n.toFixed(1) : "—")
+  const r0 = (n: number | undefined) => (n !== undefined && Number.isFinite(n) ? Math.round(n) : "—")
+  const required = member.mode === "required"
+
+  return (
+    <div className="rounded bg-gray-50 border border-gray-200 px-2 py-1.5 space-y-1.5">
+      {(Object.keys(ZONE_LABEL) as ZoneId[]).map((z) => {
+        const zr = zones[z]
+        if (!zr) return null
+        const f = zr.flexure
+        const v = zr.shear
+        const worstDC = Math.max(f.dcPos ?? 0, f.dcNeg ?? 0)
+        return (
+          <div key={z} className="space-y-0.5">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[10px] font-semibold text-[#1a2f5e]">{ZONE_LABEL[z]}</p>
+              {!required && (
+                <span
+                  className="text-[10px] font-mono font-semibold"
+                  style={{ color: designColorForDC(worstDC) }}
+                >
+                  D/C {Number.isFinite(worstDC) ? worstDC.toFixed(2) : "O/S"}
+                </span>
+              )}
+              {required && !f.adequate && (
+                <span className="text-[10px] font-mono font-semibold text-red-600">
+                  section inadequate
+                </span>
+              )}
+            </div>
+            <div className="font-mono text-[10px] text-gray-700 space-y-0.5">
+              <p>
+                Mu⁺ {r1(f.MuPos)} · Mu⁻ {r1(f.MuNeg)} kN·m
+              </p>
+              {required ? (
+                <p>
+                  As bot {r0(f.AsReqBottom)} · top {r0(f.AsReqTop)} mm²
+                  {f.AsPrimeReq !== undefined && f.AsPrimeReq > 0 && (
+                    <> · A′s {r0(f.AsPrimeReq)} mm²</>
+                  )}
+                </p>
+              ) : (
+                <p>
+                  φMn⁺ {r1(f.phiMnPos)} · φMn⁻ {r1(f.phiMnNeg)} kN·m
+                </p>
+              )}
+              <p>
+                V_d {r1(v.Vdesign)} kN
+                {v.Ve !== undefined && <> (Vₑ {r1(v.Ve)})</>}
+                {required
+                  ? v.AvSReq !== undefined && (
+                      <>
+                        {" "}· Aᵥ/s {r1(v.AvSReq)} mm²/m
+                        {v.suggested && <> → {v.suggested.size}@{v.suggested.spacing}</>}
+                      </>
+                    )
+                  : v.phiVn !== undefined && <> · φVn {r1(v.phiVn)} kN</>}
+              </p>
+              {!v.crossSectionOk && (
+                <p className="text-red-600">✗ shear exceeds the φVmax cross-section limit</p>
+              )}
+              {v.crossSectionOk && !v.pass && (
+                <p className="text-red-600">✗ shear demand exceeds capacity</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Required-mode column results from the run (the governing column member of
  *  this section): ρg/Aₛₜ, shear Ve + suggested hoop, confinement, slenderness δns,
  *  and the SCWB verdict. Mirrors the checked-mode Advanced Report numbers. */
 function ColumnRequiredResultsCard({

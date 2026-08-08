@@ -66,14 +66,16 @@ src/lib/design/
 │   │                           result types (ZoneFlexureResult, ZoneShearResult,
 │   │                           ColumnDesignResult, SteelDesignResult,
 │   │                           MemberDesignResult, JointCheckResult), DesignReport
-│   ├── criteria.ts             DesignCriteria { material, rc, steel } wrapper
+│   ├── criteria.ts             DesignCriteria { rc, steel } wrapper
 │   ├── section-input.ts        SectionDesignInput union + defaultSectionDesignInput
 │   │                           (dispatched by materialClass) + asRcInput/asSteelInput
 │   ├── designability.ts        DESIGN_SUPPORT registry + isSectionDesignable + materialOf
 │   ├── demands.ts              zoneRanges, zoneExtremes (analytic), envelope,
 │   │                           frame moment minimums, collectPMPairs, buildGravityCombo
-│   └── run-design.ts           runDesign() orchestrator — solve → combine →
-│                               envelope → dispatch per member to a strategy
+│   └── run-design.ts           two-stage orchestrator: solveDesignCases() (the
+│                               factorization) then designFromCases() (combine →
+│                               envelope → dispatch per member to a strategy);
+│                               runDesign() composes both
 ├── rc/                         reinforced concrete — see DESIGN_RC.md
 │   ├── criteria.ts             RcCriteria { code, … } + defaultRcCriteria
 │   ├── types.ts                RebarArrangement, ColumnArrangement, RcSectionInput
@@ -111,9 +113,10 @@ SNI 7860 adopts AISC 341-16, with no formula deltas that reach the engine, so
 because ACI 318-25 and SNI 2847:2019 genuinely diverge
 ([§5c](DESIGN_RC.md#5c-code-edition-deltas)).
 
-**Flow (`runDesign`):**
+**Flow (`runDesign` = `solveDesignCases` then `designFromCases`):**
 
 ```
+        ── stage 1 ──┐                    ┌── stage 2 ─────────────────────────
 enabled combinations ──► solveAllCases() ──► combineResults() per combo
                                                    │
         buildGravityCombo (1.2D+1.0L) ─────────────┤ (for RC IMF/SMF Vg)
@@ -142,9 +145,19 @@ enabled combinations ──► solveAllCases() ──► combineResults() per co
      post-pass: refusal notes + failures ────────────────► DesignRunResult.issues
 ```
 
-`runDesign()` calls `solveAllCases` + `combineResults` **itself** — it does *not*
-reuse the Analyze tab's lazy memo, so design works regardless of which tab is
-active.
+**Why the stages split there.** `solveAllCases` is the only expensive step — one
+stiffness factorization per enabled case — and it depends on nothing but the
+model, the cases and the shear-deformation flag. Everything after it is linear
+algebra over already-solved cases plus per-member clause work, and *that* is
+what the criteria and section inputs feed.
+
+Since v1.2.0 the Design tab has no Run button and recomputes on every input
+change, so this boundary is what keeps a rebar keystroke off the solver: only
+`designFromCases` re-runs. The UI drives the two stages separately and hands
+stage 2 the same solved-cases memo the Analyze tab uses, so switching between
+those tabs reuses the factorization instead of repeating it. `runDesign()`
+composes both stages for callers holding no cache — the validation suites, for
+instance.
 
 Every refusal carries a `MemberDesignResult.note`, and `run-design.ts` promotes
 each one into `issues`. A member that simply vanishes from the results reads as a

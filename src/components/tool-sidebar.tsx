@@ -15,7 +15,6 @@ import {
   Move,
   ListChecks,
   Combine,
-  SlidersHorizontal,
   Table2,
 } from "lucide-react"
 
@@ -38,7 +37,6 @@ export type ToolType =
   | "SHEAR"
   | "MOMENT"
   | "DEFORMATION"
-  | "DESIGN_CRITERIA"
   | "DESIGN_SCHEDULE"
   | "SECTION_DESIGN"
   | "STEEL_DESIGN"
@@ -77,8 +75,10 @@ const loadTools: Tool[] = [
   { id: "DELETE", label: "DELETE", icon: <Trash2 size={20} /> },
 ]
 
-// RC rectangular section with corner bars — Design tab "Section Design" icon
-const rcSectionIcon = (
+// RC rectangular section with corner bars — Design tab "Section Design" icon.
+// Exported: the RC tool's pane switch reuses it for its SECTION step, so the
+// sidebar and the pane inside it carry the same mark.
+export const rcSectionIcon = (
   <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.5}>
     <rect x="4.5" y="2.5" width="11" height="15" rx="1.5" />
     <circle cx="7.5" cy="5.5" r="1.1" fill="currentColor" stroke="none" />
@@ -96,8 +96,9 @@ const analyzeTools: Tool[] = [
   { id: "DEFORMATION", label: "DEFORMATION", icon: <Waves size={20} /> },
 ]
 
-// Steel I-section — Design tab "Steel" icon
-const steelSectionIcon = (
+// Steel I-section — Design tab "Steel" icon. Exported for the same reason as
+// `rcSectionIcon` above.
+export const steelSectionIcon = (
   <svg width={20} height={20} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
     <line x1="5" y1="3.5" x2="15" y2="3.5" />
     <line x1="5" y1="16.5" x2="15" y2="16.5" />
@@ -105,8 +106,11 @@ const steelSectionIcon = (
   </svg>
 )
 
+// One tool per material, plus the cross-material schedule. The old DESIGN
+// CRITERIA tool is gone: its content is now each material tool's PREFERENCES
+// pane, because a code setting only means something once you know the material
+// it applies to. Its sliders icon lives on in the pane switch.
 const designTools: Tool[] = [
-  { id: "DESIGN_CRITERIA", label: "DESIGN\nCRITERIA", icon: <SlidersHorizontal size={20} /> },
   { id: "SECTION_DESIGN", label: "REINFORCED\nCONCRETE", icon: rcSectionIcon },
   { id: "STEEL_DESIGN", label: "STEEL", icon: steelSectionIcon },
   { id: "DESIGN_SCHEDULE", label: "DESIGN\nSCHEDULE", icon: <Table2 size={20} /> },
