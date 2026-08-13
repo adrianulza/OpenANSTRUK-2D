@@ -16,6 +16,7 @@ import {
   ListChecks,
   Combine,
   Table2,
+  ClipboardList,
 } from "lucide-react"
 
 export type TabType = "Model" | "Load" | "Analyze" | "Design"
@@ -38,6 +39,7 @@ export type ToolType =
   | "MOMENT"
   | "DEFORMATION"
   | "DESIGN_SCHEDULE"
+  | "DESIGN_REPORT"
   | "SECTION_DESIGN"
   | "STEEL_DESIGN"
   | null
@@ -110,10 +112,13 @@ export const steelSectionIcon = (
 // CRITERIA tool is gone: its content is now each material tool's PREFERENCES
 // pane, because a code setting only means something once you know the material
 // it applies to. Its sliders icon lives on in the pane switch.
+// Workflow order: say what each section IS, detail it per material, read the
+// results. The schedule leads because everything after it depends on the answer.
 const designTools: Tool[] = [
+  { id: "DESIGN_SCHEDULE", label: "DESIGN\nSCHEDULE", icon: <Table2 size={20} /> },
   { id: "SECTION_DESIGN", label: "REINFORCED\nCONCRETE", icon: rcSectionIcon },
   { id: "STEEL_DESIGN", label: "STEEL", icon: steelSectionIcon },
-  { id: "DESIGN_SCHEDULE", label: "DESIGN\nSCHEDULE", icon: <Table2 size={20} /> },
+  { id: "DESIGN_REPORT", label: "DESIGN\nREPORT", icon: <ClipboardList size={20} /> },
 ]
 
 interface ToolSidebarProps {

@@ -81,9 +81,11 @@ import {
   DEFAULT_COMBINATIONS,
   newLoadCaseId,
   newLoadComboId,
+  reconcileLoadCases,
 } from "@/lib/load-cases"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
-import type { DesignReport, DesignRunResult } from "@/lib/design/core/types"
+import type { DesignMaterial, DesignReport, DesignRunResult } from "@/lib/design/core/types"
+import { availableDesignReports } from "@/lib/design/core/types"
 import { defaultDesignCriteria, type DesignCriteria } from "@/lib/design/core/criteria"
 import {
   defaultSectionDesignInput,
@@ -170,6 +172,10 @@ export default function App() {
   const [sectionDesignInputs, setSectionDesignInputs] = useState<SectionDesignInputs>({})
   const [designSelectedSectionId, setDesignSelectedSectionId] = useState<SectionId | null>(null)
   const [designReport, setDesignReport] = useState<DesignReport>("default")
+  // Which material's results the canvas shows. RC and steel D/C answer
+  // different questions, so they are never drawn at once; `null` until a run
+  // tells us what the model actually contains.
+  const [designMaterialView, setDesignMaterialView] = useState<DesignMaterial | null>(null)
   // Which pane of the RC / Steel design tools is showing. Shared by both tools
   // so switching material keeps you on the same step of the flow.
   const [designPane, setDesignPane] = useState<DesignPane>("preferences")
@@ -496,6 +502,40 @@ export default function App() {
   const designStale =
     deferredCriteria !== designCriteria || deferredInputs !== sectionDesignInputs
 
+  // Which materials the run actually produced results for. Read from the result
+  // rather than the section catalogue, so an unused or non-designable section
+  // never offers a material view with nothing behind it.
+  const designMaterialsPresent = useMemo<DesignMaterial[]>(() => {
+    if (!designResult) return []
+    const out: DesignMaterial[] = []
+    for (const r of Object.values(designResult.members)) {
+      if (r.material && !out.includes(r.material)) out.push(r.material)
+    }
+    return out
+  }, [designResult])
+
+  // Keep the material view and the selected report consistent with what exists:
+  // lock to the only material when there is one, and drop a report that belongs
+  // to the other material (which would otherwise draw an empty canvas).
+  useEffect(() => {
+    if (designMaterialsPresent.length === 0) return
+    setDesignMaterialView((prev) =>
+      prev !== null && designMaterialsPresent.includes(prev) ? prev : designMaterialsPresent[0],
+    )
+  }, [designMaterialsPresent])
+
+  // A report that no member renders under paints a blank canvas, which reads as
+  // a broken tool. If the selection stops being offered — the material view
+  // changed, or the last "as required" section was switched to "as checked" —
+  // fall back to the summary, which always applies.
+  useEffect(() => {
+    if (!designResult) return
+    const offered = availableDesignReports(designResult.members, designMaterialView)
+    if (!offered.some((g) => g.items.some((i) => i.id === designReport))) {
+      setDesignReport("default")
+    }
+  }, [designResult, designMaterialView, designReport])
+
   // ── Diagnostics (always reactive) ──────────────────────────────────────────
   // Cheap structural pre-flight: empty model, reaction count, connectivity,
   // γ=0 sections. Cost is microseconds even on large models. Runs in every
@@ -645,10 +685,18 @@ export default function App() {
             window.alert("Could not load file: not a valid OpenAnstruk model.")
             return
           }
-          seedIdCounter(parsed)
-          setModel(parsed)
+          // The file carries `model` alone — load cases are App state and are
+          // not serialized. A load whose case is missing is assembled by no
+          // case at all, so it draws on the canvas and contributes nothing to
+          // the results. Reconcile against the cases we currently hold rather
+          // than resetting them: within a session the set is usually still
+          // right, and resetting would orphan loads that resolve fine today.
+          const rec = reconcileLoadCases(parsed, loadCases)
+          seedIdCounter(rec.model)
+          setModel(rec.model)
+          setLoadCases(rec.cases)
           resetHistory()
-          setActiveSection(firstSectionId(parsed))
+          setActiveSection(firstSectionId(rec.model))
           setActiveTab("Model")
           setActiveTool(null)
           setPendingFrameStart(null)
@@ -656,6 +704,16 @@ export default function App() {
           setSelectedLoadId(null)
           setSectionDesignInputs({})
           setDesignSelectedSectionId(null)
+          if (rec.recovered.length > 0) {
+            window.alert(
+              `Loaded — but ${rec.recovered.length} load case(s) referenced by this ` +
+              `file are not in it: ${rec.recovered.join(", ")}.\n\n` +
+              `Load cases are not saved in the file yet. Each has been recreated ` +
+              `as a DISABLED case named "Recovered (…)" so its loads are not ` +
+              `analysed under a guessed type. Open the Load tab, set each case's ` +
+              `type, then enable it.`,
+            )
+          }
         } catch {
           window.alert("Could not load file: invalid or corrupted JSON.")
         }
@@ -663,7 +721,7 @@ export default function App() {
       reader.readAsText(file)
     }
     input.click()
-  }, [resetHistory])
+  }, [resetHistory, loadCases])
 
   const handleTemplateLoad = useCallback((template: 1 | 2 | 3 | 4 | 5) => {
     const builders = {
@@ -1510,6 +1568,9 @@ export default function App() {
             designStale={designStale}
             designReport={designReport}
             onDesignReportChange={setDesignReport}
+            designMaterialView={designMaterialView}
+            onDesignMaterialViewChange={setDesignMaterialView}
+            designMaterialsPresent={designMaterialsPresent}
           />
         </main>
       </div>

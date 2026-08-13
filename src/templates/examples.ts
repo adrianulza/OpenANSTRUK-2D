@@ -8,7 +8,7 @@ const SECTION_DEFAULT: StructureModel["sections"][string] = {
 
 /** RC 500×500 column — parametric concrete, used by the portal-frame examples (T3/T4). */
 const SECTION_COL500: StructureModel["sections"][string] = buildParametricSection({
-  id: "rc500x500", name: "Column 500x500",
+  id: "rc500x500", name: "C1-500x500",
   materialClass: "concrete", shape: "rect",
   dims: { b: 500, h: 500 }, strength: { fc: 25 },
 })

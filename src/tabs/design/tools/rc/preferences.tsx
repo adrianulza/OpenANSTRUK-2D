@@ -57,7 +57,7 @@ export function RcPreferencesPane({ criteria, onChange }: RcPreferencesProps) {
           value={criteria.code}
           onValueChange={(v) => onChange({ code: v as RcCode })}
         >
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {(Object.keys(RC_CODE_LABELS) as RcCode[]).map((c) => (
               <SelectItem key={c} value={c}>{RC_CODE_LABELS[c]}</SelectItem>
@@ -78,7 +78,7 @@ export function RcPreferencesPane({ criteria, onChange }: RcPreferencesProps) {
           value={criteria.frameType}
           onValueChange={(v) => onChange({ frameType: v as FrameType })}
         >
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {FRAME_TYPES.map((f) => (
               <SelectItem key={f.id} value={f.id}>

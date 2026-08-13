@@ -22,11 +22,11 @@ import type { Section, SectionId, StructureModel } from "@/lib/model"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import type { DesignRunResult, MemberDesignResult } from "@/lib/design/core/types"
 import {
-  isSectionDesignable, isSectionInTargetMatrix, materialOf,
+  assignedSectionIds, isSectionDesignable, isSectionInTargetMatrix, materialOf,
 } from "@/lib/design/core/designability"
 import { inferSteelRole, steelRoleLabel, type SteelMemberRole } from "@/lib/design/steel/member-role"
 import { ductilityLabel, type SeismicChecks } from "@/lib/design/steel/seismic"
-import { SectionSelect } from "@/components/flyout-shared"
+import { DesignSectionPicker } from "../shared/section-picker"
 import { COLOR_DESIGN_FAIL, designColorForDC } from "@/lib/constants"
 import { SteelSectionPreview } from "./preview"
 import { SteelBeamReportDeck } from "./beam/report"
@@ -50,20 +50,24 @@ export function SteelDesignToolContent({
 }: SteelDesignToolProps) {
   const [showDeck, setShowDeck] = React.useState(false)
 
+  // Only sections a member actually carries: the tool designs members, so an
+  // unassigned section has nothing to report and would open an empty pane.
+  const assigned = assignedSectionIds(model)
   const steelSections: Record<SectionId, Section> = Object.fromEntries(
-    Object.entries(model.sections).filter(([, s]) => materialOf(s) === "steel"),
+    Object.entries(model.sections).filter(
+      ([id, s]) => materialOf(s) === "steel" && assigned.has(id),
+    ),
   )
   const steelIds = Object.keys(steelSections)
 
   if (steelIds.length === 0) {
+    const inCatalogue = Object.values(model.sections).some((s) => materialOf(s) === "steel")
     return (
-      <div className="rounded bg-gray-50 border border-gray-200 px-2 py-3">
-        <p className="text-[10px] text-gray-500 leading-snug">
-          No steel sections in this model. Create one with the MATERIAL tool on
-          the Model tab — parametric mode, material class “steel”, shape IWF /
-          RHS / CHS / Tee / Angle, with a yield stress f<sub>y</sub>.
-        </p>
-      </div>
+      <p className="text-[10px] text-gray-500 leading-snug">
+        {inCatalogue
+          ? "No member uses a steel section."
+          : "No steel sections — add one in Model → MATERIAL."}
+      </p>
     )
   }
 
@@ -108,16 +112,26 @@ export function SteelDesignToolContent({
         defaultOpen
         verdict={<VerdictText>{section.name}</VerdictText>}
       >
-        <SectionSelect sections={steelSections} value={sid} onChange={onSelectSection} />
+        <DesignSectionPicker
+          sections={steelSections}
+          ids={steelIds}
+          value={sid}
+          onChange={onSelectSection}
+        />
 
         {!designable && (
-          <div className="rounded bg-amber-50 border border-amber-200 px-2 py-2">
-            <p className="text-[10px] text-amber-800 leading-snug">
-              {planned
-                ? `${section.shape?.kind?.toUpperCase() ?? "This shape"} is in the target matrix but its AISC clause path is not built yet.`
-                : "Not designable: needs a parametric IWF / RHS / CHS / Tee / Angle section, authored in the MATERIAL tool, with a yield stress fy defined."}
-            </p>
-          </div>
+          <p
+            className="text-[10px] text-amber-700 leading-snug"
+            title={
+              planned
+                ? "Listed in the design target matrix, but its AISC clause path is not implemented yet."
+                : "Needs a parametric IWF / RHS / CHS / Tee / Angle authored in the MATERIAL tool, with a yield stress fy."
+            }
+          >
+            {planned
+              ? `AISC path for ${section.shape?.kind?.toUpperCase() ?? "this shape"} not built yet.`
+              : "Not designable — needs a parametric steel shape with fy."}
+          </p>
         )}
 
         {designable && <SteelSectionPreview section={section} />}
@@ -135,51 +149,58 @@ export function SteelDesignToolContent({
               </VerdictText>
             }
           >
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
-                Member role
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {roles.map((r) => (
-                  <span
-                    key={r.memberId}
-                    className="font-mono text-[9px] px-1 py-0.5 rounded bg-gray-50 text-gray-600"
-                    title={`${r.memberId}: ${steelRoleLabel(r.role)} (from orientation)`}
-                  >
-                    {r.memberId} {steelRoleLabel(r.role)}
-                  </span>
-                ))}
-                {roles.length === 0 && (
-                  <span className="text-[9px] text-gray-400">No members use this section.</span>
-                )}
-              </div>
-              <p className="text-[9px] text-gray-400 leading-snug">
-                Inferred from each member’s orientation — not a setting. AISC 360 is
-                organised by limit state, not member type: every steel member runs
-                the same Chapter H check, and a beam simply reaches it with
-                P<sub>r</sub> = 0. The role picks the report and the canvas label.
-              </p>
+            {/* Role, then the three AISC inputs. Reference register: this is a
+                spec block, so the reasoning behind each row lives on its
+                tooltip. The one line that stays visible is the K = 1.0 limit,
+                because it is the engine's only non-conservative assumption. */}
+            <div className="flex flex-wrap items-center gap-1">
+              <span
+                className="text-[10px] text-gray-500 mr-0.5"
+                title={
+                  "Inferred from each member's orientation — not a setting. AISC 360 is " +
+                  "organised by limit state, not member type: every steel member runs the " +
+                  "same Chapter H check, and a beam simply reaches it with Pr = 0. The role " +
+                  "picks the report and the canvas label."
+                }
+              >
+                Role
+              </span>
+              {roles.map((r) => (
+                <span
+                  key={r.memberId}
+                  className="font-mono text-[9px] px-1 py-0.5 rounded bg-gray-50 text-gray-600"
+                  title={`${r.memberId}: ${steelRoleLabel(r.role)} (from orientation)`}
+                >
+                  {r.memberId} {steelRoleLabel(r.role)}
+                </span>
+              ))}
             </div>
 
-            <div className="space-y-1 rounded bg-gray-50 border border-gray-200 px-2 py-2">
-              <p className="text-[10px] font-semibold text-gray-600">Member parameters</p>
-              <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-                <dt className="text-gray-500">L<sub>b</sub></dt>
-                <dd className="text-right font-mono">
-                  {Lb > 0 ? `${Lb.toFixed(2)} m` : "full length"}
-                </dd>
-                <dt className="text-gray-500">C<sub>b</sub> (F1-1)</dt>
-                <dd className="text-right font-mono">{st ? Cb.toFixed(3) : "auto"}</dd>
-                <dt className="text-gray-500">K<sub>33</sub> / K<sub>22</sub></dt>
-                <dd className="text-right font-mono">1.0 / 1.0</dd>
-              </dl>
-              <p className="text-[9px] text-gray-400 leading-snug">
-                Members are taken as laterally unbraced over their full length —
-                <strong> subdivide a member to model bracing</strong>. C<sub>b</sub>
-                {" "}is computed per combination from the moment diagram. K = 1.0
-                limits the engine to <strong>braced frames</strong>.
-              </p>
-            </div>
+            <dl className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+              <dt
+                className="text-gray-500"
+                title="Taken as laterally unbraced over the full member length. Subdivide a member to model bracing."
+              >
+                L<sub>b</sub>
+              </dt>
+              <dd className="text-right font-mono">
+                {Lb > 0 ? `${Lb.toFixed(2)} m` : "full length"}
+              </dd>
+              <dt className="text-gray-500" title="Computed per load combination from the moment diagram (F1-1).">
+                C<sub>b</sub> (F1-1)
+              </dt>
+              <dd className="text-right font-mono">{st ? Cb.toFixed(3) : "auto"}</dd>
+              <dt
+                className="text-gray-500"
+                title="The direct analysis method's prescription — but second-order analysis, reduced stiffness and notional loads are not modelled, so this engine is limited to braced frames."
+              >
+                K<sub>33</sub> / K<sub>22</sub>
+              </dt>
+              <dd className="text-right font-mono">1.0 / 1.0</dd>
+            </dl>
+            <p className="text-[9px] text-gray-400 leading-snug">
+              Unbraced over full length · K = 1.0, <strong>braced frames only</strong>
+            </p>
           </VerdictGroup>
 
           {/* ── Step C: what the run produced ─────────────────────────────── */}
@@ -260,11 +281,11 @@ export function SteelDesignToolContent({
                 )}
               </div>
             ) : (
-              <p className="text-[10px] text-gray-400 leading-snug">
-                No result for this section yet — it is not used by any member, or
-                no load combination produced demands. Design runs automatically.
-                The beam report below draws its capacity curve from the section
-                alone, so it works regardless; the column envelope needs demands.
+              <p
+                className="text-[10px] text-gray-400 leading-snug"
+                title="Design runs automatically on every edit. The beam report below draws its capacity curve from the section alone, so it works without demands; the column envelope does not."
+              >
+                No demands from the enabled load combinations.
               </p>
             )}
           </VerdictGroup>

@@ -19,12 +19,14 @@ import { memberInternalForces } from "@/lib/solver"
 import type {
   ColumnDesignResult,
   ColumnShearResult,
-  ElementType,
+  DetailingCheck,
+  DetailingGroup,
   MemberDesignResult,
   ZoneFlexureResult,
   ZoneId,
   ZoneShearResult,
 } from "../core/types"
+import type { ArrangementCheck } from "./shared/types"
 import type { ColumnBar, ColumnGeom } from "./shared/types"
 import { geomH, geomAg, geomIg, geomShear } from "./shared/types"
 import type { RebarSize } from "./shared/rebar"
@@ -45,6 +47,7 @@ import {
 } from "./shared/column-grid"
 import { buildBarLayout, type BarLayout } from "./shared/bar-geometry"
 import { barArea, barDia } from "./shared/rebar"
+import { resolveElementType } from "../core/element-type"
 
 // "As required" mode no longer asks for assumed bars — these defaults drive the
 // SMF hinge-zone spacing cap (6·db) and the stirrup-size suggestion only.
@@ -116,6 +119,34 @@ function flexGeomNeg(g: MemberGeometry): FlexureGeometry {
   return { b: g.b, d: g.dNeg, dPrimeC: g.dPrimeNeg, fc: g.fc }
 }
 
+/**
+ * Slenderness verdict, read off the magnifier.
+ *
+ * `slendernessMagnifier` returns δns = 99 when `1 − Pu/(0.75·Pc) ≤ 0`: the
+ * member buckles before it yields, and no amount of steel fixes that. Treating
+ * "≥ 99" rather than "exactly 99" as the failure is deliberate — a legitimately
+ * computed 99× amplification is just as unbuildable as the sentinel, so the
+ * threshold does not depend on telling the two apart.
+ *
+ * A short column (δns = 1 via the 6.2.5 gate) and a slender-but-stable one both
+ * pass; their amplified moments are already inside the interaction D/C, so this
+ * answers only "does the column stand up", not "is it big enough".
+ */
+const DELTA_NS_RUNAWAY = 99
+
+function slendernessStable(deltaNs: number | undefined): boolean {
+  return deltaNs === undefined || deltaNs < DELTA_NS_RUNAWAY
+}
+
+/** Tag a code module's detailing verdicts with the group the UI names them by. */
+function tagged(
+  group: DetailingGroup,
+  checks: ArrangementCheck[],
+  where?: string,
+): DetailingCheck[] {
+  return checks.map((c) => ({ group, where, status: c.status, text: c.text, clause: c.clause }))
+}
+
 // ── Flexure per zone ─────────────────────────────────────────────────────────
 
 function designZoneFlexure(
@@ -135,6 +166,9 @@ function designZoneFlexure(
       AsReqBottom: bot.As,
       AsReqTop: top.As,
       AsPrimeReq: Math.max(bot.AsPrime, top.AsPrime),
+      // Mode-independent view of the same steel — see ZoneFlexureResult.AsTop.
+      AsTop: top.As,
+      AsBottom: bot.As,
       rhoTop: g.dNeg > 0 ? top.As / (g.b * g.dNeg) : 0,
       rhoBottom: g.dPos > 0 ? bot.As / (g.b * g.dPos) : 0,
       dc: adequate ? 0 : Infinity,
@@ -146,8 +180,13 @@ function designZoneFlexure(
   // side bars — skin steel counts per 9.7.2.3), both bending signs.
   const layout = g.layout!
   if (!layout.fits) {
-    // Bars don't fit in 2 layers (25.2.1) — arrangement is unbuildable.
-    return { MuPos, MuNeg, dcPos: Infinity, dcNeg: Infinity, dc: Infinity, adequate: false }
+    // Bars don't fit in 2 layers (25.2.1) — arrangement is unbuildable. The bar
+    // areas are still reported: the user asked for those bars, and a report that
+    // blanked here would hide what makes the arrangement fail.
+    return {
+      MuPos, MuNeg, dcPos: Infinity, dcNeg: Infinity, dc: Infinity, adequate: false,
+      AsTop: g.AsTop, AsBottom: g.AsBottom,
+    }
   }
   const pos = code.phiMnBars(barsCompressionTop(layout), g.b, g.h, g.fc, cr)
   const neg = code.phiMnBars(barsCompressionBottom(layout, g.h), g.b, g.h, g.fc, cr)
@@ -158,6 +197,8 @@ function designZoneFlexure(
     MuPos, MuNeg,
     phiMnPos: pos.phiMn, phiMnNeg: neg.phiMn,
     dcPos, dcNeg, dc,
+    AsTop: g.AsTop,
+    AsBottom: g.AsBottom,
     rhoTop: g.dNeg > 0 ? g.AsTop / (g.b * g.dNeg) : 0,
     rhoBottom: g.dPos > 0 ? g.AsBottom / (g.b * g.dPos) : 0,
     adequate: dc <= 1,
@@ -272,7 +313,7 @@ function designZoneShear(
     const suggested = code.suggestStirrup(AvSReq, cr.stirrupLegs, REQUIRED_STIRRUP_BAR, sMaxGov)
     return {
       Vu, Ve, Vdesign, phiVc, phiVmax,
-      AvSReq, suggested,
+      AvSReq, suggested, AvS: AvSReq,
       pass: crossSectionOk,
       crossSectionOk,
     }
@@ -295,29 +336,9 @@ function designZoneShear(
   const pass = dc <= 1 && crossSectionOk && avMinOk && (spacingCheck?.pass ?? true)
   return {
     Vu, Ve, Vdesign, phiVc, phiVmax,
-    phiVn, dc,
+    phiVn, dc, AvS: avS,
     pass, crossSectionOk, spacingCheck,
   }
-}
-
-// ── Element-type resolution ───────────────────────────────────────────────────
-
-/**
- * Resolve a section's element-type setting for one member. Explicit beam/column
- * is honoured; `auto` picks by orientation (vertical → column, horizontal →
- * beam) but is promoted to column whenever the axial compression reaches the
- * beam gate Pu ≥ 0.1·f'c·Ag.
- */
-function resolveElementType(
-  et: ElementType,
-  isVertical: boolean,
-  Pu: number,
-  PuLimit: number,
-): "beam" | "column" {
-  if (et === "beam") return "beam"
-  if (et === "column") return "column"
-  if (Pu >= PuLimit) return "column"
-  return isVertical ? "column" : "beam"
 }
 
 // ── Column (P–M interaction) ──────────────────────────────────────────────────
@@ -433,7 +454,7 @@ function designColumnShear(
     const suggested = code.suggestStirrup(AvSReq, cr.stirrupLegs, tie.size, sMax)
     return {
       Vu, Ve, Vdesign, phiVc, phiVmax, vcZeroed,
-      AvSReq, suggested,
+      AvSReq, suggested, AvS: AvSReq,
       pass: crossSectionOk, crossSectionOk,
       spacingMax: sMax,
     }
@@ -445,7 +466,7 @@ function designColumnShear(
   const spacingPass = tie.spacing <= sMax + 1e-9
   return {
     Vu, Ve, Vdesign, phiVc, phiVmax, vcZeroed,
-    phiVn, dc,
+    phiVn, dc, AvS: avS,
     spacingMax: sMax, spacingPass,
     pass: dc <= 1 && crossSectionOk && spacingPass, crossSectionOk,
   }
@@ -489,9 +510,14 @@ function designColumn(
       geom, di.cover, di.column.checked, fc, cr, cr.frameType, Pu, L, cr.stirrupLegs,
     )
     const Mn = code.columnFlexuralStrengthAtP(bars, geom, fc, cr, -Pu, 1.0)
+    const confinementLegs = code.requiredConfinementLegs(
+      geom, di.cover, di.column.checked, fc, cr, cr.stirrupLegs, Pu, layout.bars.length,
+    )
     const column: ColumnDesignResult = {
       rhoG, Ast: layout.Ast, worstDC, governing, pmPairs: pairs, adequate: worstDC <= 1,
-      shear, confinement, deltaNs, slenderness, Mn,
+      shear, confinement, confinementLegs,
+      deltaNs, slenderness, slendernessOk: slendernessStable(deltaNs), Mn,
+      rhoGMax: code.RHO_G_MAX,
     }
     // Member colour = worst of interaction + shear D/C; forced to fail (Infinity)
     // on a cross-section / confinement failure. SCWB is folded in the run-design
@@ -506,6 +532,14 @@ function designColumn(
       memberId, status: "designed", material: "rc", kind: "column", mode: "checked", Pu,
       column, worstFlexureDC: colourDC,
       worstShearPass: shear.pass,
+      rhoUtil: code.RHO_G_MAX > 0 ? rhoG / code.RHO_G_MAX : undefined,
+      detailing: [
+        ...tagged("Confinement", confinement),
+        ...tagged(
+          "Bar Detailing",
+          code.checkColumnArrangement(geom, di.cover, di.column.checked, { frameType: cr.frameType }),
+        ),
+      ],
     }
   }
 
@@ -563,7 +597,12 @@ function designColumn(
     rhoG, Ast: rhoG * Ag, rhoGRequired,
     worstDC: adequate ? 1 : dcAt(code.RHO_G_MAX), adequate,
     shear, confinement,
-    deltaNs: finalEval.deltaNs, slenderness: finalEval.slenderness, Mn,
+    confinementLegs: code.requiredConfinementLegs(
+      geom, di.cover, reqArr, fc, cr, cr.stirrupLegs, Pu, ringBars(rhoG).length,
+    ),
+    deltaNs: finalEval.deltaNs, slenderness: finalEval.slenderness,
+    slendernessOk: slendernessStable(finalEval.deltaNs), Mn,
+    rhoGMax: code.RHO_G_MAX,
   }
   // Binary colouring (like beam required): fail on inadequate ρg, cross-section,
   // or a confinement failure. SCWB folded in the run-design post-pass.
@@ -573,6 +612,10 @@ function designColumn(
     column,
     worstFlexureDC: adequate && !reqConfinementFails ? 0 : Infinity,
     worstShearPass: shear.crossSectionOk,
+    rhoUtil: code.RHO_G_MAX > 0 ? rhoG / code.RHO_G_MAX : undefined,
+    // The bar grid is representative, not the user's, so only confinement — a
+    // property of the tie the user DID specify — is reported as detailing.
+    detailing: tagged("Confinement", confinement),
   }
 }
 
@@ -679,6 +722,43 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
     if (!shear[z].pass) worstShearPass = false
   }
 
+  // Detailing. Computed here — not only in the flyout, as it used to be — so the
+  // canvas can say "Insufficient Detailing" without recomputing a clause, and so
+  // a member whose bars simply do not fit is flagged wherever it is looked at.
+  // Bar and stirrup rules exist only in "checked" mode: "required" mode has no
+  // user arrangement to check.
+  const detailing: DetailingCheck[] = tagged("Section Limits", dimensionChecks)
+  if (di.mode === "checked") {
+    const fcVal = fc
+    for (const zoneName of ["support", "midspan"] as const) {
+      const arr = zoneName === "support" ? di.support : di.midspan
+      detailing.push(
+        ...tagged(
+          "Bar Detailing",
+          code.checkArrangement(bMm, hMm, di.cover, arr, { fy: cr.fy, frameType: cr.frameType }),
+          zoneName,
+        ),
+        ...tagged(
+          "Stirrup Detailing",
+          code.checkTransverse(bMm, hMm, di.cover, arr, zoneName, {
+            frameType: cr.frameType, fyt: cr.fyt, fc: fcVal, legs: cr.stirrupLegs,
+          }).checks,
+          zoneName,
+        ),
+      )
+    }
+  }
+
+  // ρ used / ρ max — the utilisation that exists in both modes (see
+  // MemberDesignResult.rhoUtil). Worst face across zones, against the
+  // tension-controlled ceiling, so it answers "how much room is left".
+  const rhoMax = code.rhoTensionControlled(fc, cr)
+  let rhoWorst = 0
+  for (const z of ZONE_IDS) {
+    rhoWorst = Math.max(rhoWorst, flexure[z].rhoTop ?? 0, flexure[z].rhoBottom ?? 0)
+  }
+  const rhoUtil = rhoMax > 0 ? rhoWorst / rhoMax : undefined
+
   // Beam nominal flexural strength at the joints (Mn, 1.0fy) for SCWB ΣMnb.
   const mnI = capacityEndMoments(geomFor("end-i"), flexure["end-i"], di, cr, 1.0)
   const mnJ = capacityEndMoments(geomFor("end-j"), flexure["end-j"], di, cr, 1.0)
@@ -697,8 +777,10 @@ export function designMemberRc(inp: RcMemberInput): MemberDesignResult {
       "end-j": { flexure: flexure["end-j"], shear: shear["end-j"] },
     },
     dimensionChecks,
+    detailing,
     worstFlexureDC,
     worstShearPass,
+    rhoUtil,
     beamMn,
     governing: {
       "end-i": demands.zones["end-i"].governing,

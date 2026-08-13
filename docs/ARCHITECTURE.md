@@ -76,7 +76,7 @@ OpenAnstruk-2D/
 │   │   ├── model/tools/               # select, delete, move-node, node, member, support + material/
 │   │   ├── load/tools/                # point-load, dist-load, modify-load, delete-load
 │   │   ├── analyze/tools/             # select, reaction, diagram, deformation
-│   │   └── design/tools/              # design-criteria + rc/ (rc-design-tool, beam/, column/) + steel/
+│   │   └── design/tools/              # schedule (setup) + report (results) + rc/ + steel/ + shared/
 │   │
 │   ├── components/                    # Shared, tab-agnostic UI
 │   │   ├── nav-bar.tsx                # Tab switcher + file/template menus
@@ -413,13 +413,21 @@ Each tab in `src/tabs/` owns a `tools/` folder. Each tool file is one React comp
 ```
 tabs/
 ├── model/tools/        select, delete, move-node, node, member, support
-│   └── material/       material-tool (entry) + parametric/manual forms, shape-preview, …
+│   └── material/       material-tool (entry) + parametric/manual forms, shape-preview,
+│                       section-select (grouped by material) + section-group (the pure grouping)
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
 ├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
-└── design/tools/       design-criteria, design-schedule, chart-text/chart-utils (shared),
-                    rc/ (rc-design-tool, beam/, column/), steel/ (steel-design-tool,
-                    preview, deck, beam/, column/)
+└── design/tools/       design-schedule (setup, one row per section) + design-report (results,
+                    one row per member) + schedule-shared/schedule-controls (their split
+                    pure/component halves), shared/ (verdict-group, section-picker,
+                    context-strip, chart-text, chart-utils), rc/ (rc-design-tool, beam/,
+                    column/), steel/ (steel-design-tool, preview, beam/, column/)
 ```
+
+The schedule/report split is deliberate: **SCHEDULE is setup** (per section — design
+type, mode, which members carry it) and **REPORT is results** (per member,
+read-only). One tool with an Overview/Edit toggle meant neither half was designed
+for its job. The sidebar order follows the workflow: SCHEDULE → RC → STEEL → REPORT.
 
 **Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
 

@@ -15,9 +15,12 @@ import {
 } from "@/lib/design/rc/shared/bar-geometry"
 import type { ArrangementCheck, TransverseChecks } from "@/lib/design/rc/shared/types"
 import { getRcCode } from "@/lib/design/rc/codes"
-import { type DesignMode, type ElementType } from "@/lib/design/core/types"
+import { type DesignMode } from "@/lib/design/core/types"
+import { sectionAutoLabel } from "@/lib/design/core/element-type"
 import type { DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/core/types"
-import { isSectionDesignable, materialOf } from "@/lib/design/core/designability"
+import {
+  assignedSectionIds, isSectionDesignable, materialOf,
+} from "@/lib/design/core/designability"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
 import { asRcInput, type SectionDesignInputs } from "@/lib/design/core/section-input"
 import type {
@@ -39,6 +42,7 @@ import { ColumnAdvancedReportDeck } from "./column/report"
 import {
   VerdictGroup, VerdictDC, VerdictStatus, VerdictTally, VerdictText,
 } from "../shared/verdict-group"
+import { DesignSectionPicker } from "../shared/section-picker"
 
 type ZoneKey = "support" | "midspan"
 
@@ -77,38 +81,47 @@ export function SectionDesignToolContent({
   const sections = model?.sections ?? {}
   const rc = criteria.rc
   const code = getRcCode(rc.code)
-  // RC tool: only concrete sections are designable here (steel → Steel tool).
+  // RC tool: only concrete sections are designable here (steel → Steel tool),
+  // and only ones a member actually carries — an unassigned section has nothing
+  // to design, so offering it can only lead to an empty pane.
+  const assigned = assignedSectionIds(model)
   const designableIds = Object.keys(sections).filter(
-    (id) => isSectionDesignable(sections[id]) && materialOf(sections[id]) === "rc",
+    (id) =>
+      isSectionDesignable(sections[id]) &&
+      materialOf(sections[id]) === "rc" &&
+      assigned.has(id),
   )
 
-  // Auto-select the first designable section when nothing valid is selected.
+  // The section this pane is actually editing. Derived rather than trusted:
+  // `selectedSectionId` is shared with the Steel tool and survives deleting the
+  // last member that used it, so it can point at a section this pane must not
+  // render. The effect below writes the resolved id back for the context strip.
+  const sid: SectionId | null =
+    selectedSectionId && designableIds.includes(selectedSectionId)
+      ? selectedSectionId
+      : designableIds[0] ?? null
+
+  // Keep App state in step with what is on screen.
   React.useEffect(() => {
-    if ((!selectedSectionId || !sections[selectedSectionId]) && designableIds.length > 0) {
-      onSelectSection(designableIds[0])
-    }
+    if (sid && sid !== selectedSectionId) onSelectSection(sid)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSectionId, designableIds.join(",")])
+  }, [sid, selectedSectionId])
 
   const [zone, setZone] = React.useState<ZoneKey>("support")
   const [advancedOpen, setAdvancedOpen] = React.useState(false)
 
   // Close the Advanced Report when leaving checked mode or losing the section.
-  const inputMode = selectedSectionId
-    ? asRcInput(inputs[selectedSectionId], selectedSectionId).mode
-    : null
+  const inputMode = sid ? asRcInput(inputs[sid], sid).mode : null
   React.useEffect(() => {
     if (inputMode !== "checked") setAdvancedOpen(false)
-  }, [inputMode, selectedSectionId])
+  }, [inputMode, sid])
 
-  const sec = selectedSectionId ? sections[selectedSectionId] : undefined
+  const sec = sid ? sections[sid] : undefined
   const designable = isSectionDesignable(sec)
-  const input: RcSectionInput | null = selectedSectionId
-    ? asRcInput(inputs[selectedSectionId], selectedSectionId)
-    : null
+  const input: RcSectionInput | null = sid ? asRcInput(inputs[sid], sid) : null
 
   const patch = (p: Partial<RcSectionInput>) => {
-    if (selectedSectionId) onPatchInput(selectedSectionId, p)
+    if (sid) onPatchInput(sid, p)
   }
   const patchArrangement = (key: ZoneKey, p: Partial<RebarArrangement>) => {
     if (!input) return
@@ -144,9 +157,25 @@ export function SectionDesignToolContent({
         ? { shape: "rect", nx: 3, ny: 3, size: rawChecked.size, confinement: "tied", tie: rawChecked.tie }
         : rawChecked
 
-  // The user explicitly picks beam vs column. Legacy "auto" inputs fall back to beam.
+  // Which formulation this section is being designed with. `auto` must resolve
+  // exactly as the engine resolved it — prefer what the run actually produced,
+  // since that includes the axial-gate promotion no reading of the input can
+  // predict; fall back to orientation before a run exists. Defaulting `auto` to
+  // "beam" here would show a Beam editor for a section designed as a column.
   const effectiveType: "beam" | "column" =
-    input?.elementType === "column" ? "column" : "beam"
+    input?.elementType === "column" ? "column"
+      : input?.elementType === "beam" ? "beam"
+        : (() => {
+            if (designResult && sid && model) {
+              for (const m of Object.values(model.members)) {
+                if (m.section !== sid) continue
+                const k = designResult.members[m.id]?.kind
+                if (k === "column") return "column"
+                if (k === "beam") return "beam"
+              }
+            }
+            return sectionAutoLabel(model, sid) === "Column" ? "column" : "beam"
+          })()
 
   // SMF beam dimensional limits (18.6.2.1), live. Lₙ = the SHORTEST node-to-node
   // span among members using this section (governs 4d); [] for OMF/IMF or when no
@@ -154,7 +183,7 @@ export function SectionDesignToolContent({
   const beamDimChecks = React.useMemo<ArrangementCheck[]>(() => {
     if (!model || !sec || effectiveType !== "beam" || !input) return []
     const lens = Object.values(model.members)
-      .filter((m) => m.section === selectedSectionId)
+      .filter((m) => m.section === sid)
       .map((m) => {
         const na = model.nodes[m.a]
         const nb = model.nodes[m.b]
@@ -168,7 +197,7 @@ export function SectionDesignToolContent({
         : h - input.dPrime
     return code.checkBeamDimensions(b, h, dEff, Math.min(...lens), rc.frameType)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, sec, effectiveType, input, b, h, selectedSectionId, rc.frameType, rc.code])
+  }, [model, sec, effectiveType, input, b, h, sid, rc.frameType, rc.code])
 
   // Demand (P,M) markers + governing for the column advanced report: gather every
   // column member that uses this section from the last run.
@@ -177,9 +206,9 @@ export function SectionDesignToolContent({
     let governing: { P: number; M: number; dc: number } | undefined
     let result: import("@/lib/design/core/types").ColumnDesignResult | undefined
     let govId: string | undefined
-    if (!designResult || !selectedSectionId || !model) return { pairs, governing, result, joint: undefined }
+    if (!designResult || !sid || !model) return { pairs, governing, result, joint: undefined }
     for (const m of Object.values(model.members)) {
-      if (m.section !== selectedSectionId) continue
+      if (m.section !== sid) continue
       const r = designResult.members[m.id]
       if (r?.kind !== "column" || !r.column) continue
       if (r.column.pmPairs) for (const p of r.column.pmPairs) pairs.push({ P: p.P, M: p.M })
@@ -194,22 +223,22 @@ export function SectionDesignToolContent({
     const joints = designResult.joints?.filter((j) => govId !== undefined && j.columnIds.includes(govId)) ?? []
     const joint = joints.find((j) => !j.pass) ?? joints[0]
     return { pairs, governing, result, joint }
-  }, [designResult, selectedSectionId, model])
+  }, [designResult, sid, model])
 
   // Worst designed member using this section — drives the Results group's
   // header verdict and the per-zone beam card. Design now runs automatically,
   // so this is always current with the inputs above it.
   const govMember = React.useMemo(() => {
-    if (!designResult || !selectedSectionId || !model) return null
+    if (!designResult || !sid || !model) return null
     let worst: MemberDesignResult | null = null
     for (const m of Object.values(model.members)) {
-      if (m.section !== selectedSectionId) continue
+      if (m.section !== sid) continue
       const r = designResult.members[m.id]
       if (!r || r.status !== "designed") continue
       if (!worst || (r.worstFlexureDC ?? 0) > (worst.worstFlexureDC ?? 0)) worst = r
     }
     return worst
-  }, [designResult, selectedSectionId, model])
+  }, [designResult, sid, model])
 
   // Detailing checks are computed here rather than inline in the JSX, so the
   // group header can tally them without the body being expanded.
@@ -238,12 +267,33 @@ export function SectionDesignToolContent({
 
   const showAdvanced = input?.mode === "checked"
 
+  // Nothing to design: say so and stop, the way the Steel pane does. Rendering
+  // the Section & Type card around an empty picker offers a control that cannot
+  // do anything, and a "none" verdict answers a question nobody asked.
+  //
+  // Placed after every hook, never before one — an early return above them would
+  // change the hook order between renders.
+  if (designableIds.length === 0) {
+    return (
+      <p
+        className="text-[10px] text-gray-500 leading-snug"
+        title="RC design needs a concrete rectangular or circular section with f'c, authored in the MATERIAL tool, and assigned to at least one member."
+      >
+        {Object.values(sections).some((s) => materialOf(s) === "rc")
+          ? "No member uses a designable concrete section."
+          : "No concrete sections — add one in Model → MATERIAL."}
+      </p>
+    )
+  }
+
   return (
     <div className="space-y-2">
       {/* ── Step A: what is being designed ─────────────────────────────────── */}
       <VerdictGroup
         title="Section & Type"
-        defaultOpen={!designable || !selectedSectionId}
+        // Always open: it is the first decision in the flow, and the one every
+        // group below it depends on.
+        defaultOpen
         verdict={
           <VerdictText>
             {sec?.name ?? "none"}
@@ -251,50 +301,17 @@ export function SectionDesignToolContent({
           </VerdictText>
         }
       >
-        {/* Section picker — only RC-designable sections are listed */}
-        <div className="space-y-1.5">
-          <Label className="text-xs text-gray-600">Section</Label>
-          <Select
-            value={selectedSectionId ?? ""}
-            onValueChange={(v) => onSelectSection(v as SectionId)}
-          >
-            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select section…" /></SelectTrigger>
-            <SelectContent>
-              {designableIds.map((id) => (
-                <SelectItem key={id} value={id}>{sections[id].name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {designableIds.length === 0 && (
-            <p className="text-[10px] text-amber-600 leading-snug">
-              No designable sections. RC beam design requires a concrete rectangular
-              section (Model tab → MATERIAL).
-            </p>
-          )}
-        </div>
+        {/* No design-type row here: the group header already states it
+            ("C1-500x500 · Column"), and it is set where the section is
+            defined — the Model tab's MATERIAL tool, or the DESIGN SCHEDULE. */}
 
-        {/* Element type — user picks beam vs column */}
-        {designable && input && (
-          <div className="space-y-1.5">
-            <Label className="text-xs text-gray-600">Element Type</Label>
-            <div className="grid grid-cols-2 gap-1">
-              <ModeButton
-                active={effectiveType === "beam"}
-                onClick={() => patch({ elementType: "beam" as ElementType })}
-                title="Design this section as a flexural beam"
-              >
-                Beam
-              </ModeButton>
-              <ModeButton
-                active={effectiveType === "column"}
-                onClick={() => patch({ elementType: "column" as ElementType })}
-                title="Design this section as an axial-flexure column"
-              >
-                Column
-              </ModeButton>
-            </div>
-          </div>
-        )}
+        {/* Section picker — only RC-designable sections are listed */}
+        <DesignSectionPicker
+          sections={sections}
+          ids={designableIds}
+          value={sid}
+          onChange={onSelectSection}
+        />
 
         {/* Design mode */}
         {designable && input && sec && (
@@ -460,9 +477,11 @@ export function SectionDesignToolContent({
                 )}
               </>
             ) : (
-              <p className="text-[10px] text-gray-400 leading-snug">
-                No result for this section yet — it is not used by any member, or
-                no load combination produced demands. Design runs automatically.
+              <p
+                className="text-[10px] text-gray-400 leading-snug"
+                title="Design runs automatically on every edit."
+              >
+                No demands from the enabled load combinations.
               </p>
             )}
           </VerdictGroup>
@@ -966,7 +985,7 @@ function ColumnDetailingCard({ checks }: { checks: ArrangementCheck[] }) {
       })}
       <p className="text-[10px] text-gray-400 leading-snug pt-0.5">
         Shear (Ve), transverse confinement (ties / Aₛₕ) and slenderness are
-        evaluated per member — see the Advanced Report after a Run.
+        evaluated per member — see the Advanced Report.
       </p>
     </div>
   )

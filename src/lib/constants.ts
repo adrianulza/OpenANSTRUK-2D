@@ -99,6 +99,15 @@ export const COLOR_DESIGN_WARN = "#eab308"  // yellow — D/C in [0.50, 0.75)
 export const COLOR_DESIGN_HIGH = "#f97316"  // orange — D/C in [0.75, 1.0)
 export const COLOR_DESIGN_FAIL = "#ef4444"  // red    — D/C ≥ 1.0 (or infeasible)
 export const COLOR_DESIGN_LABEL = "#0f172a" // near-black — design pill text (passing)
+// Strength and detailing are different failures and must not share a colour: a
+// section can satisfy every capacity equation and still be unbuildable.
+export const COLOR_DESIGN_DETAIL = "#f59e0b" // amber — detailing rule not met
+// Refused members (unsupported section, out-of-scope shape, no result). Never
+// the brand colour: an undesigned member must not read as a passing one.
+export const COLOR_DESIGN_MUTED  = "#94a3b8" // slate — not designed
+// Members of the material NOT currently being displayed. Drawn, but plainly
+// out of the conversation — hiding them would make the structure look broken.
+export const COLOR_DESIGN_OFF_MATERIAL = "#cbd5e1" // light slate
 
 export const DESIGN_DC_BANDS: { max: number; color: string; label: string }[] = [
   { max: 0.25, color: COLOR_DESIGN_LOW,  label: "< 0.25" },

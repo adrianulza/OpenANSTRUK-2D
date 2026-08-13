@@ -14,11 +14,18 @@
  * section can serve as both a beam and a column) and it advertised an effect it
  * did not have.
  *
- * The one place role genuinely matters is AISC **341** seismic detailing — Table
- * D1.1 ductility limits, `Ωo` column demands, SCWB, brace slenderness — which is
- * not implemented. When it is, the user-settable axis will be SFRS membership,
- * not this; seismic role is a declaration about the lateral system, and no angle
- * can tell you whether a column participates in it.
+ * **Contrast with RC**, which keeps its type on the SECTION and settable there.
+ * That is not an inconsistency: a concrete section's rebar definition *is* its
+ * design type (a column takes a bar grid, a beam takes top/bottom bars —
+ * different data), whereas nothing per-section differs between a steel beam and
+ * a steel column. See `core/element-type.ts`.
+ *
+ * Since AISC **341** landed (v1.1.6) role is no longer purely presentational:
+ * D1.2 bracing applies to beams only, and E3.4a SCWB partitions members by
+ * role. It still changes no AISC 360 capacity. If a user-settable axis is ever
+ * added here it should be SFRS membership, not this — seismic role is a
+ * declaration about the lateral system, and no angle can tell you whether a
+ * column participates in it.
  */
 
 export type SteelMemberRole = "beam" | "column" | "brace"

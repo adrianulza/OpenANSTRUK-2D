@@ -1,419 +1,213 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import type { SectionId, StructureModel } from "@/lib/model"
-import { designColorForDC, formatValue } from "@/lib/constants"
 import { materialOf, isSectionDesignable } from "@/lib/design/core/designability"
 import {
-  asRcInput,
-  type SectionDesignInput, type SectionDesignInputs,
+  asRcInput, type SectionDesignInput, type SectionDesignInputs,
 } from "@/lib/design/core/section-input"
-import type { DesignCriteria } from "@/lib/design/core/criteria"
-import type { DesignRunResult, MemberDesignResult, ElementType, DesignMode } from "@/lib/design/core/types"
+import type { DesignMode, ElementType } from "@/lib/design/core/types"
+import { elementTypeOptionLabel, sectionAutoLabel } from "@/lib/design/core/element-type"
 import { inferSteelRole, steelRoleLabel, type SteelMemberRole } from "@/lib/design/steel/member-role"
-import type { RcSectionInput } from "@/lib/design/rc/types"
+import {
+  geometryOf, materialLabel, passesMaterialFilter, TD, TH, type MaterialFilter,
+} from "./schedule-shared"
+import { MaterialFilterChips } from "./schedule-controls"
 
 interface DesignScheduleToolProps {
   model?: StructureModel
   inputs: SectionDesignInputs
-  /** Union-typed: this table edits both RC and steel sections. */
   onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
-  criteria: DesignCriteria
-  designResult?: DesignRunResult | null
 }
 
-type ViewMode = "overview" | "edit"
-
-/** D/C cell value: a formatted number + colour, or a sentinel string. */
-interface DC {
-  text: string
-  /** Numeric D/C when known (for grouping max); undefined for N.A./not-run. */
-  value?: number
-  color?: string
-}
-
-/** Per-member row model derived purely from existing state (no domain logic). */
-interface MemberRow {
-  memberId: string
+/** One row: a section, the members carrying it, and how it is to be designed. */
+interface ScheduleRow {
   sectionId: SectionId
   sectionName: string
   material: string
   geometry: string
   designable: boolean
-  /** RC: the user's beam/column choice. Steel: the inferred geometric role. */
-  type: SteelMemberRole | null
-  /**
-   * RC only. Steel has no required/checked split — there is no rebar-style
-   * unknown to solve for — so a steel row shows its governing AISC equation
-   * here instead of a meaningless mode.
-   */
-  mode: DesignMode | null
   isSteel: boolean
-  /** Steel only: the AISC equation that governed, once a run has happened. */
-  equation: string | null
-  dc: DC
-}
-
-const NA: DC = { text: "N.A." }
-const NOT_RUN: DC = { text: "not run", color: "#94a3b8" }
-
-function memberDC(r: MemberDesignResult | undefined, designable: boolean): DC {
-  if (!designable) return NA
-  if (!r || r.status === "no-result") return NOT_RUN
-  if (r.status === "not-implemented") return NA
-  if (r.status === "axial-exceeded") return { text: "axial >", color: "#ef4444" }
-  if (r.status !== "designed") return NA
-  // Steel reports one combined-force ratio for beams and columns alike; only RC
-  // splits the column channel out into a separate interaction result.
-  const value = r.material === "steel"
-    ? r.steel?.ratio
-    : r.kind === "column" ? r.column?.worstDC : r.worstFlexureDC
-  if (value === undefined) return NOT_RUN
-  return { text: formatValue(value), value, color: designColorForDC(value) }
-}
-
-function geometryOf(model: StructureModel, sectionId: SectionId): string {
-  const sec = model.sections[sectionId]
-  const shape = sec?.shape
-  if (!shape) return "—"
-  const { b, h } = shape.dims
-  if (b && h) return `${formatValue(b)}×${formatValue(h)}`
-  return shape.kind
-}
-
-function materialLabel(m: string | null): string {
-  if (m === "rc") return "RC"
-  if (m === "steel") return "Steel"
-  return "—"
+  memberIds: string[]
+  /** RC: the setting. Steel: nothing — role is inferred per member. */
+  elementType: ElementType
+  mode: DesignMode
+  /** What `auto` resolves to for this section, from orientation. */
+  auto: ReturnType<typeof sectionAutoLabel>
+  /** Steel only: the inferred role per member, or "mixed". */
+  steelRole: SteelMemberRole | "mixed" | null
 }
 
 /**
- * DESIGN SCHEDULE — model-wide table of design setup + results. Two view modes:
- *  • Overview (default, read-only): one row per member.
- *  • Edit: one row per section with beam/column + mode toggles, expandable to
- *    per-member D/C. Writes the same `sectionDesignInputs` the RC tool uses.
+ * DESIGN SCHEDULE — the setup table. One row per **section**: what it is
+ * designed as, and how.
+ *
+ * Rows are per section rather than per member because a concrete section's
+ * reinforcement definition *is* its design type — a column takes a bar grid and
+ * ties, a beam takes top/bottom bars and stirrups. Different data, not two views
+ * of one thing. See `lib/design/core/element-type.ts`.
+ *
+ * Steel rows are read-only on both counts: its role is inferred per member from
+ * geometry (one IWF is genuinely a beam here and a column there), and it has no
+ * required/checked split at all.
  */
 export function DesignScheduleToolContent({
   model,
   inputs,
   onPatchInput,
-  designResult,
 }: DesignScheduleToolProps) {
-  const [view, setView] = React.useState<ViewMode>("overview")
+  const [materialFilter, setMaterialFilter] = React.useState<MaterialFilter>("all")
 
-  const rows: MemberRow[] = React.useMemo(() => {
+  const rows: ScheduleRow[] = React.useMemo(() => {
     if (!model) return []
-    return Object.values(model.members).map((m) => {
-      const sec = model.sections[m.section]
-      const designable = isSectionDesignable(sec)
-      const isSteel = materialOf(sec) === "steel"
-      const di = asRcInput(inputs[m.section], m.section)
-      const result = designResult?.members[m.id]
-      // Steel role is INFERRED from geometry and is not user-settable, so it can
-      // be resolved without a run. RC keeps its explicit beam/column choice,
-      // which genuinely selects the formulation.
-      const na = model.nodes[m.a]
-      const nb = model.nodes[m.b]
-      const type: SteelMemberRole | null = !designable
-        ? null
-        : isSteel
-          ? (na && nb ? inferSteelRole(na.x, na.y, nb.x, nb.y) : "beam")
-          : di.elementType === "column" ? "column"
-            : di.elementType === "beam" ? "beam"
-              : result?.kind ?? "beam"
-      return {
-        memberId: m.id,
-        sectionId: m.section,
-        sectionName: sec?.name ?? m.section,
-        material: materialLabel(materialOf(sec)),
-        geometry: geometryOf(model, m.section),
-        designable,
-        type,
-        isSteel,
-        mode: designable && !isSteel ? (di as RcSectionInput).mode : null,
-        equation: isSteel ? result?.steel?.equation ?? null : null,
-        dc: memberDC(result, designable),
+    const bySection = new Map<SectionId, ScheduleRow>()
+    for (const m of Object.values(model.members)) {
+      let row = bySection.get(m.section)
+      if (!row) {
+        const sec = model.sections[m.section]
+        const di = asRcInput(inputs[m.section], m.section)
+        row = {
+          sectionId: m.section,
+          sectionName: sec?.name ?? m.section,
+          material: materialLabel(materialOf(sec)),
+          geometry: geometryOf(model, m.section),
+          designable: isSectionDesignable(sec),
+          isSteel: materialOf(sec) === "steel",
+          memberIds: [],
+          elementType: di.elementType,
+          mode: di.mode,
+          auto: sectionAutoLabel(model, m.section),
+          steelRole: null,
+        }
+        bySection.set(m.section, row)
       }
-    })
-  }, [model, inputs, designResult])
+      row.memberIds.push(m.id)
+      if (row.isSteel) {
+        const a = model.nodes[m.a]
+        const b = model.nodes[m.b]
+        const role = a && b ? inferSteelRole(a.x, a.y, b.x, b.y) : "beam"
+        row.steelRole = row.steelRole === null || row.steelRole === role ? role : "mixed"
+      }
+    }
+    return Array.from(bySection.values())
+  }, [model, inputs])
+
+  const shown = React.useMemo(
+    () => rows.filter((r) => passesMaterialFilter(r.material, materialFilter)),
+    [rows, materialFilter],
+  )
+  const materials = React.useMemo(
+    () => new Set(rows.filter((r) => r.designable).map((r) => r.material)),
+    [rows],
+  )
 
   if (!model || rows.length === 0) {
     return (
-      <div className="space-y-3">
-        <ViewToggle view={view} onChange={setView} />
-        <p className="text-[10px] text-gray-500 leading-snug">
-          No members to schedule. Add members in the Model tab.
-        </p>
-      </div>
+      <p className="text-[10px] text-gray-500 leading-snug">
+        No members to schedule. Add members in the Model tab.
+      </p>
     )
   }
 
   return (
     <div className="space-y-3">
-      <ViewToggle view={view} onChange={setView} />
-      {view === "overview" ? (
-        <OverviewTable rows={rows} />
-      ) : (
-        <EditTable rows={rows} onPatchInput={onPatchInput} />
-      )}
-    </div>
-  )
-}
+      <MaterialFilterChips value={materialFilter} onChange={setMaterialFilter} show={materials.size > 1} />
 
-// ── View toggle ──────────────────────────────────────────────────────────────
-
-function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) => void }) {
-  return (
-    <div className="grid grid-cols-2 gap-1">
-      <ToggleButton active={view === "overview"} onClick={() => onChange("overview")} title="Read-only inventory — one row per member">
-        Overview
-      </ToggleButton>
-      <ToggleButton active={view === "edit"} onClick={() => onChange("edit")} title="Edit beam/column and design mode per section">
-        Edit
-      </ToggleButton>
-    </div>
-  )
-}
-
-function ToggleButton({
-  active, onClick, title, disabled, children,
-}: {
-  active: boolean
-  onClick: () => void
-  title?: string
-  disabled?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      className={cn(
-        "h-7 rounded text-xs font-medium transition-colors px-1",
-        disabled
-          ? "border border-gray-200 text-gray-300 cursor-not-allowed"
-          : active
-          ? "border-2 border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]"
-          : "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
-// ── Overview (per-member) ──────────────────────────────────────────────────────
-
-const TH = "text-left font-semibold text-[#1a2f5e] py-1 px-1.5"
-const TD = "py-1 px-1.5 align-top"
-
-function DCCell({ dc }: { dc: DC }) {
-  return (
-    <span
-      className="font-mono"
-      style={{ color: dc.color ?? "#475569", fontWeight: dc.value !== undefined ? 600 : 400 }}
-    >
-      {dc.text}
-    </span>
-  )
-}
-
-function OverviewTable({ rows }: { rows: MemberRow[] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[10px] border-collapse">
-        <thead>
-          <tr className="border-b border-gray-200">
-            <th className={TH}>Member</th>
-            <th className={TH}>Section</th>
-            <th className={TH}>Class</th>
-            <th className={TH}>Geometry</th>
-            <th className={TH}>Type</th>
-            <th className={TH}>Mode / Eq.</th>
-            <th className={TH}>D/C</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr
-              key={r.memberId}
-              className={cn("border-b border-gray-100", !r.designable && "text-gray-400")}
-            >
-              <td className={cn(TD, "font-mono")}>{r.memberId}</td>
-              <td className={TD}>{r.sectionName}</td>
-              <td className={TD}>{r.material}</td>
-              <td className={cn(TD, "font-mono")}>{r.geometry}</td>
-              <td className={cn(TD, "capitalize")}>{r.type ?? "N.A."}</td>
-              <td className={cn(TD, r.isSteel && "font-mono")}>
-                {r.isSteel ? (r.equation ?? "—") : r.mode ? modeLabel(r.mode) : "N.A."}
-              </td>
-              <td className={TD}>{r.designable ? <DCCell dc={r.dc} /> : "N.A."}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[10px] border-collapse">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className={TH}>Section</th>
+              <th className={TH}>Class</th>
+              <th className={TH}>Geometry</th>
+              <th className={TH}>Members</th>
+              <th
+                className={TH}
+                title={
+                  "Also set in the Model tab's MATERIAL tool, beside the section's " +
+                  "dimensions — the same setting, either place. An explicit Beam or " +
+                  "Column is never promoted: a forced beam carrying too much axial is " +
+                  "refused rather than switched."
+                }
+              >
+                Type
+              </th>
+              <th className={TH}>Mode</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr
+                key={r.sectionId}
+                className={cn("border-b border-gray-100", !r.designable && "text-gray-400")}
+              >
+                <td className={TD}>{r.sectionName}</td>
+                <td className={TD}>{r.material}</td>
+                <td className={cn(TD, "font-mono")}>{r.geometry}</td>
+                <td className={cn(TD, "font-mono text-gray-500")}>{r.memberIds.join(", ")}</td>
+                <td className={TD}>
+                  {!r.designable ? "N.A." : r.isSteel ? (
+                    <span className="text-gray-500" title="Inferred from each member's orientation">
+                      {r.steelRole === "mixed" ? "mixed" : steelRoleLabel(r.steelRole ?? "beam")}
+                    </span>
+                  ) : (
+                    <CellSelect
+                      value={r.elementType}
+                      options={(["auto", "beam", "column"] as ElementType[]).map((et) => [
+                        et, elementTypeOptionLabel(et, r.auto),
+                      ])}
+                      onChange={(v) => onPatchInput(r.sectionId, { elementType: v as ElementType })}
+                    />
+                  )}
+                </td>
+                <td className={TD}>
+                  {/* Steel has no required/checked split. A disabled control
+                      would imply a setting that exists but is unavailable — a
+                      different, and false, statement. */}
+                  {!r.designable ? "N.A." : r.isSteel ? (
+                    <span className="text-gray-400" title="Steel has no required/checked mode">—</span>
+                  ) : (
+                    <CellSelect
+                      value={r.mode}
+                      options={[["required", "As required"], ["checked", "As checked"]]}
+                      onChange={(v) => onPatchInput(r.sectionId, { mode: v as DesignMode })}
+                    />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Reference register: this sits under a spec table, so it stays dry.
+          Where the setting also lives, and the fact that an explicit choice is
+          never promoted, are on the Type column's tooltip — true but not needed
+          to read the table. */}
+      <div className="space-y-0.5 text-[9px] text-gray-400 leading-snug">
+        <p>RC: Auto reads orientation, switching to Column once Pu reaches 0.1·f′c·Ag.</p>
+        <p>Steel: orientation only, not settable.</p>
+      </div>
     </div>
   )
 }
 
-function modeLabel(m: DesignMode): string {
-  return m === "required" ? "As req." : "As chk."
-}
-
-// ── Edit (per-section, expandable) ─────────────────────────────────────────────
-
-interface SectionGroup {
-  sectionId: SectionId
-  sectionName: string
-  material: string
-  geometry: string
-  designable: boolean
-  /** RC: the user's beam/column choice. Steel: the inferred geometric role. */
-  type: SteelMemberRole | null
-  mode: DesignMode | null
-  isSteel: boolean
-  members: MemberRow[]
-  worstDC: DC
-}
-
-function groupBySection(rows: MemberRow[]): SectionGroup[] {
-  const map = new Map<SectionId, SectionGroup>()
-  for (const r of rows) {
-    let g = map.get(r.sectionId)
-    if (!g) {
-      g = {
-        sectionId: r.sectionId,
-        sectionName: r.sectionName,
-        material: r.material,
-        geometry: r.geometry,
-        designable: r.designable,
-        type: r.type,
-        mode: r.mode,
-        isSteel: r.isSteel,
-        members: [],
-        worstDC: NA,
-      }
-      map.set(r.sectionId, g)
-    }
-    g.members.push(r)
-  }
-  // Resolve worst D/C per group (max of known numeric values; else not-run/N.A.).
-  for (const g of map.values()) {
-    if (!g.designable) {
-      g.worstDC = NA
-      continue
-    }
-    let worst: DC = NOT_RUN
-    let max = -Infinity
-    let anyNumeric = false
-    for (const m of g.members) {
-      if (m.dc.value !== undefined && m.dc.value > max) {
-        max = m.dc.value
-        worst = m.dc
-        anyNumeric = true
-      }
-    }
-    g.worstDC = anyNumeric ? worst : NOT_RUN
-  }
-  return Array.from(map.values())
-}
-
-function EditTable({
-  rows, onPatchInput,
+/** Compact dropdown sized for a table cell. */
+function CellSelect({
+  value, options, onChange,
 }: {
-  rows: MemberRow[]
-  onPatchInput: (id: SectionId, patch: Partial<SectionDesignInput>) => void
-}) {
-  const groups = React.useMemo(() => groupBySection(rows), [rows])
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[10px] border-collapse">
-        <thead>
-          <tr className="border-b border-gray-200">
-            <th className={TH}>Member</th>
-            <th className={TH}>Section</th>
-            <th className={TH}>Class</th>
-            <th className={TH}>Type</th>
-            <th className={TH}>Mode</th>
-            <th className={TH}>D/C</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((g) => (
-            <tr key={g.sectionId} className={cn("border-b border-gray-100", !g.designable && "text-gray-400")}>
-              <td className={cn(TD, "font-mono")}>{g.members.map((m) => m.memberId).join(", ")}</td>
-              <td className={TD}>{g.sectionName}</td>
-              <td className={TD}>{g.material}</td>
-              <td className={TD}>
-                {/* Steel role is inferred from each member's own geometry and
-                    changes no capacity, so it is read-only — and a per-SECTION
-                    toggle could not express it anyway when one section serves
-                    members of different orientations. RC's choice is real: it
-                    selects the formulation. */}
-                {!g.designable ? "N.A." : g.isSteel ? (
-                  <span className="text-gray-500" title="Inferred from member orientation">
-                    {g.members.length > 1 && new Set(g.members.map((m) => m.type)).size > 1
-                      ? "mixed"
-                      : steelRoleLabel(g.type ?? "beam")}
-                  </span>
-                ) : (
-                  <MiniToggle
-                    options={[["beam", "Beam"], ["column", "Column"]]}
-                    value={g.type ?? "beam"}
-                    onChange={(v) => onPatchInput(g.sectionId, { elementType: v as ElementType })}
-                  />
-                )}
-              </td>
-              <td className={TD}>
-                {/* Steel has no required/checked split — offering the toggle
-                    would write a field the steel input does not have. */}
-                {!g.designable ? "N.A." : g.isSteel ? (
-                  <span className="text-gray-400">check only</span>
-                ) : (
-                  <MiniToggle
-                    options={[["required", "Required"], ["checked", "Checked"]]}
-                    value={g.mode ?? "required"}
-                    onChange={(v) => onPatchInput(g.sectionId, { mode: v as DesignMode })}
-                  />
-                )}
-              </td>
-              <td className={TD}>{g.designable ? <DCCell dc={g.worstDC} /> : "N.A."}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/**
- * Two-way toggle for the edit table cells — matches the project's standard
- * ModeButton style (border-2 navy-blue when active).
- */
-function MiniToggle({
-  options, value, onChange,
-}: {
-  options: [string, string][]
   value: string
+  options: [string, string][]
   onChange: (v: string) => void
 }) {
   return (
-    <div className="flex gap-1">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="text-[10px] bg-white border border-gray-200 rounded px-1 py-0.5 cursor-pointer hover:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+    >
       {options.map(([id, label]) => (
-        <button
-          key={id}
-          onClick={() => onChange(id)}
-          className={cn(
-            "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
-            value === id
-              ? "border-2 border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]"
-              : "border border-gray-200 text-gray-400 hover:border-[#2563eb] hover:text-[#2563eb] hover:bg-[#2563eb]/5",
-          )}
-        >
-          {label}
-        </button>
+        <option key={id} value={id}>{label}</option>
       ))}
-    </div>
+    </select>
   )
 }

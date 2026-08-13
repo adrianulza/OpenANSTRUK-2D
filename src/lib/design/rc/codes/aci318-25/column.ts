@@ -854,3 +854,54 @@ export function columnConfinement(
   }
   return checks
 }
+
+/**
+ * Confinement expressed as tie legs — the number a detailer actually acts on.
+ *
+ * See the SNI module for the full rationale; the difference here is the THIRD
+ * Ash equation (`0.2·kf·kn·Pu/(fyt·Ach)`), which makes ACI's leg demand rise
+ * with axial load where SNI's does not.
+ *
+ * Rectilinear ties only — a spiral is volumetric (ρs) and has no leg count.
+ */
+export function requiredConfinementLegs(
+  geom: ColumnGeom,
+  cover: number,
+  arr: ColumnArrangement,
+  fc: number,
+  cr: RcCriteria,
+  legsProvided: number,
+  PuComp: number,
+  nLongBars: number,
+): { required: number; provided: number; max: number; buildable: boolean } | undefined {
+  if (isCircle(arr)) return undefined
+  const s = arr.tie.spacing
+  const aTie = barArea(arr.tie.size)
+  if (s <= 0 || aTie <= 0) return undefined
+
+  const Ag = geomAg(geom)
+  const Ach = geomAch(geom, cover)
+  const bcMax = geomLeastDim(geom) - 2 * cover
+  const kf = Math.max(1, fc / 175 + 0.6)
+  const kn = nLongBars > 2 ? nLongBars / (nLongBars - 2) : 1
+  const ratio = Math.max(
+    0.3 * (Ag / Ach - 1) * (fc / cr.fyt),
+    0.09 * (fc / cr.fyt),
+    0.2 * kf * kn * ((PuComp * 1e3) / (cr.fyt * Ach)),
+  )
+  const AshReq = ratio * bcMax * s
+  const required = Math.max(2, Math.ceil(AshReq / aTie - 1e-9))
+
+  const max = Math.max(2, Math.min(arr.nx, arr.ny))
+  return { required, provided: legsProvided, max, buildable: required <= max }
+}
+
+/**
+ * ρ at the tension-controlled limit. `c/d = εcu/(εcu + εt)` where ACI 318-25's
+ * εt ramps with fy (`epsTC` = εty + 0.003, Table 21.2.2) rather than sitting at
+ * the fixed 0.005 the SNI module uses.
+ */
+export function rhoTensionControlled(fc: number, cr: RcCriteria): number {
+  const cOverD = EPS_CU / (EPS_CU + epsTC(cr))
+  return (0.85 * beta1(fc) * (fc / cr.fy)) * cOverD
+}

@@ -99,7 +99,7 @@ export function ParametricForm({ fields, onChange, validation, disabled }: Props
       <div className="space-y-1.5">
         <Label className="text-xs text-gray-600">Material Class</Label>
         <Select value={fields.materialClass} onValueChange={(v) => setMaterialClass(v as MaterialClass)} disabled={disabled}>
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {(Object.values(MATERIALS)).map((m) => (
               <SelectItem key={m.kind} value={m.kind}>{m.label}</SelectItem>

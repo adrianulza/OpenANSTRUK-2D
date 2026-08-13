@@ -56,7 +56,7 @@ export function SteelPreferencesPane({ criteria, onChange }: SteelPreferencesPro
           value={criteria.code}
           onValueChange={(v) => onChange({ code: v as SteelCode })}
         >
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {(Object.keys(STEEL_CODE_LABELS) as SteelCode[]).map((c) => (
               <SelectItem key={c} value={c}>{STEEL_CODE_LABELS[c]}</SelectItem>
@@ -71,7 +71,7 @@ export function SteelPreferencesPane({ criteria, onChange }: SteelPreferencesPro
           value={criteria.frameType}
           onValueChange={(v) => onChange({ frameType: v as FrameType })}
         >
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             {FRAME_TYPES.map((f) => (
               <SelectItem key={f.id} value={f.id}>
