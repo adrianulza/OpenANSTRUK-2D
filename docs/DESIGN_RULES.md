@@ -181,18 +181,92 @@ entry whose strength and dimensions check out. Implemented today:
 | Steel | `rhs` | ✅ | ✅ | as above |
 | Steel | `chs` | ✅ | ✅ | as above |
 
-Planned-but-unbuilt combinations — RC tee, steel single angle — are listed in the
-registry with `implemented: false`, so they render `status: "not-designable"` and
-show as "N.A." in the picker rather than crashing. Enabling one is a data edit
-(flip the flag) plus its strategy branch. `materialOf(section)` maps
-`concrete → "rc"` and `steel → "steel"`, and routes the orchestrator's dispatch.
+Steel `tee` and `angle` are implemented too (AISC F9 / F10 + E4 + H2). The one
+planned-but-unbuilt combination is the **RC tee**, listed in the registry with
+`implemented: false`, so it renders `status: "not-designable"` and shows as
+"N.A." in the picker rather than crashing. Enabling it is a data edit (flip the
+flag) plus its strategy branch. `materialOf(section)` maps `concrete → "rc"` and
+`steel → "steel"`, and routes the orchestrator's dispatch.
 
 Designability is a *static* gate on the section. A section can pass it and still
 be refused per member once the clause scope is known — an IWF with a noncompact
 web passes here and is refused in the strategy
 ([§S10](DESIGN_STEEL.md#s10-refusals--sections-the-engine-declines-to-design)).
 
+### 3.1b Which sections a tool *offers* (`assignedSectionIds`)
+
+Designability answers *can this section be designed*. It does not answer *is
+there anything to design*, and the two came apart in the UI: the material
+flyouts listed every designable section in the catalogue, including ones no
+member carried. Selecting such a section opened a pane with no members, no
+demands and no result — which the pane then had to explain, at length. That is
+how the steel flyout came to spend more space apologising than reporting.
+
+`assignedSectionIds(model)` returns the sections at least one member carries.
+Both material tools intersect it with their own rule:
+
+| Tool | Offers |
+|---|---|
+| **RC** | `materialOf === "rc"` ∧ `isSectionDesignable` ∧ assigned |
+| **Steel** | `materialOf === "steel"` ∧ assigned |
+
+Steel deliberately keeps its **non-designable** sections visible, with a one-line
+note saying why — a steel shape that is in the target matrix but unbuilt is
+information the user wants. RC has no equivalent state worth showing.
+
+Two consequences worth stating, because both are load-bearing:
+
+**The panes derive their section, they do not trust the prop.**
+`designSelectedSectionId` is a single piece of App state shared by both material
+tools, and it survives deleting the last member that used it — so it routinely
+points at a section the pane must not render. Each pane resolves it (`keep the
+selection if this tool offers it, else fall back to the first it does`) and
+writes the resolved id back through an effect. Deriving rather than waiting for
+the effect is what makes the *first* rendered frame correct. It also closed a
+latent bug: the RC pane's old guard was `sections[id]` + `isSectionDesignable`,
+both of which a steel IWF satisfies, so a shared selection could draw the rebar
+editor and cross-section preview on a 200×400 "concrete" section.
+
+**The context strip mirrors the same rule** (`resolveSectionFor` in
+`flyout-panel.tsx`). Its whole job is to name the section the user will land on;
+filter the panes without filtering it and it advertises a section that is not in
+the picker below it.
+
+**Both panes refuse in the same shape.** When a tool offers nothing, it returns a
+single line naming the cause and nothing else — no picker, no group header, no
+verdict. RC used to wrap that message inside its `Section & Type` card, which
+left a dropdown on screen that could not be opened onto anything, beneath a
+verdict reading `none`. The early return sits **after every hook**, never before
+one; hoisting it above them would change hook order between renders.
+
+Asserted in `validation/design_section_offer_smoke.mts`, with the unassigned
+section listed **first** in every fixture catalogue — so a pane that lost the
+filter would fall back to it and the suite would fail rather than pass by
+accident. The empty states are asserted by **exact equality**, since `includes`
+would not notice the furniture returning around the message.
+
 ### 3.2 Beam vs column (element-type resolution)
+
+**Why the type is a property of the SECTION.** A concrete section's
+reinforcement definition *is* its design type: a column takes a perimeter bar
+grid and ties, a beam takes top/bottom/side bars and stirrups. Those are
+different data, not two views of one thing — so the choice belongs where the
+rebar is defined. This is also what ETABS does ("P-M2-M3 Design (Column)" vs
+"M3 Design Only (Beam)" in the section dialog), and it matches how engineers
+work: `C1 500×500` and `B1 300×500` are defined separately rather than one
+section reused as both.
+
+**Steel is the opposite, deliberately.** Nothing per-section differs between a
+steel beam and a steel column, and the same IWF genuinely serves as both, so
+steel infers a per-**member** role from geometry (`steel/member-role.ts`) with no
+control at all. The asymmetry between the two tools is principled; it is not an
+oversight to be tidied into consistency.
+
+The rule lives in `core/element-type.ts` and is edited in two places, both
+writing the same field: the Model tab's **MATERIAL** tool (beside the section's
+dimensions) and the Design tab's **DESIGN SCHEDULE**. The RC design flyout shows
+it read-only — a third editor would just be somewhere else to look.
+
 Each section carries an **Element Type** — `auto` (default), `beam`, or `column`
 — resolved **per member** in `runDesign` (`resolveElementType`):
 
@@ -208,6 +282,15 @@ Pu ≥ 0.1 · f'c · Ag        (Ag = b·h)      → column
 The solver's axial sign is **tension-positive**, so `Pu = −Nmin` (the most
 compressive value across the envelope). A member explicitly **forced** to beam
 while carrying `Pu ≥ 0.1 f'c Ag` is out of beam scope → `status: "axial-exceeded"`.
+An explicit choice is **never** silently promoted: the user said beam, so the
+honest answer is a refusal, not a formulation they did not ask for.
+
+`sectionAutoLabel(model, sectionId)` reports what `auto` resolves to — `Beam`,
+`Column`, `mixed`, or `—` — from **orientation alone**, because both editors must
+answer identically and the MATERIAL flyout runs in the Model tab where no design
+result exists. The axial gate can still promote at design time, which the control
+says in its help text rather than pretending the label is the last word. `mixed`
+means one section is used both ways, which is the cue to define two sections.
 
 ### 3.3 Orientation independence
 Design applies to **every** qualifying member regardless of orientation. A 2D
@@ -291,15 +374,144 @@ This combo is never shown to the user — it exists only to feed `Ve`.
 
 ## 10. Results & visualization
 
-- **Member colour** = worst flexural `D/C` (checked) via `designColorForDC` in
-  `constants.ts`: navy `[0, 0.33)`, green `[0.33, 0.66)`, orange `[0.66, 1.0)`,
-  red `≥ 1.0`. Required mode: binary navy (adequate) / red (inadequate).
-- **Shear** is binary navy/red, surfaced via its label.
-- **Two rotated pill labels** per designed member at mid-span — flexure on the
-  **+local-2** side, shear on **−local-2** (the same sides the diagrams use).
-- A **colour-legend** card appears bottom-right when results exist.
-- Run issues (no combos, failed cases, no designable members) render in an amber
-  card under the Run button.
+### 10.1 The verdict (`core/verdict.ts`)
+
+Everything the Design tab *says* about a member is one pure function of that
+member's result. The canvas is a renderer; it decides nothing.
+
+This is a contract, not a tidy-up. When the rules lived inline in the canvas
+they could not be tested, and two defects lived there undetected: members in
+every refusal state (`not-designable`, `not-implemented`, `no-result`) rendered
+**no label and the brand navy stroke** — pixel-identical to a passing member —
+and *every* steel member drew red, because the colour rule asked `mode ===
+"checked"` first and steel carries no mode, so it fell into the binary
+required-mode branch at any `D/C > 0`.
+
+**Totality is the invariant.** Every reachable `MemberDesignResult` produces a
+non-empty top label. A member that renders nothing reads as "the design did not
+run", which is the most expensive lie a design tool can tell. Asserted by
+`validation/design_labels_smoke.mts`.
+
+**Two questions, asked separately, because they fail separately:**
+
+| | Question | Verdict | Colour |
+|---|---|---|---|
+| Strength | Do the capacity equations pass? | `Overstressed (D/C 1.19)` | red |
+| Detailing | Can it be built and hinge as assumed? | `Insufficient Detailing` | amber |
+| Neither | — | `Satisfied 0.42` | D/C band |
+| Refused | — | `Not designed — …` | grey |
+
+A section can satisfy every equation and still be unbuildable, so detailing
+never rides on the D/C number, and red never means "detailed wrong" — that would
+send the engineer to resize a section that is already the right size. When both
+fail, strength takes the headline and detailing is **still listed** in the
+causes: fixing the size does not make the bars fit.
+
+**The bottom pill names the failing channels**, and may name several — a member
+can fail two at once, and showing only the governing one hides work.
+
+| Material / kind | Strength causes | Detailing groups |
+|---|---|---|
+| RC beam | Flexural, Shear | Bar Detailing, Stirrup Detailing, Section Limits |
+| RC column | Axial-Moment, Shear | Confinement, Bar Detailing, SCWB |
+| Steel | Axial-Moment *(H1/H2)*, Flexural *(F, `Pr=0`)*, Axial, Shear | Ductility *(341 D1.1)*, Bracing *(D1.2, advisory)*, SCWB *(E3.4a)* |
+
+The vocabulary is the engineer's, not the code's — "Axial-Moment", not
+"H1-1b" — because a red member raises the question *what do I resize*, not
+*which equation*. Steel appends its governing equation, where that is genuinely
+diagnostic.
+
+**Detailing travels on the result.** `MemberDesignResult.detailing:
+DetailingCheck[]` is populated by the strategy. It used to be computed only
+inside the RC flyout, so the canvas could not know a beam's bars did not fit.
+The flyout still computes its own copy live — the design pass is deferred, and
+detailing checks must answer at typing speed.
+
+**SCWB is a detailing verdict**, not a fake infinite D/C. The run-design
+post-pass records `scwbPass` on every column of a checked joint (both
+materials); it used to force `worstFlexureDC = Infinity`, which made a correctly
+sized column report as overstressed.
+
+### 10.2 One material at a time
+
+RC and steel `D/C` answer different questions, so the canvas never draws both.
+A **segmented switch** in the **Design Results** card selects the material; it
+renders only when the run produced results for both, so there is never a dead
+control. Off-material members are drawn in `COLOR_DESIGN_OFF_MATERIAL` with no
+label — visible as context, plainly outside the conversation. Hiding them would
+make the structure look broken.
+
+### 10.2b One blended RC list, scoped per item
+
+The RC reports are organised by **quantity**, not by element × mode. There is
+one `Concrete` group holding one entry per thing an engineer looks for:
+
+| Report | Beam | Column |
+|---|---|---|
+| `rc-long` — Longitudinal bar | `AsTop` / `AsBottom` per face per zone, mm² | `Ast`, mm² |
+| `rc-rho` — Reinforcement ratio | `rhoTop` / `rhoBottom` per face | `ρg` |
+| `rc-trans` — Transverse bar | `AvS`, mm²/m (or the suggested bar@spacing) | tie `AvS` |
+
+Each renders on **every** RC member in **both** modes, because the engine
+resolves the mode rather than the renderer: `AsTop`, `AsBottom`, `AvS` and `Ast`
+all mean *the actual bars* — the area required in `required`, the area provided
+in `checked`. A red number means that face or that channel did not pass.
+
+This replaced three menu sections — beam-required, beam-checked, column — which
+were four ways of asking three questions. A reader wanting "how much
+longitudinal steel is here" had to know the element and the section's mode
+before they could pick the right entry, and picking wrong painted an empty
+canvas.
+
+**Scope moved from the group to the item.** `DesignReportItem.scope` is what
+still keeps the menu honest — choosing a report no member matches leaves the
+canvas blank, which reads as a broken tool rather than as an empty set. Only
+three entries carry one, and only on `kind`:
+
+| Report | Why it is scoped, not blended |
+|---|---|
+| `col-confine` — Confinement (tie legs) | no beam analogue |
+| `col-slender` — Slenderness | no beam analogue |
+| `col-scwb` — Strong-column-weak-beam | joint-level, columns only |
+
+So a beam-only model is offered three reports plus the summary; add a column and
+the other three appear, in the same single group. Steel is untouched — it has
+neither a beam/column split nor a required/checked mode, so nothing about the
+merge applies to it.
+
+**Confinement reports legs, not an Ash area.** The leg count is what a detailer
+draws, and it is where *cannot be built* becomes visible: 18.7.5.2 supports every
+corner bar and alternate bars with a hoop corner or crosstie, so each leg needs a
+longitudinal bar to hold it. Demand more legs than the grid has bars and the
+label reads `5 legs > 3 bars — inadequate detail`. That is a **detailing**
+failure — add bars or grow the section — so it never touches the D/C, matching
+the strength-vs-detailing split in §10.1.
+
+**Slenderness reports a verdict.** `slendernessOk` is false only when
+`Pu ≥ 0.75·Pc`, where the 6.6.4.5.2 denominator goes non-positive and δns runs
+away — the member buckles before it yields. A short column (the 6.2.5 gate) and
+a slender-but-stable one both read satisfied; their amplified moments are
+already inside the interaction D/C, so this answers *does it stand up*, not *is
+it big enough*.
+
+The DESIGN SCHEDULE is the exception: it is an inventory with a Class column, so
+it defaults to **All** and offers the filter as three chips.
+
+### 10.3 Canvas mechanics
+
+- **Member colour** — `memberDisplayColor`; bands from `designColorForDC` in
+  `constants.ts`. Required mode stays binary (adequate blue / inadequate red):
+  it is a solve, not a check, so there is no ratio to band.
+- **Two rotated pill labels** per member at mid-span — the verdict on the
+  **+local-2** side, the causes on **−local-2** (the sides the diagrams use).
+- Every other report (`req-*`, `chk-*`, `col-*`, `stl-*`) is a numeric overlay
+  and keeps its own formatting; only `default` is the verdict.
+- A **colour-legend** card appears bottom-right when results exist, with
+  detailing and not-designed swatches under the ratio bands.
+- Run issues render in an amber card at top-center, **capped at 26vh and
+  scrollable** — unbounded, it grew one line per failing channel per member and
+  covered the structure it was reporting on, worst exactly when the most
+  members failed.
 
 ---
 

@@ -20,6 +20,8 @@ import {
 } from "./parametric-form"
 import { AdvancedDeck } from "./advanced-panel"
 import { AdvancedPill } from "./advanced-pill"
+import type { ElementType } from "@/lib/design/core/types"
+import { elementTypeOptionLabel, sectionAutoLabel } from "@/lib/design/core/element-type"
 
 const MAX_SECTIONS = 100
 
@@ -33,6 +35,14 @@ export interface MaterialFlyoutProps {
   onAddSection?: (section: Section) => void
   onDeleteSection?: (id: SectionId) => void
   unitSettings?: UnitSettings
+  /**
+   * Concrete design type for the active section. Lives in design state, not on
+   * `Section` — but it is edited here because a concrete section's rebar
+   * definition *is* its design type, so this is where it belongs. See
+   * `lib/design/core/element-type.ts`.
+   */
+  elementType?: ElementType
+  onElementTypeChange?: (id: SectionId, et: ElementType) => void
 }
 
 export function MaterialFlyout({
@@ -43,6 +53,8 @@ export function MaterialFlyout({
   onAddSection,
   onDeleteSection,
   unitSettings,
+  elementType = "auto",
+  onElementTypeChange,
 }: MaterialFlyoutProps) {
   const u = unitSettings ?? DEFAULT_UNIT_SETTINGS
   const sections = model?.sections ?? {}
@@ -281,6 +293,36 @@ export function MaterialFlyout({
         </div>
       ) : (
         <ModeBadge mode={mode} />
+      )}
+
+      {/* Design type — concrete only, and never while adding (no section id to
+          write to yet; a new section starts on `auto`).
+
+          This commits IMMEDIATELY, unlike the form below it. Deliberate: it
+          writes to design state, not to the Section record, and putting it
+          behind the Save button would imply it is part of the section — the
+          thing we specifically decided it is not. */}
+      {!adding && s.materialClass === "concrete" && onElementTypeChange && (
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-gray-600 shrink-0">Type</Label>
+          <select
+            value={elementType}
+            onChange={(e) => onElementTypeChange(activeSection, e.target.value as ElementType)}
+            title={
+              "Column → P–M interaction with a bar grid. Beam → flexure and shear with " +
+              "top/bottom bars. Auto reads each member's orientation, and promotes to " +
+              "Column when the axial load reaches 0.1·f'c·Ag. Also editable in the " +
+              "Design tab's DESIGN SCHEDULE — same setting."
+            }
+            className="h-8 flex-1 min-w-0 text-xs bg-white border border-gray-200 rounded-md px-1.5 cursor-pointer hover:border-[#2563eb] focus:outline-none focus:ring-1 focus:ring-[#2563eb]"
+          >
+            {(["auto", "beam", "column"] as ElementType[]).map((et) => (
+              <option key={et} value={et}>
+                {elementTypeOptionLabel(et, sectionAutoLabel(model, activeSection))}
+              </option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* Section dropdown — disabled while adding or editing */}

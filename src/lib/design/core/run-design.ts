@@ -88,13 +88,13 @@ function checkStrongColumnWeakBeam(
     const pass = sumMnc >= 1.2 * sumMnb
     const ratio = sumMnb > 0 ? sumMnc / (1.2 * sumMnb) : Infinity
     joints.push({ nodeId, sumMnc, sumMnb, ratio, pass, columnIds })
-    if (!pass) {
-      for (const id of columnIds) {
-        if (members[id].column) {
-          members[id].column!.scwbPass = false
-          members[id].worstFlexureDC = Infinity // force red on the canvas (SCWB governs)
-        }
-      }
+    // Recorded on every column of a checked joint, pass or fail. It used to be
+    // written only on failure, and alongside a forced `worstFlexureDC =
+    // Infinity` — which made a perfectly sized column read as "overstressed".
+    // SCWB is a proportioning rule, so it now travels as a detailing verdict
+    // (see core/verdict.ts) and the canvas colours it red from there.
+    for (const id of columnIds) {
+      if (members[id].column) members[id].column!.scwbPass = pass
     }
   }
   return joints
@@ -150,6 +150,11 @@ function checkSteelScwb(
 
     const res = checkScwb(columns, beams)
     if (!res) continue
+    // Same contract as the RC pass above: the member result must be
+    // self-contained, because the canvas verdict is a pure function of it.
+    for (const id of columnIds) {
+      if (members[id].steel) members[id].steel!.scwbPass = res.pass
+    }
     joints.push({
       nodeId, sumMnc: res.sumMpc, sumMnb: res.sumMpb,
       ratio: res.ratio, pass: res.pass, columnIds, material: "steel",

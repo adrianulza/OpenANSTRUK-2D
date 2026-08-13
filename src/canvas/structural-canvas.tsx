@@ -74,14 +74,28 @@ import {
   HIT_TOL_NODE,
   HIT_TOL_MEMBER,
   formatValue,
-  designColorForDC,
-  COLOR_DESIGN_LOW,
+  COLOR_DESIGN_DETAIL,
   COLOR_DESIGN_FAIL,
   COLOR_DESIGN_LABEL,
+  COLOR_DESIGN_MUTED,
+  COLOR_DESIGN_OFF_MATERIAL,
   DESIGN_DC_BANDS,
 } from "@/lib/constants"
-import type { DesignReport, DesignRunResult, MemberDesignResult, ZoneId } from "@/lib/design/core/types"
-import { DESIGN_REPORTS, ZONE_IDS } from "@/lib/design/core/types"
+import type {
+  DesignMaterial, DesignReport, DesignRunResult, MemberDesignResult, ZoneId,
+} from "@/lib/design/core/types"
+import { availableDesignReports, ZONE_IDS } from "@/lib/design/core/types"
+import { causeText, memberDisplayColor, memberVerdict } from "@/lib/design/core/verdict"
+import { cn } from "@/lib/utils"
+
+/**
+ * Is this member the material the user is NOT currently looking at? The Design
+ * tab shows one material at a time — an RC D/C and a steel D/C answer different
+ * questions and reading them side by side invites comparing them.
+ */
+function isOffMaterial(r: MemberDesignResult, view: DesignMaterial | null): boolean {
+  return view !== null && r.material !== undefined && r.material !== view
+}
 
 // Resolves the hover/selection palette for the active tool.
 // - "generic" (yellow) for MODIFY/MOVE/MODIFY_LOAD style tools
@@ -188,6 +202,15 @@ interface StructuralCanvasProps {
   designStale?: boolean
   designReport?: DesignReport
   onDesignReportChange?: (r: DesignReport) => void
+  /**
+   * Which material's results are on screen. `null` only when the model holds no
+   * designable member at all — with one material present the App locks it to
+   * that material and hides the switch, so there is never a dead control.
+   */
+  designMaterialView?: DesignMaterial | null
+  onDesignMaterialViewChange?: (m: DesignMaterial) => void
+  /** Materials actually present among designable members — drives the switch. */
+  designMaterialsPresent?: DesignMaterial[]
 }
 
 export function StructuralCanvas({
@@ -242,6 +265,9 @@ export function StructuralCanvas({
   designStale = false,
   designReport = "default",
   onDesignReportChange,
+  designMaterialView = null,
+  onDesignMaterialViewChange,
+  designMaterialsPresent = [],
 }: StructuralCanvasProps) {
   // Display scale for force / moment labels drawn on canvas. Solver stores kN,
   // moment in kN·m; multiply by 1000 when displaying in N or N·m.
@@ -260,6 +286,14 @@ export function StructuralCanvas({
   const hasDraggedRef = useRef(false)
   const boxPointerIdRef = useRef<number | null>(null)
   const [boxRect, setBoxRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+
+  // The material switch earns its space only in a genuinely mixed model.
+  const showMaterialSwitch = designMaterialsPresent.length > 1
+
+  const availableReports = useMemo(
+    () => availableDesignReports(designResult?.members ?? {}, designMaterialView),
+    [designResult, designMaterialView],
+  )
 
   // Viewport: pan in CSS pixels, zoom multiplier
   const [panX, setPanX] = useState(0)
@@ -461,19 +495,17 @@ export function StructuralCanvas({
         )
         const isTruss = m.memberType === "truss"
         const state: DrawState = selected ? "selected" : isHovered ? "hover" : "normal"
-        // Design tab: recolour by worst flexural D/C band (checked mode) or
-        // binary navy/red (required mode). Non-designed members keep the brand
-        // colour; shear pass/fail is conveyed by the label, not the stroke.
+        // Design tab: recolour by the member's verdict. The whole rule lives in
+        // core/verdict.ts — the canvas must not decide what "failing" means, and
+        // when it did, steel (which carries no required/checked mode) fell into
+        // the binary branch and drew red at every D/C.
         let base = COLOR_BRAND
         if (activeTab === "Design" && designResult) {
           const r = designResult.members[m.id]
-          if (r?.status === "designed") {
-            base =
-              r.mode === "checked"
-                ? designColorForDC(r.worstFlexureDC ?? 0)
-                : (r.worstFlexureDC ?? 0) > 0 || !r.worstShearPass
-                  ? COLOR_DESIGN_FAIL
-                  : COLOR_DESIGN_LOW
+          if (r) {
+            base = isOffMaterial(r, designMaterialView)
+              ? COLOR_DESIGN_OFF_MATERIAL
+              : memberDisplayColor(r)
           }
         }
         ctx.strokeStyle = strokeFor(kind, state, base)
@@ -532,12 +564,15 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview, designResult]
+    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview, designResult, designMaterialView]
   )
 
-  // Design tab: two pill labels per designed member — flexure on the +local-2
-  // side, shear on −local-2 (the same sides the SFD/BMD use). Members flagged
-  // "axial-exceeded" get a single N/A pill.
+  // Design tab: two pill labels per member — the verdict on the +local-2 side,
+  // what failed on −local-2 (the same sides the SFD/BMD use).
+  //
+  // The DEFAULT report ("Design Summary") states a member's status in words and
+  // is produced entirely by core/verdict.ts; every other report is a numeric
+  // overlay and keeps its own formatting below.
   const drawDesignLabels = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       if (!designResult) return
@@ -572,81 +607,49 @@ export function StructuralCanvas({
       const fail = COLOR_DESIGN_FAIL
       const warn = "#f97316" // orange — slenderness magnified / advisory
       const green = "#16a34a" // SCWB pass
-      const dcCell = (v: number | undefined, active: boolean): Cell => {
-        if (!active || v === undefined) return { text: "–", color: navy }
-        if (!Number.isFinite(v)) return { text: "O/S", color: fail }
-        return { text: v.toFixed(2), color: v > 1 ? fail : navy }
-      }
-      const rhoCell = (v: number | undefined): Cell =>
-        v === undefined ? { text: "–", color: navy } : { text: `${(v * 100).toFixed(2)}%`, color: navy }
+      const rhoCell = (v: number | undefined, ok = true): Cell =>
+        v === undefined
+          ? { text: "–", color: ok ? navy : fail }
+          : { text: `${(v * 100).toFixed(2)}%`, color: ok ? navy : fail }
 
-      // ── Default report: worst-zone F/V summary at midpoint (original behaviour). ──
-      const defaultLabels = (r: MemberDesignResult): { flex: Cell; shear: Cell } | null => {
-        if (r.status !== "designed" || !r.zones) return null
-        if (r.mode === "checked") {
-          const dc = r.worstFlexureDC ?? 0
-          const flex = Number.isFinite(dc) && dc < 1.0
-            ? { text: `F ${dc.toFixed(2)}`, color: navy }
-            : { text: Number.isFinite(dc) ? `F ${dc.toFixed(2)}` : "F O/S", color: fail }
-          let vdc = 0
-          for (const z of Object.values(r.zones)) vdc = Math.max(vdc, z.shear.dc ?? 0)
-          const shear = r.worstShearPass
-            ? { text: `V ${vdc.toFixed(2)}`, color: navy }
-            : { text: Number.isFinite(vdc) ? `V ${vdc.toFixed(2)}` : "V O/S", color: fail }
-          return { flex, shear }
-        }
-        let asTop = 0, asBot = 0, avS = 0
-        let suggested: { size: string; spacing: number } | undefined
-        for (const z of Object.values(r.zones)) {
-          asTop = Math.max(asTop, z.flexure.AsReqTop ?? 0)
-          asBot = Math.max(asBot, z.flexure.AsReqBottom ?? 0)
-          if ((z.shear.AvSReq ?? 0) >= avS) { avS = z.shear.AvSReq ?? 0; suggested = z.shear.suggested }
-        }
-        const flex = (r.worstFlexureDC ?? 0) <= 0
-          ? { text: `As ${Math.round(asTop)}/${Math.round(asBot)}`, color: navy }
-          : { text: "As O/S", color: fail }
-        const shear = r.worstShearPass
-          ? { text: suggested ? `${suggested.size}@${suggested.spacing}` : `Av/s ${Math.round(avS)}`, color: navy }
-          : { text: "V O/S", color: fail }
-        return { flex, shear }
-      }
-
-      // Reports are mode-scoped — req-* on "required" members, chk-* on "checked".
-      const reportMode: "required" | "checked" | null =
-        designReport.startsWith("req-") ? "required"
-        : designReport.startsWith("chk-") ? "checked"
-        : null
-      // …and material-scoped: stl-* only on steel members, everything else only
-      // on RC ones. `default` is the one report that renders for both.
+      // Material scoping only: stl-* on steel members, everything else on RC.
+      // `default` is the one report that renders for both. RC reports are no
+      // longer mode-scoped — each reads a field the engine fills in BOTH modes,
+      // which is what let the four beam menus collapse into three.
       const isSteelReport = designReport.startsWith("stl-")
+
+      /** Bar area, mm² — red when the thing it belongs to did not pass. */
+      const areaCell = (v: number | undefined, ok: boolean): Cell =>
+        v === undefined || !Number.isFinite(v)
+          ? { text: "–", color: ok ? navy : fail }
+          : { text: `${Math.round(v)}`, color: ok ? navy : fail }
 
       const zoneLabels = (r: MemberDesignResult, z: ZoneId): ZoneLabels | null => {
         if (r.status !== "designed" || !r.zones) return null
-        if (reportMode && r.mode !== reportMode) return null
         const zd = r.zones[z]
         const fx = zd.flexure
         const sh = zd.shear
+        // Whether the FACE passed, so a red number points at the bars that are
+        // short rather than reddening the whole zone because its partner failed.
+        const topOk = r.mode === "required" ? fx.adequate : (fx.dcNeg ?? 0) <= 1
+        const botOk = r.mode === "required" ? fx.adequate : (fx.dcPos ?? 0) <= 1
         switch (designReport) {
-          case "req-long": {
-            const col = fx.adequate ? navy : fail
+          case "rc-long":
             return {
-              top: { text: `${Math.round(fx.AsReqTop ?? 0)}`, color: col },
-              bottom: { text: `${Math.round(fx.AsReqBottom ?? 0)}`, color: col },
+              top: areaCell(fx.AsTop, topOk),
+              bottom: areaCell(fx.AsBottom, botOk),
             }
+          case "rc-rho":
+            return { top: rhoCell(fx.rhoTop, topOk), bottom: rhoCell(fx.rhoBottom, botOk) }
+          case "rc-trans": {
+            // Required mode has a suggested bar+spacing, which is more use than
+            // the raw area; checked mode has only the area the user's stirrup
+            // provides. Both are "the transverse bar", hence one report.
+            const text = sh.suggested
+              ? `${sh.suggested.size}@${sh.suggested.spacing}`
+              : `${Math.round(sh.AvS ?? 0)}`
+            return { center: { text, color: sh.pass ? navy : fail } }
           }
-          case "req-rho":
-            return { top: rhoCell(fx.rhoTop), bottom: rhoCell(fx.rhoBottom) }
-          case "req-shear": {
-            const ok = sh.pass
-            const text = sh.suggested ? `${sh.suggested.size}@${sh.suggested.spacing}` : `${Math.round(sh.AvSReq ?? 0)}`
-            return { center: { text, color: ok ? navy : fail } }
-          }
-          case "chk-long-dc":
-            return { top: dcCell(fx.dcNeg, (fx.MuNeg ?? 0) < 0), bottom: dcCell(fx.dcPos, (fx.MuPos ?? 0) > 0) }
-          case "chk-rho":
-            return { top: rhoCell(fx.rhoTop), bottom: rhoCell(fx.rhoBottom) }
-          case "chk-shear-dc":
-            return { center: dcCell(sh.dc, true) }
           default:
             return null
         }
@@ -669,26 +672,37 @@ export function StructuralCanvas({
 
         const midX = (pa.sx + pb.sx) / 2
         const midY = (pa.sy + pb.sy) / 2
+
+        // A member of the material the user is not looking at is drawn (in the
+        // off-material grey) but never labelled — under ANY report.
+        if (isOffMaterial(r, designMaterialView)) continue
+
+        // ── DESIGN SUMMARY: the verdict, in words ──────────────────────────
+        // Every member reaches a label here, including refused ones. A member
+        // that renders nothing is indistinguishable from one that passed, which
+        // is exactly how a refusal used to read as "the design didn't run".
+        if (designReport === "default") {
+          const v = memberVerdict(r)
+          const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
+          const off = 18 * s
+          drawPill(midX + l2x * off, midY - l2y * off, angle, v.top, v.color)
+          const causes = causeText(v)
+          if (causes) drawPill(midX - l2x * off, midY + l2y * off, angle, causes, v.color)
+          continue
+        }
+
         if (r.status === "axial-exceeded") {
           drawPill(midX, midY - 14 * s, angle, "N/A — axial", "#92700c")
           continue
         }
 
-        // Steel members (AISC 360-16). Under the default report: a combined-force
-        // pill on +local-2 and a shear pill on −local-2, the same sides beams and
-        // columns use. The combined-force pill names the governing AISC equation,
-        // because for steel *which* equation governs is as informative as the
-        // ratio. The stl-* reports each render one pill instead.
+        // Steel members (AISC 360-16). Each stl-* report renders one pill.
         if (r.material === "steel") {
           const st = r.steel
           if (!st) continue
           // An RC-scoped report (req-/chk-/col-) renders nothing on a steel
           // member, mirroring how a mode-mismatched RC member renders nothing.
-          if (!isSteelReport && designReport !== "default") continue
-          const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
-          const sspx = l2x
-          const sspy = -l2y
-          const soff = 14 * s
+          if (!isSteelReport) continue
           const eq = st.equation !== "none" ? ` ${st.equation}` : ""
           const main: Cell = Number.isFinite(st.ratio)
             ? { text: `D/C ${st.ratio.toFixed(2)}${eq}`, color: st.ratio <= 1 ? navy : fail }
@@ -697,19 +711,8 @@ export function StructuralCanvas({
             ? { text: `V ${st.shearRatio.toFixed(2)}`, color: st.shearRatio <= 1 ? navy : fail }
             : { text: "V O/S", color: fail }
           const flag = st.warnings.length > 0 ? " ⚠" : ""
-          // A section can satisfy Chapter H and still be unable to hinge, so
-          // ductility gets its own marker rather than riding the D/C colour.
-          const ductFail = st.seismic ? !st.seismic.ductilityPass : false
 
           switch (designReport) {
-            case "default":
-              drawPill(
-                midX + sspx * soff, midY + sspy * soff, angle,
-                main.text + (ductFail ? " ⚠D1.1" : flag),
-                ductFail ? fail : main.color,
-              )
-              drawPill(midX - sspx * soff, midY - sspy * soff, angle, vCell.text, vCell.color)
-              break
             case "stl-dc":
               drawPill(midX, midY - 14 * s, angle, main.text + flag, main.color)
               break
@@ -762,65 +765,86 @@ export function StructuralCanvas({
         // Beyond here the member is RC — a steel report renders nothing on it.
         if (isSteelReport) continue
 
-        // Column members. Default report = two pills (interaction on +local-2,
-        // shear on −local-2 — same sides as beams), with confinement/SCWB fail
-        // flags on the interaction pill. col-* reports each render one pill;
-        // col-scwb renders nothing here (drawn as joint badges below).
+        // Column members. Each col-* report renders one pill; col-scwb renders
+        // nothing here (drawn as joint badges below).
         if (r.kind === "column") {
           const col = r.column
           if (!col) continue
-          const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
-          const cspx = l2x
-          const cspy = -l2y
-          const coff = 14 * s
 
-          // Interaction cell (pure P–M D/C — unaffected by the colour fold-in).
-          const inter: Cell =
-            r.mode === "required"
-              ? col.rhoGRequired !== undefined
-                ? { text: `ρ ${(col.rhoGRequired * 100).toFixed(1)}%`, color: navy }
-                : { text: "ρ O/S", color: fail }
-              : Number.isFinite(col.worstDC)
-                ? { text: `D/C ${col.worstDC.toFixed(2)} · ρ ${(col.rhoG * 100).toFixed(1)}%`, color: col.worstDC <= 1 ? navy : fail }
-                : { text: "D/C O/S", color: fail }
-
-          // Shear cell.
+          // A column's answer to each BLENDED report. The quantity is the same
+          // question a beam is asked — how much steel, what ratio, what tie —
+          // which is exactly why the reports merged; only the geometry differs.
+          const interOk = r.mode === "required" ? col.adequate : col.worstDC <= 1
           const sh = col.shear
-          const shearCell: Cell = !sh
-            ? { text: "V –", color: navy }
-            : r.mode === "required"
-              ? { text: sh.suggested ? `${sh.suggested.size}@${sh.suggested.spacing}` : `Ve ${sh.Vdesign.toFixed(0)}`, color: sh.crossSectionOk ? navy : fail }
-              : sh.dc !== undefined && Number.isFinite(sh.dc)
-                ? { text: `V ${sh.dc.toFixed(2)}`, color: sh.pass ? navy : fail }
-                : { text: "V O/S", color: fail }
-
-          const confFails = col.confinement?.some((c) => c.status === "fail") ?? false
 
           switch (designReport) {
-            case "default": {
-              let flag = ""
-              if (confFails) flag += " ⚠Ash"
-              if (col.scwbPass === false) flag += " ⚠SCWB"
-              drawPill(midX + cspx * coff, midY + cspy * coff, angle, inter.text + flag, confFails || col.scwbPass === false ? fail : inter.color)
-              drawPill(midX - cspx * coff, midY - cspy * coff, angle, shearCell.text, shearCell.color)
+            case "rc-long":
+              // Total longitudinal steel. `Ast` is already mode-independent:
+              // provided in checked, required in required.
+              drawPill(
+                midX, midY - 14 * s, angle,
+                `Ast ${Math.round(col.Ast)}`, interOk ? navy : fail,
+              )
+              break
+            case "rc-rho":
+              drawPill(
+                midX, midY - 14 * s, angle,
+                `ρg ${((col.rhoGRequired ?? col.rhoG) * 100).toFixed(2)}%`,
+                interOk ? navy : fail,
+              )
+              break
+            case "rc-trans":
+              drawPill(
+                midX, midY - 14 * s, angle,
+                !sh
+                  ? "–"
+                  : sh.suggested
+                    ? `${sh.suggested.size}@${sh.suggested.spacing}`
+                    : `${Math.round(sh.AvS ?? 0)}`,
+                sh?.pass ?? true ? navy : fail,
+              )
+              break
+            case "col-confine": {
+              // Legs, not an Ash area: the leg count is what a detailer draws,
+              // and it is where "cannot be built" becomes visible. More legs
+              // than the bar grid can engage is a DETAILING failure — the
+              // section needs more bars, not more strength.
+              const legs = col.confinementLegs
+              const confFails = col.confinement?.some((c) => c.status === "fail") ?? false
+              if (!legs) {
+                // Spiral: volumetric ρs, no leg count exists.
+                drawPill(midX, midY - 14 * s, angle, confFails ? "spiral ✗" : "spiral ✓", confFails ? fail : navy)
+              } else if (!legs.buildable) {
+                drawPill(
+                  midX, midY - 14 * s, angle,
+                  `${legs.required} legs > ${legs.max} bars — inadequate detail`, fail,
+                )
+              } else {
+                const short = legs.provided < legs.required
+                drawPill(
+                  midX, midY - 14 * s, angle,
+                  `${legs.required} legs req · ${legs.provided} prov`,
+                  short || confFails ? fail : navy,
+                )
+              }
               break
             }
-            case "col-dc":
-              drawPill(midX, midY - 14 * s, angle, inter.text, inter.color)
-              break
-            case "col-shear":
-              drawPill(midX, midY - 14 * s, angle, shearCell.text, shearCell.color)
-              break
-            case "col-confine":
-              drawPill(midX, midY - 14 * s, angle, confFails ? "conf ✗" : "conf ✓", confFails ? fail : navy)
-              break
             case "col-slender": {
+              // Satisfied or not, first — the magnifier is the supporting number,
+              // not the verdict.
+              const okS = col.slendernessOk ?? true
               const dn = col.deltaNs ?? 1
               const klr = col.slenderness ?? 0
-              drawPill(midX, midY - 14 * s, angle, `δns ${dn.toFixed(2)} · kl/r ${klr.toFixed(0)}`, dn > 1.001 ? warn : navy)
+              drawPill(
+                midX, midY - 14 * s, angle,
+                okS
+                  ? `Slender OK · δns ${dn.toFixed(2)} · kl/r ${klr.toFixed(0)}`
+                  : `Slenderness fails · kl/r ${klr.toFixed(0)}`,
+                !okS ? fail : dn > 1.001 ? warn : navy,
+              )
               break
             }
-            // col-scwb + beam reports → no member pill (joint badges drawn below).
+            // col-scwb → no member pill (joint badges drawn below).
           }
           continue
         }
@@ -829,15 +853,6 @@ export function StructuralCanvas({
         const { l2x, l2y } = local2World(a.x, a.y, b.x, b.y)
         const spx = l2x
         const spy = -l2y
-
-        if (designReport === "default") {
-          const labels = defaultLabels(r)
-          if (!labels) continue
-          const off = 18 * s
-          drawPill(midX + spx * off, midY + spy * off, angle, labels.flex.text, labels.flex.color)
-          drawPill(midX - spx * off, midY - spy * off, angle, labels.shear.text, labels.shear.color)
-          continue
-        }
 
         const off = 16 * s
         for (const z of ZONE_IDS) {
@@ -865,6 +880,7 @@ export function StructuralCanvas({
       ) {
         for (const j of designResult.joints) {
           const jointMaterial = j.material ?? "rc"
+          if (designMaterialView && jointMaterial !== designMaterialView) continue
           if (designReport === "col-scwb" && jointMaterial !== "rc") continue
           if (designReport === "stl-scwb" && jointMaterial !== "steel") continue
           if (designReport === "default" && j.pass) continue
@@ -876,7 +892,7 @@ export function StructuralCanvas({
         }
       }
     },
-    [model, designResult, designReport, adaptiveView, zoom]
+    [model, designResult, designReport, designMaterialView, adaptiveView, zoom]
   )
 
   const drawNodes = useCallback(
@@ -3313,8 +3329,11 @@ export function StructuralCanvas({
               <span className="text-[11px] text-muted-foreground">Updating…</span>
             </div>
           )}
+          {/* Issues are capped and scrollable. Unbounded, this card grew one
+              line per failing channel per member and covered the structure it
+              was reporting on — worst exactly when the most members failed. */}
           {designResult && designResult.issues.length > 0 && (
-            <div className="max-w-[340px] border rounded-lg px-2.5 py-1.5 shadow-sm bg-background/95 border-amber-300">
+            <div className="max-w-[340px] max-h-[26vh] overflow-y-auto border rounded-lg px-2.5 py-1.5 shadow-sm bg-background/95 border-amber-300 pointer-events-auto">
               {designResult.issues.map((issue, i) => (
                 <p key={i} className="text-[10px] text-amber-700 leading-snug">{issue}</p>
               ))}
@@ -3335,14 +3354,37 @@ export function StructuralCanvas({
               </div>
             ))}
           </div>
-          {(designReport === "col-confine" || designReport === "col-scwb") && (
+          {/* Detailing and refusal are not points on the ratio scale — a member
+              can meet every capacity equation and still be unbuildable. */}
+          {designReport === "default" && (
+            <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR_DESIGN_DETAIL }} />
+                <span className="text-[10px] text-muted-foreground">detailing</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR_DESIGN_MUTED }} />
+                <span className="text-[10px] text-muted-foreground">not designed</span>
+              </div>
+            </div>
+          )}
+          {/* A blended report prints a quantity, not a ratio, so the band scale
+              above does not explain its numbers — say what they are. */}
+          {(designReport === "rc-long" || designReport === "rc-trans" ||
+            designReport === "col-confine" || designReport === "col-scwb" ||
+            designReport === "col-slender") && (
             <p className="text-[10px] text-muted-foreground mt-1 pt-1 border-t border-border">
-              {designReport === "col-confine" ? "✓ confinement OK · ✗ fail" : "SCWB ratio ≥ 1.0 OK · < 1.0 fail"}
+              {designReport === "rc-long" ? "bar area mm² · red = short"
+                : designReport === "rc-trans" ? "mm²/m or bar@spacing · red = short"
+                : designReport === "col-confine" ? "tie legs required · red = short or unbuildable"
+                : designReport === "col-slender" ? "δns · red = buckles before yield"
+                : "SCWB ratio ≥ 1.0 OK · < 1.0 fail"}
             </p>
           )}
-          {designReport.startsWith("stl-") && (
+          {showMaterialSwitch && (
             <p className="text-[10px] text-muted-foreground mt-1 pt-1 border-t border-border">
-              Steel only (AISC 360-16) — concrete members are unlabelled here
+              {designMaterialView === "steel" ? "Steel shown" : "Concrete shown"} — the other
+              material is greyed
             </p>
           )}
         </div>
@@ -3400,14 +3442,37 @@ export function StructuralCanvas({
           per-member quantity is overlaid on the canvas (SAP2000/ETABS-style). */}
       {activeTab === "Design" && designResult && designResult.ok && (
         <div className="absolute top-14 right-3 z-10 flex flex-col gap-1 border rounded-lg px-2.5 py-1.5 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
-          <span className="text-[10px] font-medium text-muted-foreground">Display</span>
+          <span className="text-[10px] font-medium text-muted-foreground">Design Results</span>
+          {/* Material switch — only when the model actually holds both. With one
+              material the view is locked to it and this would be a dead control. */}
+          {showMaterialSwitch && (
+            <div className="flex rounded-md border border-border overflow-hidden w-48">
+              {(["rc", "steel"] as const).map((mat) => (
+                <button
+                  key={mat}
+                  type="button"
+                  onClick={() => onDesignMaterialViewChange?.(mat)}
+                  className={cn(
+                    "flex-1 text-[10px] py-1 transition-colors",
+                    designMaterialView === mat
+                      ? "bg-[#1a2f5e] text-white"
+                      : "bg-background text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {mat === "rc" ? "Concrete" : "Steel"}
+                </button>
+              ))}
+            </div>
+          )}
           <select
             value={designReport}
             onChange={(e) => onDesignReportChange?.(e.target.value as DesignReport)}
             className="text-[11px] bg-background border border-border rounded-md px-1.5 py-1 w-48 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#1a2f5e]"
           >
-            {DESIGN_REPORTS.map((grp) => (
-              <optgroup key={grp.group} label={grp.group}>
+            {/* Only groups some member actually renders under — a report that
+                paints nothing when selected reads as a bug, not as an empty set. */}
+            {availableReports.map((grp) => (
+              <optgroup key={grp.label} label={grp.label}>
                 {grp.items.map((it) => (
                   <option key={it.id} value={it.id}>{it.label}</option>
                 ))}

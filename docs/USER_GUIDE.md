@@ -48,6 +48,10 @@ Click a member to view and edit its section. There are two ways to define one.
 
 An **Advanced** panel lets you override individual derived values when you need to match a published section table.
 
+The section list is grouped by material — **Concrete**, then **Steel**, then **Manual** — because material is what decides which design path a section can take, what dimensions it carries, and what the rest of this flyout shows.
+
+Concrete sections also carry a **Design type** here: *Auto*, *Beam* or *Column*. It lives beside the dimensions because for concrete the design type *is* part of how the section is defined — a column takes a perimeter bar grid and ties, a beam takes top/bottom bars and stirrups. *Auto* reads each member's orientation, and promotes a member to column when its axial load reaches 0.1·f'c·Ag; an explicit choice is never overridden. (Steel has no equivalent control: nothing per-section differs, and the same IWF genuinely serves as both, so a steel member's role is inferred from its geometry.) The same field is editable in the Design tab's DESIGN SCHEDULE.
+
 ### MODIFY
 Click any node, member, or support to select it and view its properties in the flyout. Multiple elements can be selected by clicking while holding Shift, or by dragging a selection box. Click a selected element again to deselect.
 
@@ -134,7 +138,13 @@ The Design tab checks two materials, and a model containing both is designed in 
 
 **Structural steel** — IWF, RHS, CHS, tee and single angle, per **AISC 360-16 / SNI 1729:2020**: section classification, axial, flexure with lateral-torsional buckling, shear, and the Chapter H combined-force check.
 
-Two material tools set it up, and each works the same way: **① PREFERENCES → ② SECTION**. Preferences holds the code-level rules for that material; Section applies them to one section. The two steps are bound by a summary strip that always shows what the other step decided, and clicking it takes you there.
+The sidebar follows the workflow: **DESIGN SCHEDULE → REINFORCED CONCRETE → STEEL → DESIGN REPORT**.
+
+**DESIGN SCHEDULE is setup** — one row per *section*, showing its design type (beam / column / auto), its mode, and which members carry it. **DESIGN REPORT is results** — one row per *member*, read-only, with its capacity ratio and status in the same words the canvas uses. They are separate tools because they answer different questions; when they shared one screen behind an Overview/Edit toggle, neither half was designed for its job.
+
+The two material tools in between each work the same way: **① PREFERENCES → ② SECTION**. Preferences holds the code-level rules for that material; Section applies them to one section. The two steps are bound by a summary strip that always shows what the other step decided, and clicking it takes you there.
+
+Each tool lists only sections that **a member actually carries**. The Design tab designs members, so a section sitting unused in the catalogue has nothing to check, and offering it could only lead to an empty pane.
 
 - **REINFORCED CONCRETE**
   - **Preferences** — design code, framing type, bar strengths (fy, fyt, Es), strength-reduction factors (φ), lightweight factor (λ) and stirrup legs.
@@ -149,7 +159,37 @@ Each tool has an **Advanced Report** you can open beside the flyout. The steel b
 
 **There is no Run button.** Opening the Design tab evaluates every member, and any edit afterwards — a bar count, a φ factor, the framing type, the model itself — re-evaluates immediately, the same way the Analyze tab already behaves inside its own tab. While a fast edit is still settling, an *Updating…* chip appears at the top of the canvas; otherwise the drawn result is current by construction.
 
-Members are coloured by their worst capacity ratio (navy → green → orange → red), each carrying two labels — flexure or combined-force on one side, shear on the other — with a colour legend. A steel member's combined-force label names the AISC equation that governed, because for steel *which* equation governs tells you as much as the number does. The report dropdown switches what those labels show, and its groups are scoped by material: a concrete member stays unlabelled under a steel report, and vice versa. Any run problems (no load combinations, unsolved cases, no designable section) appear in an amber card.
+### Reading the canvas
+
+The default report is the **Design Summary**, and it answers in words, not numbers. Every member gets a label — including ones the program refused, because a member that renders nothing is indistinguishable from one that passed.
+
+| Colour | Verdict | Meaning |
+|---|---|---|
+| navy → green → orange | `Satisfied 0.62` | every capacity equation and detailing rule met |
+| red | `Overstressed (D/C 1.19)` | a capacity equation is exceeded — the section is **too small** |
+| amber | `Insufficient Detailing` | capacities pass, but it cannot be built as drawn — **wrong bars**, not a wrong size |
+| grey | `Not designed — …` | refused, with the reason |
+
+Strength and detailing are separate because they fail separately and you fix them differently. When both fail, the headline is the strength one and the detailing cause is still listed underneath — making the section bigger does not make the bars fit. Causes read in the engineer's vocabulary (*Flexural*, *Shear*, *Axial-Moment*, *Confinement*), because a red member's question is *what do I resize*.
+
+In **As required** mode a satisfied member shows `ρ 0.25` instead of a D/C. That is not a missing number: required mode sizes the steel to exactly meet demand, so a capacity ratio would read 1.00 on every adequate member. The ρ figure is how close the needed steel is to the code's maximum ratio — how much room is left.
+
+### The report dropdown
+
+Switching the report changes what the labels show. Concrete reports are organised by **quantity**, not by element or mode — a beam and a column both have longitudinal bars, and both design modes end in a bar area:
+
+| Report | Shows |
+|---|---|
+| **Longitudinal bar** | the actual bar area, mm² — required in *As required*, provided in *As checked*; red where it is short |
+| **Reinforcement ratio** | ρ per face, or ρg for a column |
+| **Transverse bar** | stirrup/tie area in mm²/m, or the suggested bar@spacing |
+| **Confinement** | how many tie legs the code demands vs how many the bar grid can hold |
+| **Slenderness** | satisfied or not, with δns |
+| **Strong-column-weak-beam** | the joint ratio, as badges at the nodes |
+
+The last three are column-only and simply do not appear on a model without columns. Steel keeps its own list — classification, capacities, limit state, slenderness, seismic ductility — because it has neither a beam/column split nor a required/checked mode.
+
+Reports are scoped by material: a concrete member stays unlabelled under a steel report, and vice versa. Where a model contains both, a **Concrete / Steel** switch picks which one you are reading; off-material members stay drawn in grey as context. Any run problems (no load combinations, unsolved cases, no designable section) appear in a card under the canvas.
 
 > Design settings and results are not saved in the JSON file, same as load cases and combinations.
 
@@ -174,6 +214,21 @@ Use the **NavBar file menu** to load pre-built templates or generate parametric 
 **Frame Template Modal** — generate a multi-bay, multi-storey portal frame.
 
 **Truss Template Modal** — generate a planar truss with configurable geometry.
+
+---
+
+## Saving and Loading
+
+**Save File** writes the model to JSON — nodes, members, supports, sections and loads, including every derived section property, so it round-trips without loss. **Load File** reads one back.
+
+> ⚠ **Load cases, load combinations and design settings are not in the file.** Only the model is.
+
+That has a consequence worth knowing. Loads *are* saved, and each one records which load case it belongs to. Open a file in a fresh session and those cases are gone, so a load can end up pointing at a case that no longer exists — and a load belonging to no case contributes nothing to the analysis, while still being drawn on the canvas.
+
+The app now reconciles this on load rather than letting it pass silently:
+
+- A load with **no case at all** (a file from before load cases existed) is adopted into **Dead** and analyses immediately. There was only ever one case then, so that is what it meant.
+- A load naming a **case the file did not carry** gets that case recreated, **disabled**, named `Recovered (…)`, and an alert lists them. Its original type is unknowable, and guessing is worse than not analysing — calling a Live case Dead applies 1.2 where the code wants 1.6 and hands you a plausible wrong number. Open the Load tab, set each recovered case's type, then enable it.
 
 ---
 

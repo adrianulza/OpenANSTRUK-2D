@@ -6,6 +6,453 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.3.0] — 2026-08-12
+
+**Design results are organised by what you are looking for, not by which
+formulation produced it.** The RC report menu had three sections — beam-required,
+beam-checked, column — which were four ways of asking three questions. To find
+"how much longitudinal steel is here" you had to know the element and the
+section's mode before you could pick the right entry, and picking wrong painted
+an empty canvas.
+
+There is now one **Concrete** group, one entry per quantity:
+
+| Report | Beam | Column |
+|---|---|---|
+| **Longitudinal bar** | area per face per zone, mm² | `Ast`, mm² |
+| **Reinforcement ratio** | ρ per face | ρg |
+| **Transverse bar** | mm²/m, or the suggested bar@spacing | tie mm²/m |
+
+Each renders on every RC member in **both** modes, showing the true bar area
+either way — required in "as required", provided in "as checked" — and turning
+red on the face or channel that failed.
+
+### The engine resolves the mode, not the renderer
+
+The merge only works if the fields exist in both modes, so `ZoneFlexureResult`
+gained `AsTop`/`AsBottom`, `ZoneShearResult` and `ColumnShearResult` gained
+`AvS`, and all of them mean *the actual bars* regardless of mode. A menu change
+alone would have left half the models silently blank, which is what the new
+suite asserts against first.
+
+### Scope moved from the group to the item
+
+`DesignReportItem.scope` is what still keeps the menu honest — a report no
+member matches leaves the canvas blank, which reads as a broken tool rather than
+as an empty set. Only three entries carry one, and only on element:
+**Confinement**, **Slenderness** and **Strong-column-weak-beam** have no beam
+analogue at all. A beam-only model is offered three reports plus the summary;
+add a column and the other three appear in the same group. Group labels no
+longer narrow by mode ("Beam — As checked"), because a blended report renders in
+every mode and has nothing to narrow.
+
+Steel is untouched. It has neither a beam/column split nor a required/checked
+mode, so nothing about the merge applies to its seven reports.
+
+### Confinement is a leg count
+
+`Ash/s ≥ ratio·bc` fixes an area; the legs follow from the tie bar and its
+spacing, and that division is where *cannot be built* appears. 18.7.5.2 supports
+every corner bar and alternate bars with a hoop corner or crosstie, so each leg
+needs a longitudinal bar to hold it — demand more legs than the grid has bars and
+the label reads `5 legs > 3 bars — inadequate detail`. That is a **detailing**
+failure, so it never touches the D/C.
+
+### Slenderness is a verdict
+
+`slendernessOk` is false only when `Pu ≥ 0.75·Pc`, where the 6.6.4.5.2
+denominator goes non-positive and δns runs away — the member buckles before it
+yields. A short column and a slender-but-stable one both read satisfied; their
+amplified moments are already inside the interaction D/C.
+
+### Design Summary carries a number in both modes
+
+A satisfied member in "as required" used to be a bare word — the one state that
+said nothing about how close it was. It now prints **ρ used / ρ max**. A capacity
+D/C genuinely does not exist there: required mode sizes the steel to exactly meet
+demand, so any ratio would read 1.00 on every adequate member. How much room is
+left against the code's maximum ratio does answer what the D/C is asked for.
+Beams take the worst face against the tension-controlled limit — which is
+per-code, since ACI ramps εt with fy where SNI fixes it at 0.005 — and columns
+take ρg against 10.6.1.1's 8 %.
+
+### Validation
+
+New `design_blended_reports_smoke.mts` (**48**) — the menu shape, then the fields
+the blend depends on asserted in both modes and shown to differ (551 mm² required
+vs 851 mm² provided on the same zone), columns answering all three reports, the
+leg count including a genuine unbuildable case, the slenderness verdict, the
+required-mode utilisation, and per-item availability. `design_labels_smoke.mts`
+rewritten where it asserted the old contract, still **121**. **29 suites pass**;
+lint at the recorded 6e/33w baseline.
+
+---
+
+## [1.2.5] — 2026-08-11
+
+**A load whose case is missing no longer disappears from the analysis in
+silence.** The saved file carries `model` alone — load cases live in App state
+and are not serialized — so a load assigned to a custom case arrives referencing
+a case that is not there. `solveCase` slices by `load.loadCaseId === caseId` over
+the cases that *do* exist, so an unmatched load is assembled by nothing, while
+still drawing on the canvas under the default view filter. Visible input, absent
+from the results, no warning.
+
+It bites **across** sessions rather than within one: `handleLoadFile` never reset
+`loadCases`, so in the session that saved the file the set is still in memory and
+the references resolve by luck. Reload the page, open the same file, and every
+custom case is gone.
+
+`reconcileLoadCases(model, cases)` (`lib/load-cases.ts`, pure) now runs on load
+and answers the two orphan kinds differently:
+
+- **A load with no case id** — a file predating load cases, when there was
+  exactly one implicit case. Adopting it into the default case is what it meant,
+  so it analyses immediately.
+- **An id naming a case the file did not carry** — the original `kind` is
+  unknowable, and guessing is worse than not analysing: calling a Live case Dead
+  applies 1.2 where the code wants 1.6 and returns a plausible wrong number. The
+  case is recreated **disabled**, named `Recovered (…)`, and an alert names them.
+  The loads stay out of the results exactly as before — what changed is that the
+  reason is on screen and one click from being fixed.
+
+Reconciliation runs against the cases currently held rather than resetting them,
+so the same-session path that works today keeps working.
+
+⚠ This is the safety fix, not the cure. The cure is serializing load cases,
+combinations and design state into the file; until then every save/load cycle
+still loses them. Reconciliation stays useful afterwards, for files written
+before the format changes.
+
+### Validation
+
+New `load_case_reconcile_smoke.mts` (**24**). Section 1 proves the failure mode
+against the real solver *before* asserting anything about the fix — 10.000 kN on
+a known case, 0.000 kN on a missing one, with the analysis still reporting
+success — because a suite that only checked the returned object's shape would
+pass just as happily against a reconciler that did nothing useful. Then: the
+recovered case is disabled, enabling it restores the full 10 kN, a legacy
+no-id load is adopted, shared and distinct orphans, a missing fallback case
+recovering itself, and purity of both arguments. **28 suites pass**; lint at the
+recorded 6e/33w baseline.
+
+---
+
+## [1.2.4] — 2026-08-10
+
+**The MATERIAL tool's section list is cut by material.** It was one flat run of
+names, so a concrete beam and a steel IWF sat side by side as if they were the
+same kind of thing. They are not: material decides which design path a section
+can take, what dimensions it carries, and what the rest of that flyout shows. It
+is the first question a user asks of a section name, so it is the axis the list
+is grouped and sorted along — **Concrete**, then **Steel**, then **Manual**.
+
+The grouping it replaces was *Parametric vs Manual*, which answers a question
+about how the section was authored — something that matters only inside this tool
+and only while editing. Manual sections declare no material at all, so they still
+form their own group; that falls out of the material rule rather than being a
+second axis bolted on beside it. Empty groups are dropped, so a model with only
+concrete shows one heading, not three. Ordering inside a group uses numeric
+collation, so `IWF 100` precedes `IWF 200` precedes `IWF 1000` — plain
+lexicographic ordering puts 1000 in the middle.
+
+The grouping is pure and lives in its own module, `section-group.ts`. Radix
+builds its item list inside a portal that exists only while the menu is open, so
+neither the grouping nor the order is observable from a render; the list is the
+thing worth asserting, not the markup around it. Keeping it out of the `.tsx` is
+also what `react-refresh/only-export-components` requires — the same split as
+`schedule-shared.ts` / `schedule-controls.tsx`.
+
+### The design panes' Section row
+
+RC and Steel put the `Section` label and its dropdown on **one row** instead of
+stacking them. A stacked pair spends a whole line on a two-word label and pushes
+the content that answers the question — the preview, the mode, the results —
+further down a flyout that is already tall.
+
+Both panes now render one shared `DesignSectionPicker` rather than their own
+markup: the two lists are built from different rules (RC offers designable
+concrete sections on a member, steel offers steel sections on a member) but they
+have to *look* identical, and duplicated markup is how that stops being true. It
+uses the row layout the MATERIAL tool's Type control already established —
+`shrink-0` on the label so it never wraps, `flex-1 min-w-0` on the control so a
+long section name truncates inside the trigger instead of pushing it past the
+flyout's edge.
+
+The trigger carries `w-full` **as well as** `flex-1`, which is not redundant:
+tailwind-merge only displaces a class from its own group, so `flex-1` (a flex
+class) cannot evict the primitive's base `w-fit` (a width class). It was harmless
+— flex-basis wins the main-axis size — but it contradicted the intent and would
+have taken over the moment the row stopped being a flex container.
+
+### Dropdowns reach the flyout's right edge
+
+`SelectTrigger` defaults to `w-fit` in the shadcn primitive, so a dropdown sized
+itself to its longest label and stopped short of the column the inputs beside it
+fill. Eight call sites had silently inherited it — the MATERIAL section picker
+and material-class row, the flat `SectionSelect` behind MEMBER and MODIFY, the RC
+design section picker, and both preference panes' code + framing-type rows. Each
+now declares `w-full`, matching the convention every other dropdown in the app
+already followed: the primitive stays layout-agnostic and the call site states
+the width it wants (`w-20`, `w-auto`, `flex-1`, `w-full`). Nothing width-less is
+left.
+
+### Default sections read as member marks
+
+`Beam 300x500` → **`B1-300x500`**, `Column 500x500` → **`C1-500x500`**. Names
+only — the ids (`rc300x500`, `rc500x500`) are untouched, so every member, example
+and saved file still resolves.
+
+### Validation
+
+New `material_section_group_smoke.mts` (**15**) — the material axis and its fixed
+order, numeric collation, empty-group suppression, the manual fallback, and both
+renamed defaults including the invariant that member section ids still resolve.
+`design_section_offer_smoke.mts` 25 → **33**, asserting that both design panes
+put the label and control on one row and that the trigger fills it, shrinks, and
+no longer carries `w-fit`. **27 suites pass**; lint at the recorded 6e/33w
+baseline.
+
+---
+
+## [1.2.3] — 2026-08-10
+
+**The design flyouts stop explaining and start showing.** The steel pane opened
+with four paragraphs of rationale and, when the selected section had no members,
+spent its whole height saying so. Both problems had one root: the pickers offered
+sections the tab could do nothing with.
+
+### A tool offers only sections a member actually carries
+
+The Design tab designs **members**, so a section sitting unused in the catalogue
+has nothing to check. `assignedSectionIds(model)` is now intersected with each
+tool's own rule — RC lists designable concrete sections on a member, steel lists
+steel sections on a member (keeping non-designable ones visible, since "this
+shape's AISC path isn't built yet" is worth knowing). The empty pane it used to
+be possible to select is now unreachable rather than apologised for.
+
+Both panes **derive** their section instead of trusting `designSelectedSectionId`
+— one piece of App state shared by both tools, which survives deleting the last
+member that used it. That also closed a latent bug: the RC pane's old guard was
+`sections[id]` + `isSectionDesignable`, and a steel IWF passes both, so a shared
+selection could draw the rebar editor and cross-section preview on a 200×400
+"concrete" section. The context strip's `resolveSectionFor` mirrors the same rule
+— its job is to name the section the user will land on, so filtering the panes
+without filtering it would advertise a section that is not in the picker.
+
+Fixed alongside: the strip read `elementType === "column" ? "Column" : "Beam"`,
+which labels every `auto` section — now the default — as a beam. It resolves
+through `sectionAutoLabel` like the other editors.
+
+### Reference blocks read as reference
+
+The steel pane's member card was a heading, a role list and two paragraphs. It is
+now a role row and a three-line spec list. **The rationale moved to tooltips
+rather than being deleted**, and the suite asserts that distinction — present in
+the markup, absent from the visible text — because one line had to stay on
+screen: `K = 1.0, braced frames only`. That is the engine's only
+non-conservative assumption, and a user must not have to hover to meet it.
+
+Every remaining empty state is a single sentence naming its cause
+(`No demands from the enabled load combinations.`) instead of enumerating the
+reasons it might have occurred.
+
+**Both panes now refuse in the same shape.** RC wrapped its "nothing to design"
+message inside the Section & Type card, so the pane still offered a dropdown that
+could not be opened onto anything, under a header verdict reading `none` — three
+pieces of furniture around a message saying there is nothing here. It returns a
+bare line, exactly as Steel does. The suite asserts the empty states by **exact
+equality** rather than `includes`, since that is the only form that notices
+furniture coming back.
+
+### Validation
+
+New `design_section_offer_smoke.mts` (**25**) — the offer rule per material, both
+empty states, a stale selection, and a cross-material selection resolving rather
+than leaking. Fixtures list the unassigned section **first**, so a pane that lost
+the filter fails instead of passing by accident. `steel_ui_smoke.mts` 94 → **106**,
+covering each moved paragraph as a move. **26 suites pass**; lint at the recorded
+6e/33w baseline.
+
+---
+
+## [1.2.2] — 2026-08-09
+
+**The design type moves to where sections are defined, and the schedule stops
+being two tools in a trench coat.** A section named "Column 500×500" was being
+designed as a beam by default — the fix turned out to be about *where* the
+control lives, not what it is attached to.
+
+### Element Type defaults to Auto, and lives with the section
+
+`RcSectionInput.elementType` defaulted to `"beam"`, and an explicit choice beats
+the axial gate — so a vertical member designed as a beam until the user found a
+control buried in the design flyout. **The default is now `auto`**, resolved per
+member: vertical → column, horizontal → beam, promoted to column when
+`Pu ≥ 0.1·f'c·Ag` (ACI's own boundary).
+
+The control now sits in the Model tab's **MATERIAL** tool, beside the section's
+dimensions, and in **DESIGN SCHEDULE** — the same field, two editors. The RC
+design flyout shows it read-only. The dropdown labels the default with what it
+resolved to (`Auto (Column)`), so an override reads as an override.
+
+**Why the section is the right entity — and why steel differs.** A concrete
+section's rebar definition *is* its design type: a column takes a bar grid and
+ties, a beam takes top/bottom bars and stirrups. Different data, not two views of
+one thing. Steel is the opposite — nothing per-section differs, and the same IWF
+genuinely serves as both — so steel keeps inferring a per-member role from
+geometry with no control. That asymmetry is now asserted in the test suite, so
+nobody tidies it into a false consistency.
+
+`resolveElementType` moved out of `rc/strategy.ts` into the new pure
+`core/element-type.ts`, alongside `sectionAutoLabel` — the UI could not
+previously ask what `auto` resolves to without duplicating the rule.
+
+### DESIGN SCHEDULE and DESIGN REPORT are separate tools
+
+One tool with an Overview/Edit toggle meant Overview was *results* and Edit was
+*setup*, and neither was designed for its job. Now:
+
+- **DESIGN SCHEDULE** — setup. One row per **section**: class, geometry, the
+  members carrying it, Type and Mode. No D/C, no status. Steel rows show their
+  inferred role as text and an em dash for Mode, because steel has no
+  required/checked split at all and a disabled control would imply otherwise.
+- **DESIGN REPORT** — results. Today's Overview table, one row per member.
+  Read-only.
+
+Sidebar order follows the workflow: SCHEDULE → REINFORCED CONCRETE → STEEL →
+REPORT.
+
+### Fixed along the way
+
+The RC flyout's `effectiveType` treated `auto` as `"beam"`. With `auto` now the
+default that would have shown a Beam editor for a section the engine designs as
+a column; it resolves through the run's actual `kind` first, falling back to
+orientation before a run exists.
+
+### Validation
+
+New `design_setup_smoke.mts` (**40 assertions**): the default is `auto`; an
+untouched vertical member designs as a column; every branch of
+`resolveElementType`; the axial gate end-to-end on a cantilever (a thrust at a
+pinned support is carried by the support, not the member — the first version of
+this test got that wrong); explicit overrides both ways; `sectionAutoLabel`
+including `mixed`; steel ignoring a forced `elementType`; and a
+`react-dom/server` render asserting the schedule has *no* results columns.
+
+**All 25 suites pass**, every capacity anchor unchanged, lint at the recorded
+6e/33w baseline.
+
+---
+
+## [1.2.1] — 2026-08-09
+
+**The Design tab says what it means.** The canvas summary stops reporting two
+numbers and starts reporting a status; results stop mixing concrete and steel in
+one view; and three bugs that made members render wrong — or not at all — are
+fixed at their shared cause.
+
+### Design Summary is a verdict, not a ratio
+
+The `default` report is renamed **"Design Summary"** and rewritten. A member now
+carries its status in words on the +local-2 side and, when something fails, what
+failed on −local-2:
+
+```
+Satisfied 0.42          Overstressed (D/C 1.19)      Insufficient Detailing
+                        Flexural · Shear             Bar Detailing
+```
+
+Strength and detailing are answered separately, because they fail separately: a
+section can satisfy every capacity equation and still be unbuildable. Red now
+means *too small*; amber means *built wrong*. When both fail, strength takes the
+headline and detailing is still listed — fixing the size does not make the bars
+fit. The bottom label may name several channels at once; showing only the
+governing one hides work the engineer still has to do.
+
+Cause vocabulary is the engineer's, not the code's — **Flexural, Shear, Axial,
+Axial-Moment** — with steel appending its governing AISC equation, where *which*
+equation governs is genuinely diagnostic. Steel's detailing analogue is AISC 341
+**Ductility** (D1.1), which previously showed only as a `⚠D1.1` glyph.
+
+### Three display bugs, one cause
+
+The labelling rules lived inside a canvas `useCallback` where nothing could test
+them. They now live in **`lib/design/core/verdict.ts`** as pure functions, and
+`validation/design_labels_smoke.mts` (**108 assertions**) pins them.
+
+- **Every steel member drew red** — including at D/C 0.04. The colour rule
+  branched on `mode === "checked"` first, and steel carries no mode (it has no
+  required/checked split), so every steel member took the binary required-mode
+  path where any `D/C > 0` means fail. Measured across seven load levels; the
+  suite now asserts the colour matches the band at each.
+- **Refused members rendered nothing at all** — `not-designable`,
+  `not-implemented` (an out-of-scope steel shape) and `no-result` produced no
+  pill *and* kept the brand navy stroke, making a member the engine refused
+  pixel-identical to one that passed. They are now greyed and labelled
+  `Not designed — …` with the reason. The suite's central invariant is
+  **totality**: every reachable result state produces a non-empty label.
+- **The issues card covered the model.** It rendered every issue unbounded at
+  top-center, so a model with many failing members buried the structure it was
+  reporting on — worst exactly when most members failed. Now capped at 26vh and
+  scrollable.
+
+### One material at a time
+
+RC and steel D/C answer different questions, so the canvas no longer draws both.
+A **segmented Concrete / Steel switch** in the (renamed) **Design Results** card
+selects the material, rendering only when the run actually produced both — no
+dead control on a single-material model. Off-material members draw in a light
+grey with no label: visible as context, plainly outside the conversation. Hiding
+them would make the structure look broken.
+
+### The selector only offers reports that can paint
+
+Every report group now declares the members it renders for — material, beam vs
+column, required vs checked — and `availableDesignReports()` hides the ones no
+member matches. A design model is rarely uniform: some sections are being solved
+for steel while others are checked against bars the user typed in. Offering both
+lists unconditionally meant half the menu painted **nothing** when selected, and
+a canvas that goes blank reads as a broken tool rather than as an empty set. The
+selection also falls back to the summary whenever it stops being offered.
+
+Group labels now name the element always, and the mode when it narrows
+something — `Beam — As required`, `Beam — As checked`, `Column — As checked`.
+Columns are scoped by element but not by mode, because `col-*` reports adapt
+instead of splitting (`col-dc` reads `ρ 2.1%` when solving, `D/C 0.62 · ρ 2.1%`
+when checking); their label picks up the mode only when the model has exactly
+one, since naming one mode while both are present would be false.
+
+DESIGN SCHEDULE keeps both — it is an inventory with a Class column — and gains
+an All / Concrete / Steel filter plus a **Status column** printing the same
+words as the canvas.
+
+### Detailing reaches the result
+
+`MemberDesignResult.detailing: DetailingCheck[]` is new, populated by the RC
+strategy. `checkArrangement`, `checkTransverse` and `checkColumnArrangement`
+were called **only from the flyout**, so the canvas could not know a beam's bars
+did not fit. The flyout still computes its own copy live — the design pass is
+deferred and detailing must answer at typing speed.
+
+**SCWB became a detailing verdict** rather than a fake infinite D/C. The
+post-pass now records `scwbPass` on every column of a checked joint, both
+materials (`SteelDesignResult.scwbPass` is new); it used to set
+`worstFlexureDC = Infinity` on failure, which made a correctly sized column
+report as overstressed.
+
+### Validation
+
+`design_labels_smoke.mts` — 123 assertions over a ten-case matrix reaching all
+four member statuses: totality, refusal visibility, the steel colour band sweep,
+cause correctness per channel, the strength-vs-detailing split (both alone and
+together), report material scoping, report availability across single-mode,
+both-mode and steel-only models, mixed-model separability, and a
+`react-dom/server` render of the schedule. **All 24 suites pass**; lint at the
+recorded 6e/33w baseline; every capacity anchor unchanged.
+
+---
+
 ## [1.2.0] — 2026-08-08
 
 **The Design tab loses its Run button and its floating criteria panel.** Two changes that turn out to be the same change: design criteria only mean something once you know the material they apply to, and a design result is only trustworthy if it is current. Both are now structural rather than remembered.

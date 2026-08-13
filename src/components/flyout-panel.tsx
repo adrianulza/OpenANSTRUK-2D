@@ -24,6 +24,7 @@ import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
 import { DesignScheduleToolContent } from "@/tabs/design/tools/design-schedule-tool"
+import { DesignReportToolContent } from "@/tabs/design/tools/design-report-tool"
 import { SectionDesignToolContent } from "@/tabs/design/tools/rc/rc-design-tool"
 import { SteelDesignToolContent } from "@/tabs/design/tools/steel/steel-design-tool"
 import { RcPreferencesPane, rcFrameShortLabel } from "@/tabs/design/tools/rc/preferences"
@@ -33,7 +34,10 @@ import { ContextStrip } from "@/tabs/design/tools/shared/context-strip"
 import { rcSectionIcon, steelSectionIcon } from "./tool-sidebar"
 import { RC_CODE_LABELS } from "@/lib/design/rc/codes"
 import { STEEL_CODE_LABELS } from "@/lib/design/steel/criteria"
-import { materialOf } from "@/lib/design/core/designability"
+import {
+  assignedSectionIds, isSectionDesignable, materialOf,
+} from "@/lib/design/core/designability"
+import { sectionAutoLabel } from "@/lib/design/core/element-type"
 import { asRcInput } from "@/lib/design/core/section-input"
 import type { DesignRunResult } from "@/lib/design/core/types"
 import type { DesignCriteria } from "@/lib/design/core/criteria"
@@ -258,7 +262,8 @@ export function FlyoutPanel({
 }: FlyoutPanelProps) {
   if (!activeTool) return null
 
-  const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION" || activeTool === "DESIGN_SCHEDULE"
+  const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
+    || activeTool === "DESIGN_SCHEDULE" || activeTool === "DESIGN_REPORT"
   // Both design tools now hold two panes each, so both take the wider column —
   // the preferences pane used to be 215px on its own and reflows fine.
   const medium = activeTool === "SECTION_DESIGN" || activeTool === "STEEL_DESIGN"
@@ -397,6 +402,12 @@ export function FlyoutPanel({
  * way (keep the selection only if it belongs to this material, else fall back
  * to the first that does), and the strip has to agree with them or it promises
  * a section the user never arrives at.
+ *
+ * Which is why the assignment filter belongs here too: the panes list only
+ * sections a member actually carries, and RC additionally lists only designable
+ * ones (steel keeps its non-designable sections visible, with a note saying
+ * why). Mirror both rules or the strip names a section that is not in the
+ * picker below it.
  */
 function resolveSectionFor(
   material: "rc" | "steel",
@@ -404,10 +415,14 @@ function resolveSectionFor(
   selectedId: SectionId | null,
 ): SectionId | null {
   const sections = model?.sections ?? {}
-  if (selectedId && sections[selectedId] && materialOf(sections[selectedId]) === material) {
-    return selectedId
-  }
-  return Object.keys(sections).find((s) => materialOf(sections[s]) === material) ?? null
+  const assigned = assignedSectionIds(model)
+  const offered = (id: SectionId) =>
+    sections[id] !== undefined &&
+    materialOf(sections[id]) === material &&
+    assigned.has(id) &&
+    (material === "steel" || isSectionDesignable(sections[id]))
+  if (selectedId && offered(selectedId)) return selectedId
+  return Object.keys(sections).find(offered) ?? null
 }
 
 /** Context-strip summary of the RC SECTION pane, shown while PREFERENCES is open. */
@@ -419,9 +434,16 @@ function rcSectionSummary(
   const id = resolveSectionFor("rc", model, selectedId)
   if (!id) return ["no concrete section"]
   const input = asRcInput(inputs[id], id)
+  // `auto` is the default, so reading it as "Beam" would mislabel every
+  // untouched column. Orientation only — same rule the MATERIAL editor prints,
+  // which is all that is knowable without consulting the run.
+  const type =
+    input.elementType === "column" ? "Column"
+      : input.elementType === "beam" ? "Beam"
+        : sectionAutoLabel(model, id)
   return [
     model!.sections[id].name,
-    input.elementType === "column" ? "Column" : "Beam",
+    type,
     input.mode === "checked" ? "as checked" : "as required",
   ]
 }
@@ -446,6 +468,7 @@ function getToolTitle(tool: ToolType, activeTab?: TabType): string {
   if (tool === "SECTION_DESIGN") return "REINFORCED CONCRETE"
   if (tool === "STEEL_DESIGN") return "STEEL"
   if (tool === "DESIGN_SCHEDULE") return "DESIGN SCHEDULE"
+  if (tool === "DESIGN_REPORT") return "DESIGN REPORT"
   return tool.replace(/_/g, " ")
 }
 
@@ -636,15 +659,21 @@ function FlyoutContent({
           </div>
         ) : null
       case "DESIGN_SCHEDULE":
-        return designCriteria && onPatchSectionDesignInput ? (
+        return onPatchSectionDesignInput ? (
           <DesignScheduleToolContent
             model={model}
             inputs={sectionDesignInputs ?? {}}
             onPatchInput={onPatchSectionDesignInput}
-            criteria={designCriteria}
-            designResult={designResult}
           />
         ) : null
+      case "DESIGN_REPORT":
+        return (
+          <DesignReportToolContent
+            model={model}
+            inputs={sectionDesignInputs ?? {}}
+            designResult={designResult}
+          />
+        )
       default:
         return null
     }
@@ -715,6 +744,16 @@ function FlyoutContent({
             onAddSection={onAddSection}
             onDeleteSection={onDeleteSection}
             unitSettings={unitSettings}
+            elementType={
+              activeSection
+                ? asRcInput(sectionDesignInputs?.[activeSection], activeSection).elementType
+                : "auto"
+            }
+            onElementTypeChange={
+              onPatchSectionDesignInput
+                ? (id, et) => onPatchSectionDesignInput(id, { elementType: et })
+                : undefined
+            }
           />
         )
       default:

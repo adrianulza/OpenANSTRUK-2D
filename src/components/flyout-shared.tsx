@@ -231,7 +231,7 @@ export function SectionSelect({
     <div className="space-y-2">
       <Label className="text-xs text-gray-600">{label}</Label>
       <Select value={value} onValueChange={(v) => onChange?.(v)}>
-        <SelectTrigger className="h-8 text-xs">
+        <SelectTrigger className="h-8 w-full text-xs">
           <SelectValue placeholder="Select section" />
         </SelectTrigger>
         <SelectContent>

@@ -7,7 +7,7 @@
  * is a data edit (flip `implemented`) plus its strategy. Pure domain module.
  */
 
-import type { Section, SectionShape } from "@/lib/model"
+import type { Section, SectionId, SectionShape, StructureModel } from "@/lib/model"
 import type { DesignMaterial } from "./types"
 
 export interface DesignSupportEntry {
@@ -48,6 +48,23 @@ export const DESIGN_SUPPORT: DesignSupportEntry[] = [
   // geometric moment resolves into two principal components.
   { material: "steel", kind: "angle", beam: true, column: true, implemented: true },
 ]
+
+/**
+ * Section ids carried by at least one member.
+ *
+ * The Design tab designs **members**, so a section sitting unused in the
+ * catalogue has nothing to check. Listing it only invites the user to select it
+ * and land on a pane that can do nothing but explain why it is empty — which is
+ * how the design flyouts came to carry more prose than content. Both material
+ * tools filter their picker through this, so an empty pane is unreachable
+ * instead of apologised for.
+ */
+export function assignedSectionIds(model: StructureModel | undefined): Set<SectionId> {
+  const out = new Set<SectionId>()
+  if (!model) return out
+  for (const m of Object.values(model.members)) out.add(m.section)
+  return out
+}
 
 /** Material family a section belongs to, or null if it can't be designed at all. */
 export function materialOf(s: Section | undefined): DesignMaterial | null {

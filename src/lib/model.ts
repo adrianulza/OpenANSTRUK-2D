@@ -219,7 +219,7 @@ import { buildParametricSection } from "@/lib/sections/compute"
 export const defaultSections: Record<SectionId, Section> = {
   // RC 300x500 — parametric concrete, values match SAP2000 exactly (verified).
   rc300x500: buildParametricSection({
-    id: "rc300x500", name: "Beam 300x500",
+    id: "rc300x500", name: "B1-300x500",
     materialClass: "concrete", shape: "rect",
     dims: { b: 300, h: 500 }, strength: { fc: 25 },
   }),

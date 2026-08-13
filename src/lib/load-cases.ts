@@ -1,3 +1,7 @@
+// Type-only, so this stays a compile-time reference and creates no runtime
+// cycle (model.ts imports LoadCaseId from here).
+import type { StructureModel } from "./model"
+
 export type LoadCaseId = string
 export type LoadComboId = string
 
@@ -94,6 +98,82 @@ export function DEFAULT_COMBINATIONS(): Record<LoadComboId, LoadCombination> {
       source: "custom",
       enabled: true,
     },
+  }
+}
+
+/**
+ * A load referencing a case that is not in the case set contributes NOTHING to
+ * analysis. `solveCase` slices by `load.loadCaseId === caseId` over the cases
+ * that exist, so an unmatched load is never assembled — while still drawing on
+ * the canvas, since the default view filter shows every load. Visible input,
+ * silently absent from the results.
+ *
+ * That happens because the saved file carries `model` alone: load cases live in
+ * App state and are not serialized. Within one session the case set survives a
+ * file load, so the references resolve by luck; open the same file in a fresh
+ * session and every custom case is gone.
+ *
+ * Two kinds of orphan, and they deserve different answers:
+ *
+ *  - **No case id at all** — a file predating load cases, when there was exactly
+ *    one implicit case. Adopting those loads into the default case is safe,
+ *    because that is precisely what they meant.
+ *
+ *  - **An id naming a case the file did not carry.** The original `kind` is
+ *    unknowable, and guessing it is worse than not analysing: calling a Live
+ *    case Dead applies 1.2 where the code wants 1.6 and returns a plausible
+ *    wrong number. So the case is recreated **disabled**, under a name that
+ *    says what it is. The loads stay out of the results — as they already were
+ *    — but the reason is now on screen and one click from being fixed.
+ *
+ * Pure: returns new objects and never mutates its arguments.
+ */
+export interface LoadCaseReconciliation {
+  /** Input model, or a copy with adopted loads rewritten to `fallbackId`. */
+  model: StructureModel
+  cases: Record<LoadCaseId, LoadCase>
+  /** Ids referenced by loads but missing from `cases` — recreated, disabled. */
+  recovered: LoadCaseId[]
+  /** How many loads carried no case id and were adopted into `fallbackId`. */
+  adopted: number
+}
+
+export function reconcileLoadCases(
+  model: StructureModel,
+  cases: Record<LoadCaseId, LoadCase>,
+  fallbackId: LoadCaseId = "dead",
+): LoadCaseReconciliation {
+  const nextCases = { ...cases }
+  const recovered: LoadCaseId[] = []
+  const loads = { ...model.loads }
+  let adopted = 0
+  let rewrote = false
+
+  for (const [id, load] of Object.entries(model.loads)) {
+    let caseId = load.loadCaseId
+    if (!caseId) {
+      caseId = fallbackId
+      loads[id] = { ...load, loadCaseId: caseId }
+      adopted += 1
+      rewrote = true
+    }
+    // Falls through for an adopted load too, so a missing fallback case is
+    // itself recovered rather than silently re-orphaning everything.
+    if (nextCases[caseId] || recovered.includes(caseId)) continue
+    recovered.push(caseId)
+    nextCases[caseId] = {
+      id: caseId,
+      name: `Recovered (${caseId})`,
+      kind: "Dead",
+      enabled: false,
+    }
+  }
+
+  return {
+    model: rewrote ? { ...model, loads } : model,
+    cases: nextCases,
+    recovered,
+    adopted,
   }
 }
 

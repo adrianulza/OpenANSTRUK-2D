@@ -818,3 +818,54 @@ export function columnConfinement(
   }
   return checks
 }
+
+/**
+ * Confinement expressed as tie legs — the number a detailer actually acts on.
+ *
+ * `Ash/s ≥ ratio·bc` (18.7.5.4) fixes an AREA per unit length; the legs follow
+ * from the tie bar chosen and its spacing. Reporting the area alone leaves the
+ * reader to do that division, and the division is where "this is not buildable"
+ * shows up: 18.7.5.2 supports every corner bar and alternate bars with a hoop
+ * corner or crosstie, so a leg needs a longitudinal bar to hold. Demand more
+ * legs than the grid has bars and the requirement cannot be detailed at this bar
+ * count — a DETAILING failure (add bars, or grow the section), not a strength
+ * one, which is why it never touches the D/C.
+ *
+ * SNI/318-14 two-equation Ash; the ACI module's three-equation form makes this
+ * its own copy rather than a shared helper. Rectilinear ties only — a spiral is
+ * volumetric (ρs) and has no leg count.
+ */
+export function requiredConfinementLegs(
+  geom: ColumnGeom,
+  cover: number,
+  arr: ColumnArrangement,
+  fc: number,
+  cr: RcCriteria,
+  legsProvided: number,
+): { required: number; provided: number; max: number; buildable: boolean } | undefined {
+  if (isCircle(arr)) return undefined
+  const s = arr.tie.spacing
+  const aTie = barArea(arr.tie.size)
+  if (s <= 0 || aTie <= 0) return undefined
+
+  const Ag = geomAg(geom)
+  const Ach = geomAch(geom, cover)
+  const bcMax = geomLeastDim(geom) - 2 * cover
+  const ratio = Math.max(0.3 * (Ag / Ach - 1) * (fc / cr.fyt), 0.09 * (fc / cr.fyt))
+  const AshReq = ratio * bcMax * s // mm² of tie steel crossing one spacing
+  const required = Math.max(2, Math.ceil(AshReq / aTie - 1e-9))
+
+  // Legs the longitudinal grid can engage across the confined direction.
+  const max = Math.max(2, Math.min(arr.nx, arr.ny))
+  return { required, provided: legsProvided, max, buildable: required <= max }
+}
+
+/**
+ * ρ at the tension-controlled limit — the most steel a beam section may carry
+ * and still be ductile. `c/d = εcu/(εcu + εt)` with SNI's fixed εt = 0.005
+ * (the ACI module ramps it with fy, which is exactly why this is duplicated).
+ */
+export function rhoTensionControlled(fc: number, cr: RcCriteria): number {
+  const cOverD = EPS_CU / (EPS_CU + EPS_T_MIN)
+  return (0.85 * beta1(fc) * (fc / cr.fy)) * cOverD
+}

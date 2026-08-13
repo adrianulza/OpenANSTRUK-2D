@@ -100,7 +100,10 @@ export function defaultRcSectionInput(sectionId: SectionId): RcSectionInput {
   return {
     material: "rc",
     sectionId,
-    elementType: "beam",
+    // `auto` — resolved per member from orientation, promoted to column by the
+    // ACI axial gate. It used to default to "beam", so a section named
+    // "Column 500×500" was designed as a beam until the user noticed.
+    elementType: "auto",
     mode: "required",
     cover: 40,
     dPrime: 50,

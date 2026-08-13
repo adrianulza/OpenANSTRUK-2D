@@ -75,6 +75,18 @@ export interface ZoneFlexureResult {
    *  steel; checked mode = provided steel. Top uses dNeg, bottom uses dPos. */
   rhoTop?: number
   rhoBottom?: number
+  /**
+   * The longitudinal bar area at each face, mm² — **the actual bars**, whichever
+   * mode produced them: the area the zone NEEDS in "required", the area the
+   * user's arrangement PROVIDES in "checked".
+   *
+   * One field for both modes on purpose. The blended reports print what the
+   * steel *is*, so a renderer that had to ask `mode` first would be re-deriving
+   * a distinction the engine has already resolved. `AsReqTop/Bottom` above stay
+   * as the required-mode-only outputs the capacity path consumes.
+   */
+  AsTop?: number
+  AsBottom?: number
   /** Governing D/C for colouring. Required mode: 0 when adequate, Infinity when not. */
   dc: number
   /** Required mode: section can physically carry Mu (incl. doubly-reinforced path). */
@@ -96,6 +108,9 @@ export interface ZoneShearResult {
   // "As checked" mode:
   phiVn?: number // kN
   dc?: number
+  /** Transverse bar area, mm²/m — required in "required" mode, provided in
+   *  "checked". Same both-modes contract as `AsTop`/`AsBottom` above. */
+  AvS?: number
   /** Overall pass (checked: Vdesign ≤ φVn; both modes: false when cross-section fails). */
   pass: boolean
   crossSectionOk: boolean
@@ -110,6 +125,38 @@ export type MemberDesignStatus =
   | "not-implemented"
   | "axial-exceeded"
   | "no-result"
+
+// ── Detailing ────────────────────────────────────────────────────────────────
+
+/**
+ * Which family of detailing rule a verdict belongs to. This is the vocabulary
+ * the canvas prints on a member's failure label, so it is deliberately short
+ * and material-spanning: RC "Confinement" and steel "Ductility" are different
+ * clauses answering the same question — can this section actually be built and
+ * still behave the way the capacity equations assumed?
+ */
+export type DetailingGroup =
+  | "Bar Detailing"     // RC longitudinal: fit, clear + crack-control spacing, cover
+  | "Stirrup Detailing" // RC transverse: spacing caps, Av,min, hoop size
+  | "Section Limits"    // RC SMF beam dimensional limits (18.6.2.1)
+  | "Confinement"       // RC column Ash / ties / spiral
+  | "Ductility"         // Steel AISC 341 Table D1.1 width-to-thickness
+  | "Bracing"           // Steel AISC 341 D1.2 (advisory — Lb ≡ L in a 2D model)
+  | "SCWB"              // Strong-column-weak-beam, either material
+
+/**
+ * One detailing verdict, carried on the member result so the canvas and the
+ * schedule can state WHY a member is flagged without recomputing any clause.
+ * Structurally a `ArrangementCheck` (rc/shared/types) plus its group.
+ */
+export interface DetailingCheck {
+  group: DetailingGroup
+  status: "pass" | "warn" | "fail"
+  text: string
+  clause: string
+  /** Where it was evaluated — a zone name, or absent for member-wide checks. */
+  where?: string
+}
 
 export interface ColumnShearResult {
   /** Envelope factored shear |Vu|, kN. */
@@ -128,6 +175,8 @@ export interface ColumnShearResult {
   // "As checked" mode:
   phiVn?: number // kN
   dc?: number
+  /** Transverse bar area, mm²/m — required or provided, per mode. */
+  AvS?: number
   /** Governing hoop/tie spacing cap (mm) + pass for the provided tie. */
   spacingMax?: number
   spacingPass?: boolean
@@ -143,6 +192,8 @@ export interface ColumnDesignResult {
   Ast: number
   /** "As required": ρg needed to satisfy the worst demand; undefined in checked mode. */
   rhoGRequired?: number
+  /** Code ceiling on ρg (10.6.1.1, 8 %) — the denominator of `rhoUtil`. */
+  rhoGMax?: number
   /** Worst radial interaction D/C across combos × candidate stations. */
   worstDC: number
   governing?: { combo: LoadComboId; Pu: number; Mu: number }
@@ -154,9 +205,32 @@ export interface ColumnDesignResult {
   shear?: ColumnShearResult
   /** Transverse confinement (SMF Ash / IMF ties / OMF ties) detailing verdicts. */
   confinement?: ArrangementCheck[]
+  /**
+   * Confinement in the one number a detailer acts on: how many tie legs the Ash
+   * equation demands, against how many the bar grid can actually engage.
+   *
+   * `max` is not a preference — 18.7.5.2 supports every corner bar and alternate
+   * bars with a hoop corner or crosstie, so a leg needs a longitudinal bar to
+   * hold. Beyond that the requirement is unbuildable at this bar count, which is
+   * a *detailing* failure (resize or add bars), not a strength one.
+   */
+  confinementLegs?: {
+    required: number
+    provided: number
+    /** Legs the longitudinal grid can engage across the confined direction. */
+    max: number
+    buildable: boolean
+  }
   /** Slenderness: governing non-sway magnifier δns and klu/r (in-plane). */
   deltaNs?: number
   slenderness?: number
+  /**
+   * Slenderness verdict. False only when `Pu ≥ 0.75·Pc` — the 6.6.4.5.2 denominator
+   * goes non-positive and δns runs away, i.e. the member buckles before it yields.
+   * A short column (6.2.5 gate, no magnification) and a slender-but-stable one
+   * both read as satisfied; the amplified moments are already inside `worstDC`.
+   */
+  slendernessOk?: boolean
   /** SMF strong-column-weak-beam: false when a joint this column frames into fails. */
   scwbPass?: boolean
   /** Column nominal flexural strength at the design axial (kN·m) — feeds SCWB ΣMnc. */
@@ -261,6 +335,13 @@ export interface SteelDesignResult {
    * requirement applies and the member is governed by AISC 360 alone.
    */
   seismic?: SeismicChecks
+  /**
+   * AISC 341 E3.4a strong-column-weak-beam: false when a joint this column
+   * frames into fails. Set by the run-design post-pass, mirroring the RC
+   * `ColumnDesignResult.scwbPass` — the member result must be self-contained,
+   * because the canvas verdict is a pure function of it.
+   */
+  scwbPass?: boolean
 }
 
 export interface MemberDesignResult {
@@ -286,6 +367,15 @@ export interface MemberDesignResult {
   zones?: Record<ZoneId, { flexure: ZoneFlexureResult; shear: ZoneShearResult }>
   /** SMF beam dimensional-limit checks (18.6.2.1); [] for OMF/IMF. */
   dimensionChecks?: ArrangementCheck[]
+  /**
+   * Every detailing verdict for this member, grouped. Populated by the strategy
+   * so the canvas never has to recompute a clause to say "Insufficient
+   * Detailing" — and so a rule that fails can name itself.
+   *
+   * RC bar/stirrup checks exist only in "checked" mode: "required" mode has no
+   * user-defined arrangement to check. Column confinement runs in both.
+   */
+  detailing?: DetailingCheck[]
   /** Column interaction result (when kind === "column"). */
   column?: ColumnDesignResult
   /** Steel member result (when material === "steel"). */
@@ -293,6 +383,17 @@ export interface MemberDesignResult {
   /** Worst flexural D/C across zones (beam) or interaction D/C (column) — drives
    *  member colour via designColorForDC. */
   worstFlexureDC?: number
+  /**
+   * ρ used / ρ max — the one utilisation that exists in BOTH modes.
+   *
+   * "As required" has no capacity D/C: it sizes the steel to exactly meet the
+   * demand, so any ratio would read 1.00 on every adequate member and say
+   * nothing. How close the needed steel is to the code's maximum ratio does
+   * answer the question the D/C is asked for — is this section comfortable, or
+   * nearly out of room? Beams take the worst face across zones against the
+   * tension-controlled limit; columns take ρg against 10.6.1.1's 8 %.
+   */
+  rhoUtil?: number
   /** All zones pass shear (incl. cross-section limit + SMF spacing). */
   worstShearPass?: boolean
   /** Beam nominal flexural strength at the joint (kN·m) — feeds SCWB ΣMnb. */
@@ -342,16 +443,19 @@ export interface DesignRunResult {
  */
 export type DesignReport =
   | "default"
-  | "req-long" // As required, top/bottom per zone (mm²)
-  | "req-rho" // ρ required, top/bottom per zone (%)
-  | "req-shear" // Av/s required per zone (mm²/m)
-  | "chk-long-dc" // longitudinal D/C, top/bottom per zone
-  | "chk-rho" // ρ provided, top/bottom per zone (%)
-  | "chk-shear-dc" // shear D/C per zone
-  | "col-dc" // column interaction D/C (per member)
-  | "col-shear" // column capacity-design shear D/C (or Ve / suggested hoop)
-  | "col-confine" // column transverse confinement pass/fail (Ash / ties)
-  | "col-slender" // column non-sway slenderness δns + klu/r
+  // ── RC, blended ────────────────────────────────────────────────────────────
+  // One report per QUANTITY, not per element × mode. A beam and a column both
+  // have longitudinal bars; "as required" and "as checked" both end in an area.
+  // Splitting on those axes made four names for one question and left half the
+  // menu painting nothing, so each of these renders on every RC member and
+  // reads the mode-independent field (`AsTop`/`AsBottom`, `AvS`, `rho*`).
+  | "rc-long" // longitudinal bar area, per face per zone (mm²) / column Ast
+  | "rc-rho" // reinforcement ratio (%) — per face per zone / column ρg
+  | "rc-trans" // transverse bar area (mm²/m) — stirrups / ties
+  // Column-only. Kept out of the blend because they have no beam meaning at
+  // all, and scoped per item so they vanish on a model with no columns.
+  | "col-confine" // confinement as TIE LEGS: required vs what the grid engages
+  | "col-slender" // slenderness verdict (satisfied / buckling) + δns
   | "col-scwb" // strong-column-weak-beam ratio at joints (node badges)
   // Steel (AISC 360-16). Scoped to steel members exactly as req-*/chk-* are
   // scoped by RC mode: an RC member renders nothing under a stl-* report.
@@ -363,38 +467,54 @@ export type DesignReport =
   | "stl-ductility" // AISC 341 Table D1.1 ductility (blank for OMF/RMB)
   | "stl-scwb" // AISC 341 E3.4a moment ratio at joints (node badges, SMF only)
 
-export const DESIGN_REPORTS: {
-  group: "General" | "As required" | "As checked" | "Columns" | "Steel"
-  items: { id: DesignReport; label: string }[]
-}[] = [
-  { group: "General", items: [{ id: "default", label: "Design summary (D/C)" }] },
+/**
+ * One offered report.
+ *
+ * `scope` lives on the ITEM, not the group. It used to sit on the group, which
+ * forced the catalogue to mirror its own scoping: beam-required, beam-checked
+ * and column became three menu sections for what is really three quantities
+ * asked four ways. Per-item scope lets one blended RC section list every RC
+ * report and drop only the entries that genuinely cannot render — the
+ * column-only ones, on a model with no columns.
+ *
+ * Scope is not decoration: choosing a report no member matches produces a blank
+ * canvas, which reads as a broken tool rather than as an empty set.
+ */
+export interface DesignReportItem {
+  id: DesignReport
+  label: string
+  /** Which members render under it. Absent field ⇒ that axis is unrestricted. */
+  scope?: { kind?: "beam" | "column"; mode?: DesignMode }
+}
+
+export interface DesignReportGroup {
+  group: "General" | "Concrete" | "Steel"
+  /** Which material's members this group describes; `both` = the summary. */
+  material: DesignMaterial | "both"
+  items: DesignReportItem[]
+}
+
+export const DESIGN_REPORTS: DesignReportGroup[] = [
+  { group: "General", material: "both", items: [{ id: "default", label: "Design Summary" }] },
   {
-    group: "As required",
+    material: "rc",
+    group: "Concrete",
     items: [
-      { id: "req-long", label: "Longitudinal As (top/bottom)" },
-      { id: "req-rho", label: "Reinforcement ratio ρ" },
-      { id: "req-shear", label: "Shear Av/s" },
+      // Blended: beam and column, required and checked, one entry each. What a
+      // reader wants from a bar report is the bar — the area that is there, or
+      // the area that must be — not a ratio that only one mode can produce.
+      { id: "rc-long", label: "Longitudinal bar" },
+      { id: "rc-rho", label: "Reinforcement ratio" },
+      { id: "rc-trans", label: "Transverse bar" },
+      // Column-only: no beam analogue exists, so these are scoped rather than
+      // blended, and disappear entirely on a beam-only model.
+      { id: "col-confine", label: "Confinement (tie legs)", scope: { kind: "column" } },
+      { id: "col-slender", label: "Slenderness", scope: { kind: "column" } },
+      { id: "col-scwb", label: "Strong-column-weak-beam", scope: { kind: "column" } },
     ],
   },
   {
-    group: "As checked",
-    items: [
-      { id: "chk-long-dc", label: "Longitudinal D/C (top/bottom)" },
-      { id: "chk-rho", label: "Reinforcement ratio ρ" },
-      { id: "chk-shear-dc", label: "Shear D/C" },
-    ],
-  },
-  {
-    group: "Columns",
-    items: [
-      { id: "col-dc", label: "Interaction D/C" },
-      { id: "col-shear", label: "Shear D/C (Ve)" },
-      { id: "col-confine", label: "Confinement (Ash / ties)" },
-      { id: "col-slender", label: "Slenderness δns" },
-      { id: "col-scwb", label: "Strong-column-weak-beam" },
-    ],
-  },
-  {
+    material: "steel",
     group: "Steel",
     items: [
       { id: "stl-dc", label: "Combined D/C + equation" },
@@ -407,3 +527,53 @@ export const DESIGN_REPORTS: {
     ],
   },
 ]
+
+/** One group as offered to the user: the catalogue entry, items already filtered. */
+export interface AvailableReportGroup extends DesignReportGroup {
+  /** What the optgroup shows. */
+  label: string
+}
+
+/**
+ * The reports worth offering for THIS model, filtered per ITEM.
+ *
+ * Choosing a report no member matches paints a blank canvas, which reads as a
+ * bug rather than as an empty set — so an entry appears only when some designed
+ * member would actually render under it. With per-item scope this is now the
+ * only filtering rule; the mode-narrowed group labels ("Beam — As checked")
+ * are gone with the groups that needed them, because a blended report renders
+ * in every mode and has nothing to narrow.
+ */
+export function availableDesignReports(
+  members: Record<MemberId, MemberDesignResult>,
+  material: DesignMaterial | null,
+): AvailableReportGroup[] {
+  const designed = Object.values(members).filter((r) => r.status === "designed")
+
+  const matches = (
+    g: DesignReportGroup,
+    item: DesignReportItem,
+    r: MemberDesignResult,
+  ): boolean => {
+    if (g.material !== "both" && r.material !== g.material) return false
+    if (item.scope?.kind && r.kind !== item.scope.kind) return false
+    if (item.scope?.mode && r.mode !== item.scope.mode) return false
+    return true
+  }
+
+  const out: AvailableReportGroup[] = []
+  for (const g of DESIGN_REPORTS) {
+    // Material view wins over availability: an RC report on a steel view would
+    // draw nothing even if RC members exist.
+    if (material !== null && g.material !== "both" && g.material !== material) continue
+    if (g.group === "General") {
+      out.push({ ...g, label: g.group })
+      continue
+    }
+    const items = g.items.filter((it) => designed.some((r) => matches(g, it, r)))
+    if (items.length === 0) continue
+    out.push({ ...g, items, label: g.group })
+  }
+  return out
+}
+
