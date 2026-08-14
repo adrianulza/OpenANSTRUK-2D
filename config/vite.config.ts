@@ -11,7 +11,10 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, _res, next) => {
           if (req.url === '/') req.url = '/html/index.html'
+          // `/app` is the original URL and is linked from published posts — it stays.
+          // `/2d` is the new canonical path, added alongside it.
           if (req.url === '/app' || req.url === '/app/') req.url = '/html/app.html'
+          if (req.url === '/2d' || req.url === '/2d/') req.url = '/html/app.html'
           next()
         })
       },
@@ -23,8 +26,10 @@ export default defineConfig({
     },
   },
   resolve: {
+    // `@` is the 2D app. The 3D app is a separate self-contained project under
+    // src/3d with its own vite config, where `@` means its own source root.
     alias: {
-      '@': path.resolve(__dirname, '../src'),
+      '@': path.resolve(__dirname, '../src/2d'),
     },
   },
   build: {

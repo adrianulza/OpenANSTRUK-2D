@@ -57,7 +57,7 @@ and most of the tee/angle work is a consequence of that:
 ## S2. Module map & data flow
 
 ```
-src/lib/design/steel/
+src/2d/lib/design/steel/
 ├── criteria.ts       SteelCriteria { code, Fy, Fu, E, phiB, phiV, phiC }
 │                     + defaultSteelCriteria
 ├── types.ts          (no per-section input — documents why)
@@ -78,12 +78,12 @@ src/lib/design/steel/
 │                     the strategy AND the report decks
 └── strategy.ts       designMemberSteel() — station sweep, envelope, result
 
-src/lib/sections/shapes/
+src/2d/lib/sections/shapes/
 └── principal.ts      Exact rectangle-composition geometry: area/second/THIRD
                       moments, principal axes, βw, torsionStrip. Shared by
                       angle.ts, tee.ts and iwf.ts.
 
-src/tabs/design/tools/
+src/2d/tabs/design/tools/
 ├── chart-text.tsx    SVG label typography (FONT, SubText) — all four decks
 ├── chart-utils.ts    Deck/chart geometry, colours, fmt0/fmt, niceStep/ticks
 └── steel/            STEEL flyout — see §S11.1

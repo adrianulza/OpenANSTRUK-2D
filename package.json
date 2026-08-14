@@ -7,7 +7,7 @@
   "//": "Scripts pass explicit -c/--b flags so config files can live in config/ instead of root.",
   "scripts": {
     "dev": "vite -c config/vite.config.ts",
-    "build": "tsc -b config/tsconfig.json && vite -c config/vite.config.ts build",
+    "build": "tsc -b config/tsconfig.json && vite -c config/vite.config.ts build && node config/check-dist.mjs",
     "preview": "vite -c config/vite.config.ts preview",
     "lint": "eslint -c config/eslint.config.js .",
     "format": "prettier --write .",

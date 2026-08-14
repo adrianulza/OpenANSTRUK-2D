@@ -2,7 +2,7 @@
 
 This document narrates **what the Design tab actually does** — the engineering
 logic, the governing code clauses, and the assumptions behind every number it
-produces. It is the authoritative reference for the `src/lib/design/` domain
+produces. It is the authoritative reference for the `src/2d/lib/design/` domain
 modules.
 
 The engine is split along two axes: a **material-agnostic core** and **per-
@@ -32,7 +32,7 @@ by `section.materialClass`.
 
 ## 1. Design philosophy
 
-The design engine is a **pure-domain layer** (no React) under `src/lib/design/`.
+The design engine is a **pure-domain layer** (no React) under `src/2d/lib/design/`.
 It consumes the analysis results — the same DSM solver that drives the Analyze
 tab — plus a small set of user-supplied *design criteria* and *per-section
 inputs*, and produces a `MemberDesignResult` per member.
@@ -60,7 +60,7 @@ lists the steel cases).
 ## 2. Module map & data flow
 
 ```
-src/lib/design/
+src/2d/lib/design/
 ├── core/                       material-agnostic
 │   ├── types.ts                DesignMaterial, FrameType, ElementType, ZoneId,
 │   │                           result types (ZoneFlexureResult, ZoneShearResult,
@@ -535,7 +535,7 @@ rewriting the orchestrator. Extension guidance is split by what you are adding:
 Steel is the worked example — it went from stub to implemented without the
 orchestrator changing shape. The pattern:
 
-1. **Add the strategy folder** `src/lib/design/<material>/` with its own
+1. **Add the strategy folder** `src/2d/lib/design/<material>/` with its own
    `criteria.ts`, `types.ts` and a `designMember<Material>()` entry point taking
    the same input envelope every strategy receives (`memberId`, `section`, `L`,
    `di`, `cr`, `efByCombo`, `raw`, `Pu`, `isVertical`).

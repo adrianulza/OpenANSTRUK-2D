@@ -19,17 +19,18 @@
     "incremental": true,
     "paths": {
       "@/*": [
-        "../src/*"
+        "../src/2d/*"
       ]
     }
   },
   "include": [
-    "../src/**/*.ts",
-    "../src/**/*.tsx",
+    "../src/2d/**/*.ts",
+    "../src/2d/**/*.tsx",
     "../config/vite.config.ts",
     "../config/eslint.config.js"
   ],
   "exclude": [
-    "../node_modules"
+    "../node_modules",
+    "../src/3d"
   ]
 }
