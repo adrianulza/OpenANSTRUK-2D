@@ -1,17 +1,20 @@
-// VS Code shim — real config lives in config/tsconfig.json.
-// This file exists only because VS Code's TS server requires tsconfig.json at the workspace root.
+// Root config. VS Code's TS server requires a tsconfig.json at the workspace root,
+// but this file is NOT only a shim: `validation/run_all.mjs` and every SAP-bridge
+// script pass it to `tsx --tsconfig`, because paths resolve relative to the file
+// that declares them and config/tsconfig.json's would resolve from config/.
+// Its `@/*` must stay in lockstep with config/tsconfig.json and config/vite.config.ts.
 {
   "extends": "./config/tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/2d/*"]
     }
   },
   "include": [
-    "./src/**/*.ts",
-    "./src/**/*.tsx",
+    "./src/2d/**/*.ts",
+    "./src/2d/**/*.tsx",
     "./config/vite.config.ts",
     "./config/eslint.config.js"
   ],
-  "exclude": ["./node_modules"]
+  "exclude": ["./node_modules", "./src/3d"]
 }

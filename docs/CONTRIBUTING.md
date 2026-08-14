@@ -100,7 +100,7 @@ Please do not expect immediate merges. The maintainer will review your PR, may r
 - TypeScript strict mode. No `any`.
 - Prettier config is in `package.json` (semi: false, singleQuote: true, printWidth: 100).
 - Run `npm run format` before committing.
-- Path alias `@/*` maps to `src/`.
+- Path alias `@/*` maps to `src/2d/`.
 
 ---
 

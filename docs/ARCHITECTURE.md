@@ -25,13 +25,13 @@ OpenAnstruk-2D/
 ├── README.md
 ├── html/                              # Static HTML entry points
 │   ├── index.html                     # Landing page (standalone, no Vite)
-│   └── app.html                       # React app shell (loads /src/main.tsx via Vite)
+│   └── app.html                       # React app shell (loads /src/2d/main.tsx via Vite)
 ├── public/                            # Static assets copied as-is to dist/
 │   ├── demo/                          # Demo screenshots used on landing page
 │   ├── _headers                       # Netlify/CDN response headers
 │   ├── _redirects                     # Netlify SPA redirect rules
 │   └── OpenAnstruk-*.svg              # Brand logo/label SVGs
-├── src/                               # All React/TS source
+├── src/2d/                             # All React/TS source
 │   ├── App.tsx                        # Root component — top-level state, click handlers, modal wiring
 │   ├── main.tsx                       # Vite entry, mounts <App />
 │   ├── globals.css                    # Tailwind v4 + @theme design tokens
@@ -121,7 +121,7 @@ OpenAnstruk-2D/
 ├── LICENSE                            # MIT
 ```
 
-### Why four top-level src/ folders?
+### Why four top-level src/2d/ folders?
 
 | Folder | Rule | Cannot import from |
 |--------|------|--------------------|
@@ -173,13 +173,13 @@ StructuralCanvas re-renders     ← draws diagrams
 `flyout-panel.tsx` is a thin router. It owns:
 - The `FlyoutPanelProps` interface (the superset of every tool's needed props)
 - The header (title + close button)
-- A `FlyoutContent` switch on `(activeTab, activeTool)` that renders the right tool content component from `src/tabs/{tab}/tools/`
+- A `FlyoutContent` switch on `(activeTab, activeTool)` that renders the right tool content component from `src/2d/tabs/{tab}/tools/`
 
 Each tool file declares its own narrow prop type. The router passes through what each tool needs from the superset.
 
 ---
 
-## Data Model (`src/lib/model.ts`)
+## Data Model (`src/2d/lib/model.ts`)
 
 The structure is represented as a flat record-based graph:
 
@@ -203,7 +203,7 @@ StructureModel {
 
 ---
 
-## Section / Material Domain (`src/lib/sections/`)
+## Section / Material Domain (`src/2d/lib/sections/`)
 
 The section catalogue and parametric computation live in `lib/sections/` (pure TypeScript, no React):
 
@@ -211,11 +211,11 @@ The section catalogue and parametric computation live in `lib/sections/` (pure T
 - `shapes/` — geometric shapes. Each shape (`rect`, `circle`, `iwf`, `tee`, `angle`, `chs`, `rhs`) exports a `ShapeDef` with `defaults`, `validate`, and `compute(dims) → SectionProperties`. `index.ts` exports `SHAPES` map + `shapeDef` helper.
 - `compute.ts` — `buildParametricSection({id, name, materialClass, shape, dims, strength})` produces a complete `Section` with `derived` fields (E, G, A, I33, I22, S33b/t, S22L/R, Z33, Z22, r33, r22, yBar). `computeSectionFromParametric` is used by the parametric form.
 
-The React UI for authoring sections lives separately in `src/tabs/model/tools/material/`.
+The React UI for authoring sections lives separately in `src/2d/tabs/model/tools/material/`.
 
 ---
 
-## Solver (`src/lib/solver.ts`)
+## Solver (`src/2d/lib/solver.ts`)
 
 The solver implements the **Direct Stiffness Method (DSM)** for 2D frame/truss elements.
 
@@ -321,7 +321,7 @@ The File menu persists a model to disk and reads it back. JSON is the only forma
 
 ### Undo / Redo (v1.0.11)
 
-`src/hooks/use-model-history.ts` provides `useModelHistory({ model, setModel, draggingNodeId })` → `{ undo, redo, canUndo, canRedo, resetHistory }`. Because every mutation replaces `model` with a new immutable object, the hook keeps a **single stack of references** to past models (no clones, no JSON) — covering node/member/support/section *and* load edits, since loads live inside `model`. Capacity is capped at 20 (`.slice(-20)`).
+`src/2d/hooks/use-model-history.ts` provides `useModelHistory({ model, setModel, draggingNodeId })` → `{ undo, redo, canUndo, canRedo, resetHistory }`. Because every mutation replaces `model` with a new immutable object, the hook keeps a **single stack of references** to past models (no clones, no JSON) — covering node/member/support/section *and* load edits, since loads live inside `model`. Capacity is capped at 20 (`.slice(-20)`).
 
 Capture is observational: a `[model]` effect pushes the previous model onto the undo stack on every change, with two guards — (1) changes caused by undo/redo themselves are skipped (the apply path sets `prevModelRef = target` so the effect's identity check short-circuits), and (2) on-screen node drags are coalesced. The drag is bracketed by `draggingNodeId`; the hook records the pre-drag model at drag start and pushes it once on drag end **only if the model actually changed**, so a whole drag is a single undo and a click-without-move adds nothing. `resetHistory()` clears both stacks (called by the five whole-model swap handlers so undo never crosses a New/Load/template/example boundary). `analysisResult` is *not* snapshotted — it recomputes lazily on the Analyze tab.
 
@@ -333,7 +333,7 @@ Opt-in shear flexibility, toggled by **"Enable Shear Deformation"** in the Setti
 
 ### Analysis Diagnostics & Lazy Solve (v1.0.6)
 
-A separate module `src/lib/analysis-diagnostics.ts` performs cheap structural pre-flight checks without calling the solver:
+A separate module `src/2d/lib/analysis-diagnostics.ts` performs cheap structural pre-flight checks without calling the solver:
 
 - **Empty-model checks** — no nodes / no members / no supports.
 - **Reaction count** — fewer than 3 reaction components → error.
@@ -346,15 +346,15 @@ It returns a typed `DiagnosticsReport { status, issues[] }` with three statuses 
 
 **Lazy solve.** `solveAllCases` is gated on `activeTab === "Analyze"` in `App.tsx`. Editing in Model/Load tabs does not solve — entering the Analyze tab is the implicit "Analyze" trigger. Diagnostics remain reactive on every tab so the status-bar STATUS label is always live (the connectivity check is microseconds even on large models).
 
-**UI surfaces.** The status bar shows the three-state STATUS pill (clickable). `src/components/analysis-issues-dialog.tsx` auto-opens once per Analyze-tab entry when there is any error-severity issue; closable via `×`, backdrop, or Esc. The γ = 0 warning is also rendered inline in the Load Case and Load Combination flyout tools.
+**UI surfaces.** The status bar shows the three-state STATUS pill (clickable). `src/2d/components/analysis-issues-dialog.tsx` auto-opens once per Analyze-tab entry when there is any error-severity issue; closable via `×`, backdrop, or Esc. The γ = 0 warning is also rendered inline in the Load Case and Load Combination flyout tools.
 
 ---
 
-## Canvas Rendering (`src/canvas/structural-canvas.tsx`)
+## Canvas Rendering (`src/2d/canvas/structural-canvas.tsx`)
 
 The app uses the browser Canvas 2D API for all structural drawing — no SVG, no WebGL.
 
-`structural-canvas.tsx` is the shell. It owns the viewport (`panX`, `panY`, `zoom`), mounts the canvas element, handles pointer/wheel events, and orchestrates the draw loop. Reusable atoms (`drawNodeIdTag`, `drawMemberIdTag`, `drawSupportGlyph`, `hitTestSupportGlyph`, box-selection helpers) live in sibling files under `src/canvas/`.
+`structural-canvas.tsx` is the shell. It owns the viewport (`panX`, `panY`, `zoom`), mounts the canvas element, handles pointer/wheel events, and orchestrates the draw loop. Reusable atoms (`drawNodeIdTag`, `drawMemberIdTag`, `drawSupportGlyph`, `hitTestSupportGlyph`, box-selection helpers) live in sibling files under `src/2d/canvas/`.
 
 ### Coordinate Systems
 
@@ -399,7 +399,7 @@ Labels:
 - **Truss members, constant N** (`|N1 − N2| ≤ 0.01 kN`) — one centered label parallel to the member, offset past the mirrored band's edge.
 - **Truss members, varying N** (`|N1 − N2| > 0.01 kN`) — two stacked lines (`i = …` / `j = …`) at the midpoint, parallel to the member. Surfaces the linear axial variation in inclined truss members under gravity components.
 
-### Diagram Utilities (`src/lib/diagram-utils.ts`)
+### Diagram Utilities (`src/2d/lib/diagram-utils.ts`)
 
 - `local2World(ax, ay, bx, by)` → unit local-2 vector `(-dy/L, dx/L)` in world space. No normalization, no quadrant flip — the pure right-hand-rule perpendicular for every member orientation.
 - `splitByZeroCrossings<P>(pts, valueOf)` → generic zero-crossing splitter, used by both SFD (`valueOf = p => p.V`) and BMD (`valueOf = p => p.M`).
@@ -408,7 +408,7 @@ Labels:
 
 ## Tabs and Tools
 
-Each tab in `src/tabs/` owns a `tools/` folder. Each tool file is one React component (or a small set of co-located components) that renders the flyout content for that tool.
+Each tab in `src/2d/tabs/` owns a `tools/` folder. Each tool file is one React component (or a small set of co-located components) that renders the flyout content for that tool.
 
 ```
 tabs/
@@ -433,7 +433,7 @@ for its job. The sidebar order follows the workflow: SCHEDULE → RC → STEEL �
 
 ---
 
-## Design Engine (`src/lib/design/`)
+## Design Engine (`src/2d/lib/design/`)
 
 A pure-domain layer that consumes analysis results to perform **RC beam + column design checks** (flexure, shear, P–M interaction; ACI 318-25 / SNI 2847:2019) and **steel member checks** (classification, axial, flexure + LTB, shear, Chapter H interaction; AISC 360-16 / SNI 1729:2020). It is a *consumer* of the solver — the DSM math is untouched. It envelopes exact analytic per-zone demands, then **dispatches each member to its material strategy** by `materialOf(section)`. Capacity in RC "As checked" mode comes from per-bar strain compatibility over a bar layout shared with the SVG cross-section preview.
 
@@ -450,39 +450,39 @@ A `DESIGN_SUPPORT` registry (material × geometry × element, with an `implement
 
 **Two shapes break the "one `Mn` per section" assumption** the other three hold to, and both are worth knowing before reading the steel code: a **tee** is singly symmetric, so its capacity depends on the *sign* of the moment (F9); a **single angle**'s principal axes are rotated from the geometric axis the solver bends about, so one geometric moment produces two principal components and the member is checked with **H2**, not H1.
 
-> The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** (core), **[`DESIGN_RC.md`](DESIGN_RC.md)** and **[`DESIGN_STEEL.md`](DESIGN_STEEL.md)** — read them before touching `src/lib/design/`.
+> The complete design logic, every governing code clause, the validation anchors, and the extension guide live in **[`DESIGN_RULES.md`](DESIGN_RULES.md)** (core), **[`DESIGN_RC.md`](DESIGN_RC.md)** and **[`DESIGN_STEEL.md`](DESIGN_STEEL.md)** — read them before touching `src/2d/lib/design/`.
 
 ---
 
 ## Adding Features
 
 ### New tool
-1. Add the tool ID to `ToolType` in [tool-sidebar.tsx](../src/components/tool-sidebar.tsx) and register it in the appropriate `*Tools` array.
-2. Create the flyout content as `src/tabs/{tab}/tools/{name}-tool.tsx`.
+1. Add the tool ID to `ToolType` in [tool-sidebar.tsx](../src/2d/components/tool-sidebar.tsx) and register it in the appropriate `*Tools` array.
+2. Create the flyout content as `src/2d/tabs/{tab}/tools/{name}-tool.tsx`.
 3. Import + route in `components/flyout-panel.tsx`'s `FlyoutContent` switch.
-4. Add the canvas-click branch in `handleCanvasClick` in [App.tsx](../src/App.tsx).
-5. Add canvas preview rendering in [canvas/structural-canvas.tsx](../src/canvas/structural-canvas.tsx) if needed.
+4. Add the canvas-click branch in `handleCanvasClick` in [App.tsx](../src/2d/App.tsx).
+5. Add canvas preview rendering in [canvas/structural-canvas.tsx](../src/2d/canvas/structural-canvas.tsx) if needed.
 
 ### New load type
-1. Extend the `Load` union in [model.ts](../src/lib/model.ts).
-2. Add assembly logic in [solver.ts](../src/lib/solver.ts).
-3. Add a tool file in `src/tabs/load/tools/` and route from `flyout-panel.tsx`.
-4. Add canvas rendering in [structural-canvas.tsx](../src/canvas/structural-canvas.tsx) (`drawLoads` block).
+1. Extend the `Load` union in [model.ts](../src/2d/lib/model.ts).
+2. Add assembly logic in [solver.ts](../src/2d/lib/solver.ts).
+3. Add a tool file in `src/2d/tabs/load/tools/` and route from `flyout-panel.tsx`.
+4. Add canvas rendering in [structural-canvas.tsx](../src/2d/canvas/structural-canvas.tsx) (`drawLoads` block).
 
 ### New section shape
-1. Add the kind to `SectionShape` union in [model.ts](../src/lib/model.ts).
+1. Add the kind to `SectionShape` union in [model.ts](../src/2d/lib/model.ts).
 2. Create `lib/sections/shapes/{kind}.ts` exporting a `ShapeDef` (defaults, validate, compute).
 3. Register in `lib/sections/shapes/index.ts`'s `SHAPES` map.
 4. The parametric form picks it up automatically.
 
 ### Modifying the solver
-Edit [solver.ts](../src/lib/solver.ts). Always verify with multiple member orientations (horizontal, vertical, diagonal) and both load types. **`template4PortalLateral` is the strongest canary** — it exercises vertical columns, lateral loads, and all three support types. The sign convention table above is the reference.
+Edit [solver.ts](../src/2d/lib/solver.ts). Always verify with multiple member orientations (horizontal, vertical, diagonal) and both load types. **`template4PortalLateral` is the strongest canary** — it exercises vertical columns, lateral loads, and all three support types. The sign convention table above is the reference.
 
 ---
 
 ## Constants and Colors
 
-All shared numbers and colors live in [`src/lib/constants.ts`](../src/lib/constants.ts). Do not hardcode pixel sizes, tolerances, or hex colors elsewhere.
+All shared numbers and colors live in [`src/2d/lib/constants.ts`](../src/2d/lib/constants.ts). Do not hardcode pixel sizes, tolerances, or hex colors elsewhere.
 
 Key groups:
 - **Coordinate**: `SCALE=80`, `GRID=40`, `SNAP=0.5`
@@ -491,7 +491,7 @@ Key groups:
 - **Load drawing sizes**: arrow length, arrowhead, line widths, distributed arrow count
 - **Diagram parameters**: pixels per kN, pixels per kN·m, label font
 
-The flyout-panel palette is separately in [`src/lib/flyout-panel-colors.ts`](../src/lib/flyout-panel-colors.ts).
+The flyout-panel palette is separately in [`src/2d/lib/flyout-panel-colors.ts`](../src/2d/lib/flyout-panel-colors.ts).
 
 ---
 
