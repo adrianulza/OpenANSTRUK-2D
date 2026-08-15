@@ -58,7 +58,16 @@ export function useModelHistory({
 
   // Observe model changes and capture the previous state.
   useEffect(() => {
-    if (model === prevModelRef.current) return
+    if (model === prevModelRef.current) {
+      // `undo`/`redo` set prevModelRef synchronously before calling setModel,
+      // so their re-render lands HERE, not in the guard below — and the guard
+      // never gets to clear the flag. Left armed, it swallows the capture of
+      // the NEXT genuine edit, so an edit made after an undo cannot itself be
+      // undone. Clearing it here is what makes `isApplyingRef` the
+      // belt-and-braces it was meant to be rather than a live trap.
+      isApplyingRef.current = false
+      return
+    }
 
     // Change produced by undo/redo (or a reset) — don't re-capture.
     if (isApplyingRef.current || skipNextRef.current) {
