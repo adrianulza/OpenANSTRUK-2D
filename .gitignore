@@ -19,6 +19,8 @@ npm-debug.log*
 .claude/
 .vscode/
 CLAUDE.md
+dev.local.mjs
+vite.config.local.ts
 _complimentary/
 validation/
 marketing/
