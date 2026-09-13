@@ -288,7 +288,10 @@
       display: block;
       padding: 24px 26px;
       text-align: left;
-      background: rgba(180,210,255,0.07);
+      /* ⚠ Opaque enough to sit on the hero wireframe. At rgba(180,210,255,0.07)
+         these were translucent over a moving WebGL truss and the card text read
+         through the grid lines. A card on this hero needs its own ground. */
+      background: rgba(14,45,96,0.82);
       border: 1px solid rgba(180,210,255,0.28);
       border-radius: 3px;
       text-decoration: none;
@@ -326,11 +329,17 @@
       text-transform: none;
       letter-spacing: 0;
     }
+    /* ⚠ Dim the CONTENT, never the card. `opacity: 0.5` on the whole element
+       faded its background too, putting the text back on the wireframe and
+       making the secondary option the least readable thing in the hero. The
+       card keeps its ground; only the ink steps back. */
     .choice-pending {
-      opacity: 0.5;
       border-style: dashed;
+      border-color: rgba(180,210,255,0.2);
       cursor: default;
     }
+    .choice-pending .choice-name { color: rgba(212,232,255,0.62); }
+    .choice-pending .choice-desc { color: rgba(212,232,255,0.48); }
     @media (max-width: 768px) {
       .choice { flex: 1 1 100%; padding: 20px; }
     }
