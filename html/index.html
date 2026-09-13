@@ -3,7 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenAnstruk</title>
+  <title>OpenAnstruk — free structural analysis in your browser</title>
+  <meta name="description" content="Free, open-source structural analysis. Model, load, analyse and design frames and trusses in the browser. No account, no licence key, no installation.">
+  <link rel="canonical" href="https://openanstruk.org/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://openanstruk.org/">
+  <meta property="og:title" content="OpenAnstruk — free structural analysis in your browser">
+  <meta property="og:site_name" content="OpenAnstruk">
+  <meta property="og:description" content="Free, open-source structural analysis. Model, load, analyse and design frames and trusses in the browser. No account, no licence key, no installation.">
+  <meta property="og:image" content="https://openanstruk.org/OpenAnstruk-Label_BgInter.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="OpenAnstruk — free structural analysis in your browser">
+  <meta name="twitter:description" content="Free, open-source structural analysis. Model, load, analyse and design frames and trusses in the browser. No account, no licence key, no installation.">
+  <meta name="twitter:image" content="https://openanstruk.org/OpenAnstruk-Label_BgInter.svg">
+
   <link rel="icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -252,6 +266,73 @@
     .btn-blueprint:hover {
       background: rgba(180,210,255,0.2);
       border-color: rgba(180,210,255,0.55);
+    }
+
+    /* ── TWO-APP CHOOSER ────────────────────────────────
+       2D launches. 3D is built and deployed, but NOT announced — deploying and
+       announcing are separate acts — so its card says where it stands instead
+       of linking anywhere. ⚠ When 3D launches, this card becomes an <a href>,
+       and the noindex meta plus public/robots.txt in the 3D repo come off at
+       the same time. Doing one without the others half-launches it. */
+    .chooser {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .choice {
+      flex: 1 1 300px;
+      max-width: 340px;
+      display: block;
+      padding: 24px 26px;
+      text-align: left;
+      background: rgba(180,210,255,0.07);
+      border: 1px solid rgba(180,210,255,0.28);
+      border-radius: 3px;
+      text-decoration: none;
+      color: inherit;
+      transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    }
+    a.choice:hover {
+      background: rgba(180,210,255,0.15);
+      border-color: rgba(180,210,255,0.55);
+      transform: translateY(-2px);
+    }
+    .choice-name {
+      font-family: var(--ff-mono);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--blueprint-text);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .choice-state {
+      font-size: 9.5px;
+      letter-spacing: 0.14em;
+      color: rgba(180,210,255,0.45);
+    }
+    .choice-desc {
+      font-family: var(--ff-sans);
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: rgba(212,232,255,0.65);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .choice-pending {
+      opacity: 0.5;
+      border-style: dashed;
+      cursor: default;
+    }
+    @media (max-width: 768px) {
+      .choice { flex: 1 1 100%; padding: 20px; }
     }
 
     .section-inner {
@@ -854,6 +935,7 @@
     <li><a href="#software">Software</a></li>
     <li><a href="#about">Who-We-Are?</a></li>
     <li><a href="#oss">Open Source</a></li>
+    <li><a href="/donation">Support</a></li>
     <li><a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" class="nav-gh">GitHub ↗</a></li>
   </ul>
   <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu" onclick="toggleMobileMenu()">
@@ -865,6 +947,7 @@
   <a href="#software" onclick="closeMobileMenu()">Software</a>
   <a href="#about"  onclick="closeMobileMenu()">Who We Are</a>
   <a href="#oss"    onclick="closeMobileMenu()">Open Source</a>
+  <a href="/donation" onclick="closeMobileMenu()">Support</a>
   <a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" onclick="closeMobileMenu()">GitHub ↗</a>
 </nav>
 
@@ -885,7 +968,29 @@
       <emp>"Whether you code, test, document, or use it—you belong here."</emp>
     </p>
     <div class="hero-cta">
-      <a href="/app" class="btn-blueprint">Launch OpenAnstruk-2D</a>
+      <div class="chooser">
+        <a href="/app" class="choice">
+          <div class="choice-name">
+            OpenAnstruk-2D
+            <span class="choice-state">Open now</span>
+          </div>
+          <div class="choice-desc">
+            Frames, trusses and continuous beams in the plane. Model, load, analyse
+            and design in the browser. Free, no account, open source under MIT.
+          </div>
+        </a>
+
+        <div class="choice choice-pending">
+          <div class="choice-name">
+            OpenAnstruk-3D
+            <span class="choice-state">In development</span>
+          </div>
+          <div class="choice-desc">
+            Six degrees of freedom per node, checked against SAP2000. Modelling,
+            loading and analysis are built; design is not. Not open to the public yet.
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -957,7 +1062,18 @@
         Knowledge<span class="br-desktop"></span><span class="br-mobile"></span>should be <em>open.</em>
       </h2>
       <p class="oss-body">
-        The tools that protect lives should be auditable, improvable, and permanently available. We release everything under the MIT License. Use it, modify it, distribute it.
+        The tools that protect lives should be auditable, improvable, and permanently available. OpenAnstruk-2D is released under the MIT License, permanently. Read the solver, check it, modify it, distribute it.
+      </p>
+      <p class="oss-body" style="margin-top: 22px; font-size: 0.94em; color: rgba(212,232,255,0.66);">
+        <strong style="color: var(--blueprint-text); font-weight: 500;">What open means here.</strong>
+        Open tool, open knowledge, open access &mdash; and the third one is the promise that
+        covers everything we make. The 3D application is not open source, and it is fairer
+        to say so than to let the name imply otherwise. Its source stays closed; its access
+        does not. Structural software is used by engineers rather than by developers, so
+        publishing that source would attract almost no contributions while the validation
+        record behind the numbers means an outside change to the solver costs more to
+        re-anchor than to have written. Free to use is the part worth keeping, so that is
+        the part being kept.
       </p>
     </div>
     <div class="contrib-box">
@@ -1045,8 +1161,12 @@
 
 <!-- FOOTER -->
 <footer>
-  <div class="footer-copy">© 2026 OpenAnstruk — MIT License</div>
-  <div class="footer-links"></div>
+  <div class="footer-copy">© 2026 OpenAnstruk — 2D under MIT License</div>
+  <div class="footer-links">
+    <a href="/app">Launch 2D</a>
+    <a href="/donation">Support</a>
+    <a href="mailto:team@openanstruk.org">Email</a>
+  </div>
 </footer>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
