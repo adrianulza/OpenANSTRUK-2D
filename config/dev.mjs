@@ -80,6 +80,24 @@ process.on('SIGTERM', () => shutdown(0))
  */
 function start(key, command, cwd, env) {
   return new Promise((resolve, reject) => {
+    // ⚠ Check the directory BEFORE spawning, because Windows will not tell you.
+    // `spawn` with `shell: true` and a cwd that does not exist reports ENOENT
+    // against the SHELL — "spawn C:\WINDOWS\system32\cmd.exe ENOENT" — so a
+    // stale path in dev.local.mjs reads as a broken Windows install. That is
+    // exactly what happened when src/3d moved to its own repository: the
+    // extension still named a folder that was no longer there, and the error
+    // pointed at cmd.exe.
+    if (cwd && !existsSync(cwd)) {
+      reject(
+        new Error(
+          `dev.local.mjs app "${key}" has cwd ${cwd}, which does not exist.\n` +
+            `  Nothing is wrong with your shell — Node blames cmd.exe for a missing cwd on Windows.\n` +
+            `  Point it at the right folder, or delete dev.local.mjs and vite.config.local.ts to run the 2D app alone.`,
+        ),
+      )
+      return
+    }
+
     // One string, no args array: `shell: true` with separate args is deprecated
     // (DEP0190) because the args are concatenated rather than escaped.
     const child = spawn(command, {
