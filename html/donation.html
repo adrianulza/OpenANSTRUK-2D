@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support OpenAnstruk</title>
+  <meta name="description" content="OpenAnstruk is free to use and always will be. If it saved you time, you can help pay for what keeps it running.">
+  <link rel="canonical" href="https://openanstruk.org/donation">
+  <link rel="icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
+  <link rel="apple-touch-icon" href="/OpenAnstruk-Logo_BgNavy.svg" />
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://openanstruk.org/donation">
+  <meta property="og:title" content="Support OpenAnstruk">
+  <meta property="og:site_name" content="OpenAnstruk">
+  <meta property="og:description" content="OpenAnstruk is free to use and always will be. If it saved you time, you can help pay for what keeps it running.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Support OpenAnstruk">
+  <meta name="twitter:description" content="OpenAnstruk is free to use and always will be. If it saved you time, you can help pay for what keeps it running.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles/page.css">
+</head>
+<body>
+
+<nav>
+  <a class="wordmark" href="/"><img src="/OpenAnstruk-Label_BgInter.svg" alt="OpenAnstruk" style="height: 40px; width: auto;"></a>
+  <a class="nav-back" href="/">&larr; Back to site</a>
+</nav>
+
+<main>
+  <div class="section-label">Support</div>
+
+  <h1>The app is free.<br><em>Running it is not.</em></h1>
+
+  <p>
+    OpenAnstruk costs nothing to use and it is going to stay that way. There is no
+    licence key, no seat count, no institution you have to belong to. If you are a
+    student with a laptop and an assignment due, that is enough.
+  </p>
+
+  <p>
+    What it does cost is time and a small amount of money, and both come out of one
+    person's evenings. A donation does not buy you anything the next person does not
+    get. It buys the project more of the thing it is actually short of.
+  </p>
+
+  <h2>Where the money goes</h2>
+
+  <ul class="spend-list">
+    <li>The domain, and the hosting that serves the app to everyone who opens it.</li>
+    <li>Licences for the commercial software the solver is checked against. Verification
+      is the expensive part of building an analysis tool, and it is not optional &mdash;
+      a wrong number that looks right is worse than no tool at all.</li>
+    <li>Reference codes and standards, which are not free to obtain and have to be
+      re-bought as they are revised.</li>
+    <li>Hours. Every feature in the app exists because an evening went into it instead
+      of somewhere else.</li>
+  </ul>
+
+  <p class="note">
+    Nothing here is a subscription and nothing recurs unless you set it up that way.
+    If you would rather not send money, telling a colleague the tool exists is worth
+    more than most donations.
+  </p>
+
+  <div class="rule"></div>
+
+  <h2>Ways to support</h2>
+
+  <p>
+    Email works today. The rest are being set up and will appear here as they open
+    &mdash; they are greyed out rather than hidden so you can see what is coming.
+  </p>
+
+  <!--
+    ⚠ HOW TO TURN A GREYED CARD ON, when the account exists:
+        1. on its opening tag, swap the element from div to a
+        2. drop the `rail-pending` class, leaving just class="rail"
+        3. add the real URL as an href on that tag
+        4. change the matching closing div tag to a closing a tag
+        5. run `npm run build` and confirm check-dist still passes
+
+    Do NOT put a placeholder in an href to "wire it up for later".
+    config/check-dist.mjs fails the build on an href that is empty or still says
+    REPLACE-ME, because a card that looks live and goes nowhere costs more trust
+    than a card that plainly is not ready yet. A pending card carries no href at
+    all, so it cannot be a dead link.
+  -->
+  <div class="rails">
+    <a class="rail" href="mailto:team@openanstruk.org?subject=Supporting%20OpenAnstruk">
+      <div class="rail-name">Email</div>
+      <div class="rail-desc">
+        Write and I will send bank or QRIS details back. Slower than a button, but
+        it works right now and there is a person on the other end.
+      </div>
+    </a>
+
+    <div class="rail rail-pending">
+      <div class="rail-name">Saweria</div>
+      <div class="rail-desc">
+        QRIS from any Indonesian banking or e-wallet app. Will be the quickest option
+        if you are in Indonesia &mdash; no account needed to send. Not open yet.
+      </div>
+    </div>
+
+    <div class="rail rail-pending">
+      <div class="rail-name">Trakteer</div>
+      <div class="rail-desc">
+        One-off or monthly, also QRIS-backed, for supporting the project regularly
+        rather than once. Not open yet.
+      </div>
+    </div>
+
+    <div class="rail rail-pending">
+      <div class="rail-name">GitHub Sponsors</div>
+      <div class="rail-desc">
+        Card payment in any currency, the easiest route from outside Indonesia.
+        Not open yet.
+      </div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2>What open means here</h2>
+
+  <p>
+    <strong>Open tool. Open knowledge. Open access.</strong> That has been the promise
+    since the beginning, and the third word is the one that matters most to whoever is
+    opening the app right now.
+  </p>
+
+  <p>
+    The 2D application is open source under the MIT licence, permanently. You can read
+    every line of the solver, check it, fork it, and run it yourself.
+    <a class="inline" href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" rel="noopener">The source is here</a>.
+  </p>
+
+  <p>
+    The 3D application is not open source, and it is fairer to say so plainly than to
+    let the name imply otherwise. Its source stays closed; its <em>access</em> does not.
+    Structural analysis software is used by engineers rather than by developers, so
+    publishing the source attracts almost no contributions &mdash; while the validation
+    record that makes the numbers trustworthy means an outside change to the solver
+    would cost more to re-anchor than to have written. That is the cost of open source
+    without the benefit. Free to use is the part worth keeping, so that is the part
+    being kept.
+  </p>
+</main>
+
+<footer>
+  <div class="footer-copy">&copy; 2026 OpenAnstruk &mdash; 2D under MIT License</div>
+  <div class="footer-links">
+    <a href="/app">Launch 2D</a>
+    <a href="https://github.com/adrianulza/OpenAnstruk-2D" target="_blank" rel="noopener">GitHub</a>
+    <a href="mailto:team@openanstruk.org">Email</a>
+  </div>
+</footer>
+
+</body>
+</html>

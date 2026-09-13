@@ -1,0 +1,9 @@
+# openanstruk.org
+#
+# The 2D app and the pages around it are meant to be found. 3d.openanstruk.org
+# is a separate host with its own robots.txt, and it currently refuses indexing
+# because the 3D app is deployed but not announced.
+User-agent: *
+Allow: /
+
+Sitemap: https://openanstruk.org/sitemap.xml
