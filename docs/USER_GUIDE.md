@@ -257,4 +257,6 @@ The **Undo** and **Redo** buttons sit just below the zoom slider in the top-righ
 
 ## Verification
 
-OpenAnstruk-2D's solver has been verified against SAP2000 on standard textbook examples. Reference files are in `_complimentary/SAP2000/`. If you find a discrepancy, please report it — see [CONTRIBUTING.md](CONTRIBUTING.md).
+OpenAnstruk-2D's solver has been verified against SAP2000 on standard textbook examples — simply supported and overhanging beams, a three-member truss, a portal frame, and shear-deformation and steel-design cases — agreeing to 0.000% on the compared quantities.
+
+The comparison harness and its SAP2000 reference models are not part of this repository and never have been. If you find a discrepancy, please report it with the model and the numbers you expected — see [CONTRIBUTING.md](CONTRIBUTING.md).

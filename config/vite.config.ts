@@ -29,7 +29,7 @@ export default defineConfig({
     // `@` is the 2D app. The 3D app is a separate self-contained project under
     // src/3d with its own vite config, where `@` means its own source root.
     alias: {
-      '@': path.resolve(__dirname, '../src/2d'),
+      '@': path.resolve(__dirname, '../src'),
     },
   },
   build: {
