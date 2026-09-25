@@ -137,7 +137,7 @@ Displays the deformed shape. Use the scale slider to exaggerate deformations for
 Live mode turns your model into something you can hold. Press on a node and drag: a rope is tied to the node, and the rope **is** the point load.
 
 - **Direction** follows the rope.
-- **Magnitude** grows linearly with the rope length, up to **100 kN** when the rope reaches a quarter of the model's size. Past that the rope keeps stretching (drawn solid), but the force stays at 100 kN.
+- **Magnitude** grows linearly with the rope length, up to **100 kN** when the rope reaches a quarter of the model's size. Past that the rope keeps following your hand, but the force stays at 100 kN.
 - The structure deforms as you pull, with a little spring in it: it lags slightly, bumps when the rope goes taut, and wobbles back when you let go. Only the drawing wobbles. Every number, diagram and reaction shows the exact static answer.
 
 **What you see while pulling**
@@ -146,7 +146,7 @@ Live mode turns your model into something you can hold. Press on a node and drag
 |---|---|
 | Faint grey structure | The original, undeformed geometry (diagrams are drawn on it) |
 | Purple structure | The deformed shape; truss members turn blue in tension, red in compression |
-| Orange arrow and label | The rope force, e.g. `63.1 kN ∠ −90°`. Drawn like a textbook load: the tip touches the node and it points along the pull. It grows with the force, chevrons flow toward the node while you drag (faster for a harder pull), and it glows once the force reaches 100 kN. |
+| Orange arrow and label | The rope and its force, e.g. `63.1 kN ∠ −90°`. The arrow's tail is a point at the node and it widens toward its head, which sits on your cursor or finger. It gets thicker as the force grows (up to 100 kN), chevrons flow from the node toward the head while you drag (faster for a harder pull), and it glows once the force is capped. |
 | Blue/red arrows at supports | Reactions, sized by magnitude, flipping when they change sign |
 | Axial N / Shear V / Moment M (buttons at the top) | Which internal-force diagram grows with the pull; one is always shown. On a phone the buttons sit at the bottom of the screen. |
 

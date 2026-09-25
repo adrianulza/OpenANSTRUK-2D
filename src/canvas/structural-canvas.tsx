@@ -35,7 +35,6 @@ import { useLivePull, type LiveDiagram } from "@/canvas/use-live-pull"
 import {
   drawLiveDeformed,
   drawLiveReactions,
-  drawRope,
   drawLoadArrow,
   drawGrabRings,
   deformedNodeScreen,
@@ -2601,15 +2600,18 @@ export function StructuralCanvas({
           const f = frame.force
           const label = `${fmt1(f.P)} ${forceLabel} ∠ ${`${Math.round(f.angleDeg)}°`.replace("-", "\u2212")}`
           const animate = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-          // Rope first, then the load arrow on top of everything.
-          drawRope(ctx, nodePt, worldToScreen(frame.cursor, rect), f.capped, s)
-          drawLoadArrow(ctx, nodePt, f, frame.arrowScale, label, s, performance.now(), animate)
+          // The arrow is the rope: tail at the node, head on the cursor. Drawn
+          // last so it sits on top of everything.
+          drawLoadArrow(
+            ctx, nodePt, worldToScreen(frame.cursor, rect), f, frame.arrowScale,
+            live.stateRef.current.shift || liveSnap, label, s, performance.now(), animate,
+          )
         }
       } else {
         drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, s)
       }
     },
-    [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, forceScale, liveDiagram,
+    [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, liveSnap, forceScale, liveDiagram,
       drawAxialDiagram, drawShearDiagram, drawMomentDiagram, model, forceLabel, momentLabel, liveHover],
   )
 

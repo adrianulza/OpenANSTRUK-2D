@@ -12,8 +12,6 @@ import { COLOR_SFD_POS, COLOR_SFD_NEG, COLOR_BMD_FILL } from "@/lib/constants"
 // and text keep a constant on-screen size like the rest of the canvas.
 
 const COLOR_DEFORMED = "#7c3aed"
-const COLOR_ROPE = "#475569"
-const COLOR_ROPE_TAUT = "#c2410c"
 // Applied load: orange, the palette's COLOR_BMD_FILL, with a darker edge.
 const COLOR_LOAD = COLOR_BMD_FILL
 const COLOR_LOAD_LIGHT = "#fb923c"
@@ -198,97 +196,68 @@ export function drawLiveReactions(
 }
 
 /**
- * The rope: a thin line from the (deformed) node to the finger, with a grip
- * dot at the finger. Dashed while it can still stretch the force, solid and
- * darker once the force is capped.
- */
-export function drawRope(
-  ctx: CanvasRenderingContext2D,
-  node: { sx: number; sy: number },
-  cursor: { sx: number; sy: number },
-  capped: boolean,
-  s: number,
-) {
-  ctx.save()
-  ctx.lineCap = "round"
-  ctx.strokeStyle = capped ? COLOR_ROPE_TAUT : COLOR_ROPE
-  ctx.globalAlpha = capped ? 0.9 : 0.6
-  ctx.lineWidth = (capped ? 2 : 1.5) * s
-  ctx.setLineDash(capped ? [] : [5 * s, 4 * s])
-  ctx.beginPath()
-  ctx.moveTo(node.sx, node.sy)
-  ctx.lineTo(cursor.sx, cursor.sy)
-  ctx.stroke()
-  ctx.setLineDash([])
-  ctx.globalAlpha = 1
-  ctx.beginPath()
-  ctx.arc(cursor.sx, cursor.sy, 5 * s, 0, Math.PI * 2)
-  ctx.fillStyle = capped ? COLOR_ROPE_TAUT : COLOR_ROPE
-  ctx.fill()
-  ctx.restore()
-}
-
-/**
- * The applied load, drawn the textbook way: a big orange block arrow whose
- * TIP touches the node and which points along the force. The rope pulls the
- * node toward the finger, so the arrow body lies on the far side of the node
- * (it pushes through the node toward the finger). That also keeps it clear of
- * a finger on a touch screen.
+ * The applied load, drawn as the rope itself: a tapered orange arrow whose
+ * tail is a point at the node and whose head sits on the finger / cursor.
+ * The body widens steadily from the tail to the head, so it reads as the pull
+ * flowing out of the node toward the hand.
  *
- * `scale` (0 → 1, eased by the caller) sets the length. While `animate` is on,
- * chevrons flow along the body toward the tip, faster for a harder pull, and
- * the arrow breathes gently once the force is capped.
+ * `scale` (0 → 1, eased by the caller) is P / P_max and sets how fat the
+ * arrow is; its length is simply the rope, so past the cap the arrow keeps
+ * following the finger but stops getting thicker. While `animate` is on,
+ * chevrons flow from the node toward the head (faster for a harder pull) and
+ * the arrow breathes with a glow once the force is capped.
  */
 export function drawLoadArrow(
   ctx: CanvasRenderingContext2D,
   node: { sx: number; sy: number },
+  cursor: { sx: number; sy: number },
   force: { px: number; py: number; P: number; capped: boolean },
   scale: number,
+  snapped: boolean,
   label: string,
   s: number,
   t: number,
   animate: boolean,
 ) {
-  if (force.P <= 1e-9 || scale <= 1e-3) return
-  const HEAD_L = 28 * s
-  const HEAD_W = 38 * s
-  const BODY_W = 18 * s
-  const MIN_L = 48 * s
-  const MAX_L = 160 * s
-  const total = MIN_L + (MAX_L - MIN_L) * Math.min(scale, 1)
+  const ropeLen = Math.hypot(cursor.sx - node.sx, cursor.sy - node.sy)
+  if (force.P <= 1e-9 || ropeLen < 4 * s) return
+  const k = Math.min(Math.max(scale, 0), 1)
+
+  // Direction: straight at the cursor, unless the angle is snapped, in which
+  // case the arrow follows the snapped force (screen y points down).
+  const ux = snapped ? force.px / force.P : (cursor.sx - node.sx) / ropeLen
+  const uy = snapped ? -force.py / force.P : (cursor.sy - node.sy) / ropeLen
+  const total = ropeLen
+
+  // Thickness grows with the force; a short rope shrinks the head to fit.
+  const HEAD_W = (20 + 22 * k) * s
+  const HEAD_L = Math.min((18 + 16 * k) * s, total * 0.45)
+  const BODY_W = HEAD_W * 0.55     // body width where it meets the head
+  const TAIL_W = 1.5 * s           // nearly a point at the node
   const bodyL = total - HEAD_L
 
-  // Unit vector of the force on screen (screen y points down).
-  const ux = force.px / force.P
-  const uy = -force.py / force.P
-  const ang = Math.atan2(uy, ux)
-
   ctx.save()
-  // Local frame: origin at the tip (on the node), +x along the force, so the
-  // arrow body runs along −x.
+  // Local frame: origin at the node (tail), +x toward the head.
   ctx.translate(node.sx, node.sy)
-  ctx.rotate(ang)
-  // A small gap so the tip meets the node ring rather than covering it.
-  ctx.translate(-5 * s, 0)
+  ctx.rotate(Math.atan2(uy, ux))
 
   const outline = () => {
     ctx.beginPath()
-    ctx.moveTo(0, 0)
-    ctx.lineTo(-HEAD_L, -HEAD_W / 2)
-    ctx.lineTo(-HEAD_L, -BODY_W / 2)
-    ctx.lineTo(-total, -BODY_W / 2)
-    ctx.lineTo(-total, BODY_W / 2)
-    ctx.lineTo(-HEAD_L, BODY_W / 2)
-    ctx.lineTo(-HEAD_L, HEAD_W / 2)
+    ctx.moveTo(0, -TAIL_W / 2)
+    ctx.lineTo(bodyL, -BODY_W / 2)
+    ctx.lineTo(bodyL, -HEAD_W / 2)
+    ctx.lineTo(total, 0)
+    ctx.lineTo(bodyL, HEAD_W / 2)
+    ctx.lineTo(bodyL, BODY_W / 2)
+    ctx.lineTo(0, TAIL_W / 2)
     ctx.closePath()
   }
 
-  // Body: soft shadow lifts it off the diagrams; it glows and breathes at the cap.
   const pulse = force.capped && animate ? 0.5 + 0.5 * Math.sin((t / 1000) * 2 * Math.PI * 2) : 0
   ctx.shadowColor = force.capped ? `rgba(249,115,22,${0.45 + 0.35 * pulse})` : "rgba(15,23,42,0.25)"
   ctx.shadowBlur = (force.capped ? 10 + 10 * pulse : 6) * s
   ctx.shadowOffsetY = force.capped ? 0 : 2 * s
-  const grad = ctx.createLinearGradient(-total, 0, 0, 0)
+  const grad = ctx.createLinearGradient(0, 0, total, 0)
   grad.addColorStop(0, COLOR_LOAD_LIGHT)
   grad.addColorStop(1, COLOR_LOAD)
   ctx.fillStyle = grad
@@ -296,24 +265,31 @@ export function drawLoadArrow(
   ctx.fill()
   ctx.shadowColor = "transparent"
 
-  // Chevrons flowing toward the tip, clipped to the body.
-  if (bodyL > 8 * s) {
+  // Chevrons flowing from the node toward the head, clipped to the body and
+  // sized to the local body width so they follow the taper.
+  if (bodyL > 12 * s) {
     ctx.save()
     ctx.beginPath()
-    ctx.rect(-total, -BODY_W / 2, bodyL, BODY_W)
+    ctx.moveTo(0, -TAIL_W / 2)
+    ctx.lineTo(bodyL, -BODY_W / 2)
+    ctx.lineTo(bodyL, BODY_W / 2)
+    ctx.lineTo(0, TAIL_W / 2)
+    ctx.closePath()
     ctx.clip()
-    const pitch = 14 * s
-    const speed = animate ? (40 + 140 * Math.min(scale, 1)) * s : 0 // px per second
+    const pitch = 16 * s
+    const speed = animate ? (40 + 140 * k) * s : 0 // px per second
     const offset = ((t / 1000) * speed) % pitch
     ctx.strokeStyle = "rgba(255,255,255,0.5)"
-    ctx.lineWidth = 3 * s
+    ctx.lineWidth = 2.5 * s
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
-    for (let x = -total - pitch + offset; x < -HEAD_L + pitch; x += pitch) {
+    for (let x = offset; x < bodyL + pitch; x += pitch) {
+      const halfW = (TAIL_W + (BODY_W - TAIL_W) * Math.min(x / bodyL, 1)) / 2
+      const arm = halfW * 0.65
       ctx.beginPath()
-      ctx.moveTo(x - 5 * s, -BODY_W * 0.32)
+      ctx.moveTo(x - arm * 0.8, -arm)
       ctx.lineTo(x, 0)
-      ctx.lineTo(x - 5 * s, BODY_W * 0.32)
+      ctx.lineTo(x - arm * 0.8, arm)
       ctx.stroke()
     }
     ctx.restore()
@@ -326,28 +302,30 @@ export function drawLoadArrow(
   ctx.stroke()
   ctx.restore()
 
-  // Label pill just beyond the tail, away from the node and the finger.
+  // Label pill beside the middle of the arrow, on the upper side of the screen
+  // so it never sits under the hand holding the head.
   ctx.save()
   ctx.font = LABEL_FONT(s, 700)
-  const gap = 10 * s
-  const tailX = node.sx - ux * (total + 5 * s + gap)
-  const tailY = node.sy - uy * (total + 5 * s + gap)
+  let nx = -uy, ny = ux                      // a perpendicular to the arrow
+  if (ny > 0 || (Math.abs(ny) < 1e-6 && nx > 0)) { nx = -nx; ny = -ny }
   const w = ctx.measureText(label).width
   const padX = 6 * s, h = 20 * s
-  // Anchor the pill so it grows away from the arrow in the arrow's direction.
-  const cx = tailX - ux * (w / 2 + padX)
-  const cy = tailY - uy * (h / 2)
+  const away = HEAD_W / 2 + 8 * s + h / 2
+  // Push the pill's centre out far enough that its box clears the arrow body.
+  const reach = away + Math.abs(nx) * (w / 2 + padX - h / 2)
+  const mx = node.sx + ux * total * 0.5 + nx * reach
+  const my = node.sy + uy * total * 0.5 + ny * reach
   ctx.fillStyle = "rgba(255,255,255,0.95)"
   ctx.strokeStyle = COLOR_LOAD
   ctx.lineWidth = 1.5 * s
   ctx.beginPath()
-  ctx.roundRect(cx - w / 2 - padX, cy - h / 2, w + 2 * padX, h, h / 2)
+  ctx.roundRect(mx - w / 2 - padX, my - h / 2, w + 2 * padX, h, h / 2)
   ctx.fill()
   ctx.stroke()
   ctx.fillStyle = COLOR_LOAD_EDGE
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
-  ctx.fillText(label, cx, cy + 0.5 * s)
+  ctx.fillText(label, mx, my + 0.5 * s)
   ctx.restore()
 }
 
