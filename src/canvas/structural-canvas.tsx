@@ -29,13 +29,14 @@ import {
   type BoxDirection,
 } from "@/canvas/box-selection"
 import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
-import { LIVE_P_MAX, type LiveSystem } from "@/lib/live-solver"
+import type { LiveSystem } from "@/lib/live-solver"
 import type { LiveReadout } from "@/lib/live-physics"
 import { useLivePull, type LiveDiagram } from "@/canvas/use-live-pull"
 import {
   drawLiveDeformed,
   drawLiveReactions,
   drawRope,
+  drawLoadArrow,
   drawGrabRings,
   deformedNodeScreen,
 } from "@/canvas/live-layer"
@@ -2599,7 +2600,10 @@ export function StructuralCanvas({
         if (nodePt) {
           const f = frame.force
           const label = `${fmt1(f.P)} ${forceLabel} ∠ ${`${Math.round(f.angleDeg)}°`.replace("-", "\u2212")}`
-          drawRope(ctx, nodePt, worldToScreen(frame.cursor, rect), f, LIVE_P_MAX, label, s)
+          const animate = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+          // Rope first, then the load arrow on top of everything.
+          drawRope(ctx, nodePt, worldToScreen(frame.cursor, rect), f.capped, s)
+          drawLoadArrow(ctx, nodePt, f, frame.arrowScale, label, s, performance.now(), animate)
         }
       } else {
         drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, s)

@@ -501,9 +501,7 @@ function steelSectionSummary(
 }
 
 function getToolTitle(tool: ToolType, activeTab?: TabType): string {
-  if (activeTab === "Live") {
-    return tool === "AXIAL" || tool === "SHEAR" || tool === "MOMENT" ? `LIVE · ${tool}` : "LIVE"
-  }
+  if (activeTab === "Live") return "LIVE"
   if (!tool) return ""
   if (tool === "SELECT") return "MODIFY SECTION"
   if (tool === "MOVE_NODE") return "MOVE NODE"

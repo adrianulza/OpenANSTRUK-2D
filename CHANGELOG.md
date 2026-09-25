@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - `localStiffness`, `condensedTrussElement` and `transformMatrix` are exported from `solver.ts`, and the per-section shear rigidity moved into an exported `sectionShearRigidity()`. `analyze()` behaves exactly as before.
+- Live tab controls are built for learning: the tool sidebar steps aside, and three large Axial N / Shear V / Moment M buttons sit centered above the canvas (bottom-center on phones). The load is a big orange block arrow with its tip on the node, animated while you drag.
 - Nav tabs use tighter padding below 640 px so every tab, Live included, fits on a phone screen.
 
 ---

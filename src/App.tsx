@@ -39,6 +39,7 @@ import {
 } from "@/lib/analysis-diagnostics"
 import { AnalysisIssuesDialog } from "@/components/analysis-issues-dialog"
 import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
+import { LiveDiagramSwitch } from "@/tabs/live/tools/live-diagram-switch"
 import { LoadViewSelector, LOAD_VIEW_ALL, type LoadViewSelection } from "@/components/load-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
 import { FrameTemplateModal } from "@/templates/frame-template-modal"
@@ -1406,11 +1407,15 @@ export default function App() {
       />
 
       <div className="flex-1 flex overflow-hidden">
-        <ToolSidebar
-          activeTab={activeTab}
-          activeTool={activeTool}
-          onToolSelect={handleToolSelect}
-        />
+        {/* Live is a learning playground: its only choice (which diagram)
+            sits on the canvas, so the tool palette steps aside. */}
+        {activeTab !== "Live" && (
+          <ToolSidebar
+            activeTab={activeTab}
+            activeTool={activeTool}
+            onToolSelect={handleToolSelect}
+          />
+        )}
 
         <main className="flex-1 relative overflow-hidden">
           {activeTab === "Load" && (
@@ -1436,6 +1441,14 @@ export default function App() {
               envelopeComboIds={envelopeComboIds}
               onEnvelopeComboIdsChange={setEnvelopeComboIds}
             />
+          )}
+          {activeTab === "Live" && (
+            <div className="absolute z-20 left-1/2 -translate-x-1/2 top-3 max-sm:top-auto max-sm:bottom-4">
+              <LiveDiagramSwitch
+                value={activeTool === "AXIAL" || activeTool === "SHEAR" ? activeTool : "MOMENT"}
+                onChange={handleToolSelect}
+              />
+            </div>
           )}
           <FlyoutPanel
             activeTab={activeTab}

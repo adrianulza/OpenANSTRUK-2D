@@ -45,6 +45,8 @@ export interface LiveFrame {
   exact: AnalysisResult | null
   /** Spring-smoothed result for the drawn deformed shape */
   shape: AnalysisResult | null
+  /** Load-arrow size, 0 → 1 of its full length, eased so the arrow stretches smoothly */
+  arrowScale: number
 }
 
 type PullState = {
@@ -58,6 +60,7 @@ type PullState = {
   releaseAt: number | null
   releaseForce: { px: number; py: number }
   lastT: number
+  arrowScale: number
   lastEmit: number
   frame: LiveFrame | null
 }
@@ -74,6 +77,7 @@ const freshState = (): PullState => ({
   lastT: 0,
   lastEmit: 0,
   frame: null,
+  arrowScale: 0,
 })
 
 const prefersReducedMotion = () =>
@@ -123,7 +127,7 @@ export function useLivePull({
     }
     return {
       // The shape is filled in by the tick, after the spring has stepped.
-      frame: { grabbed: st.grabbed, cursor: st.cursor, force, exact, shape: null },
+      frame: { grabbed: st.grabbed, cursor: st.cursor, force, exact, shape: null, arrowScale: st.arrowScale },
       target: force ? { x: force.px, y: force.py } : { x: 0, y: 0 },
     }
   }, [])
@@ -189,6 +193,11 @@ export function useLivePull({
       st.wasCapped = frame.force.capped
     }
     springStep(st.spring, target, dt, params)
+    // The arrow follows P / P_max with a quick exponential ease (about 60 ms),
+    // so it stretches smoothly instead of jumping between mouse samples.
+    const arrowTarget = frame.force ? frame.force.P / LIVE_P_MAX : 0
+    st.arrowScale += (arrowTarget - st.arrowScale) * (1 - Math.exp(-Math.min(dt, 1 / 30) / 0.06))
+    frame.arrowScale = st.arrowScale
     if (st.springNode) frame.shape = evaluateLive(sys, st.springNode, st.spring.x, st.spring.y)
     st.frame = frame
     inputs.current.redraw()
