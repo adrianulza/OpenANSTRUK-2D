@@ -248,8 +248,6 @@ interface StructuralCanvasProps {
   liveSystem?: LiveSystem | null
   /** Visual-only deformation scale (0.1 to 10). */
   liveDeformScale?: number
-  /** Snap the rope angle to 45° steps (touch-friendly twin of holding Shift). */
-  liveSnap?: boolean
   onLiveReadout?: (r: LiveReadout | null) => void
 }
 
@@ -310,7 +308,6 @@ export function StructuralCanvas({
   designMaterialsPresent = [],
   liveSystem = null,
   liveDeformScale = 1,
-  liveSnap = false,
   onLiveReadout,
 }: StructuralCanvasProps) {
   // Display scale for force / moment labels drawn on canvas. Solver stores kN,
@@ -360,8 +357,6 @@ export function StructuralCanvas({
   const live = useLivePull({
     liveSystem: activeTab === "Live" ? liveSystem : null,
     model,
-    snap: liveSnap,
-    diagram: liveDiagram,
     onReadout: onLiveReadout,
     redraw: redrawLive,
   })
@@ -2604,14 +2599,14 @@ export function StructuralCanvas({
           // last so it sits on top of everything.
           drawLoadArrow(
             ctx, nodePt, worldToScreen(frame.cursor, rect), f, frame.arrowScale,
-            live.stateRef.current.shift || liveSnap, label, s, performance.now(), animate,
+            live.stateRef.current.shift, label, s, performance.now(), animate,
           )
         }
       } else {
         drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, s)
       }
     },
-    [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, liveSnap, forceScale, liveDiagram,
+    [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, forceScale, liveDiagram,
       drawAxialDiagram, drawShearDiagram, drawMomentDiagram, model, forceLabel, momentLabel, liveHover],
   )
 

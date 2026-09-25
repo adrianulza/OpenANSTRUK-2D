@@ -148,17 +148,19 @@ Live mode turns your model into something you can hold. Press on a node and drag
 | Purple structure | The deformed shape; truss members turn blue in tension, red in compression |
 | Orange arrow and label | The rope and its force, e.g. `63.1 kN ∠ −90°`. The arrow's tail is a point at the node and it widens toward its head, which sits on your cursor or finger. It gets thicker as the force grows (up to 100 kN), chevrons flow from the node toward the head while you drag (faster for a harder pull), and it glows once the force is capped. |
 | Blue/red arrows at supports | Reactions, sized by magnitude, flipping when they change sign |
-| Axial N / Shear V / Moment M (buttons at the top) | Which internal-force diagram grows with the pull; one is always shown. On a phone the buttons sit at the bottom of the screen. |
+| Axial N / Shear V / Moment M (buttons at the top) | Which internal-force diagram grows with the pull; one is always shown |
+| Green `ΣFx = ΣFy = ΣM = 0` chip (below the buttons, while pulling) | The rope force plus all reactions balance, as they must for a structure at rest |
 
-The panel shows the rope force, the real displacement of the pulled node, the largest value of the selected diagram, and an equilibrium check (rope force plus all reactions: ΣFx = ΣFy = ΣM = 0).
+Live mode has no side panel: everything is on the canvas. The controls sit top-centre on a computer and bottom-centre on a phone.
 
 **Which nodes can be pulled.** Any node free to translate, rollers included (pulling a roller along its restrained direction sends the force straight into its reaction). Pinned and fixed supports show a "not allowed" cursor. The rope attaches to **nodes only**, so to pull a beam at midspan, add a node there in the Model tab first.
 
 **Controls**
 
-- **Deformation Scale** (0.1× to 10×, default 1×) changes only how exaggerated the drawing is, never the forces. At 1× the largest possible deflection is drawn at half the rope cap.
-- **Snap angle to 45°**, or hold **Shift** while pulling. Press **Escape** to let go.
-- On a phone, pull with one finger. A second finger lets go and pinch-zooms. The panel starts folded so the structure stays visible; tap its header to unfold it.
+- **Deformation** slider, just below the diagram buttons (0.1× to 10×, default 1×; double-click to reset), changes only how exaggerated the drawing is, never the forces. At 1× the largest possible deflection is drawn at half the rope cap.
+- Hold **Shift** while pulling to snap the rope to 45° steps. Press **Escape** to let go.
+- On a phone, pull with one finger. A second finger lets go and pinch-zooms.
+- If the model is unstable (a mechanism), a yellow note under the buttons says which node is free, and pulling is paused until you fix it in the Model tab.
 
 Live mode is stateless: it ignores the loads you defined in the Load tab and forgets everything when you leave the tab. Nothing you do there changes your model or appears in undo history.
 

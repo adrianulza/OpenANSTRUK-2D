@@ -6,7 +6,7 @@ import type { Section, SectionId, MultiSelection, StructureModel, SupportPick, M
 import { MaterialFlyout } from "@/tabs/model/tools/material/material-tool"
 import type { AnalysisResult } from "@/lib/solver"
 import type { UnitSettings } from "@/lib/units"
-import { X, ChevronDown, ChevronUp } from "lucide-react"
+import { X } from "lucide-react"
 import { ModifyComponentToolContent } from "@/tabs/model/tools/select-tool"
 import { DeleteComponentToolContent } from "@/tabs/model/tools/delete-tool"
 import { MoveNodeToolContent } from "@/tabs/model/tools/move-node-tool"
@@ -21,9 +21,6 @@ import { ReactionToolContent } from "@/tabs/analyze/tools/reaction-tool"
 import { AnalyzeSelectContent } from "@/tabs/analyze/tools/select-tool"
 import { DiagramToolContent } from "@/tabs/analyze/tools/diagram-tool"
 import { DeformationToolContent } from "@/tabs/analyze/tools/deformation-tool"
-import { LivePanelContent } from "@/tabs/live/tools/live-panel"
-import type { LiveBuildResult } from "@/lib/live-solver"
-import type { LiveReadout } from "@/lib/live-physics"
 import { LoadCaseToolContent } from "@/tabs/load/tools/load-case-tool"
 import { LoadCombinationToolContent } from "@/tabs/load/tools/load-combination-tool"
 import { DesignScheduleToolContent } from "@/tabs/design/tools/design-schedule-tool"
@@ -153,12 +150,6 @@ interface FlyoutPanelProps {
   /** Which step of the RC / Steel tools is showing. Shared by both tools. */
   designPane?: DesignPane
   onDesignPaneChange?: (p: DesignPane) => void
-  liveSystem?: LiveBuildResult | null
-  liveReadout?: LiveReadout | null
-  liveDeformScale?: number
-  onLiveDeformScaleChange?: (v: number) => void
-  liveSnap?: boolean
-  onLiveSnapChange?: (v: boolean) => void
   // Move Node tool
   moveNodeMode?: "coordinates" | "screen"
   onMoveNodeModeChange?: (mode: "coordinates" | "screen") => void
@@ -268,22 +259,9 @@ export function FlyoutPanel({
   designResult,
   designPane = "preferences",
   onDesignPaneChange,
-  liveSystem,
-  liveReadout,
-  liveDeformScale,
-  onLiveDeformScaleChange,
-  liveSnap,
-  onLiveSnapChange,
 }: FlyoutPanelProps) {
-  // Live keeps its panel open with no diagram selected: the pull, readout and
-  // deformation scale still apply, so there is nothing to close.
-  const isLive = activeTab === "Live"
-  // On a phone the full-width panel would hide the structure being pulled, so
-  // the Live panel starts folded there and folds/unfolds from its header.
-  const [liveCollapsed, setLiveCollapsed] = React.useState(
-    () => typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches === true,
-  )
-  if (!activeTool && !isLive) return null
+  // Live mode keeps the canvas clear: its controls float on the canvas itself.
+  if (!activeTool || activeTab === "Live") return null
 
   const wide = activeTool === "LOAD_CASE" || activeTool === "LOAD_COMBINATION"
     || activeTool === "DESIGN_SCHEDULE" || activeTool === "DESIGN_REPORT"
@@ -303,26 +281,15 @@ export function FlyoutPanel({
     >
       <div className="p-3 flex items-center justify-between shrink-0">
         <span className="font-medium text-sm" style={{ color: FLYOUT_PANEL_COLORS.headerFont }}>{getToolTitle(activeTool, activeTab)}</span>
-        {isLive ? (
-          <button
-            onClick={() => setLiveCollapsed(v => !v)}
-            aria-label={liveCollapsed ? "Show Live panel" : "Fold Live panel"}
-            aria-expanded={!liveCollapsed}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 rounded hover:bg-gray-100"
-          >
-            {liveCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          </button>
-        ) : (
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 rounded hover:bg-gray-100"
-          >
-            <X size={14} />
-          </button>
-        )}
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 transition-colors p-0.5 rounded hover:bg-gray-100"
+        >
+          <X size={14} />
+        </button>
       </div>
-      <div className={cn("mx-3", isLive && liveCollapsed && "hidden")} style={{ borderTopColor: FLYOUT_PANEL_COLORS.headerSeparator, borderTopWidth: 3 }} />
-      <div className={cn("p-3 overflow-y-auto", isLive && liveCollapsed && "hidden")} style={{ scrollbarGutter: "stable" }}>
+      <div className="mx-3" style={{ borderTopColor: FLYOUT_PANEL_COLORS.headerSeparator, borderTopWidth: 3 }} />
+      <div className="p-3 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
         <FlyoutContent
           activeTab={activeTab}
           activeTool={activeTool}
@@ -421,12 +388,6 @@ export function FlyoutPanel({
           designResult={designResult}
           designPane={designPane}
           onDesignPaneChange={onDesignPaneChange}
-          liveSystem={liveSystem}
-          liveReadout={liveReadout}
-          liveDeformScale={liveDeformScale}
-          onLiveDeformScaleChange={onLiveDeformScaleChange}
-          liveSnap={liveSnap}
-          onLiveSnapChange={onLiveSnapChange}
         />
       </div>
     </div>
@@ -501,7 +462,6 @@ function steelSectionSummary(
 }
 
 function getToolTitle(tool: ToolType, activeTab?: TabType): string {
-  if (activeTab === "Live") return "LIVE"
   if (!tool) return ""
   if (tool === "SELECT") return "MODIFY SECTION"
   if (tool === "MOVE_NODE") return "MOVE NODE"
@@ -612,27 +572,7 @@ function FlyoutContent({
   designResult,
   designPane = "preferences",
   onDesignPaneChange,
-  liveSystem,
-  liveReadout,
-  liveDeformScale,
-  onLiveDeformScaleChange,
-  liveSnap,
-  onLiveSnapChange,
 }: FlyoutContentProps) {
-  if (activeTab === "Live") {
-    return (
-      <LivePanelContent
-        liveSystem={liveSystem ?? null}
-        readout={liveReadout ?? null}
-        diagram={activeTool === "AXIAL" || activeTool === "SHEAR" || activeTool === "MOMENT" ? activeTool : null}
-        deformScale={liveDeformScale ?? 1}
-        onDeformScaleChange={onLiveDeformScaleChange ?? (() => {})}
-        snap={liveSnap ?? false}
-        onSnapChange={onLiveSnapChange ?? (() => {})}
-        unitSettings={unitSettings}
-      />
-    )
-  }
   if (activeTab === "Design") {
     switch (activeTool) {
       // Both material tools are two-step: PREFERENCES (the code rules for that

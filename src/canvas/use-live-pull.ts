@@ -88,15 +88,11 @@ const prefersReducedMotion = () =>
 export function useLivePull({
   liveSystem,
   model,
-  snap,
-  diagram,
   onReadout,
   redraw,
 }: {
   liveSystem: LiveSystem | null
   model: StructureModel
-  snap: boolean
-  diagram: LiveDiagram
   onReadout?: (r: LiveReadout | null) => void
   redraw: () => void
 }) {
@@ -105,18 +101,18 @@ export function useLivePull({
   const [pulling, setPulling] = useState(false)
 
   // Latest inputs, read from inside the animation loop.
-  const inputs = useRef({ liveSystem, model, snap, diagram, onReadout, redraw })
+  const inputs = useRef({ liveSystem, model, onReadout, redraw })
   useEffect(() => {
-    inputs.current = { liveSystem, model, snap, diagram, onReadout, redraw }
-  }, [liveSystem, model, snap, diagram, onReadout, redraw])
+    inputs.current = { liveSystem, model, onReadout, redraw }
+  }, [liveSystem, model, onReadout, redraw])
 
   const computeFrame = useCallback((now: number): { frame: LiveFrame; target: { x: number; y: number } } => {
     const st = stateRef.current
-    const { liveSystem: sys, model: m, snap: snapOn } = inputs.current
+    const { liveSystem: sys, model: m } = inputs.current
     let force: RopeForce | null = null
     if (sys && st.grabbed && st.cursor) {
       const n = m.nodes[st.grabbed]
-      if (n) force = ropeToForce(n, st.cursor, sys.ropeCap, LIVE_P_MAX, snapOn || st.shift)
+      if (n) force = ropeToForce(n, st.cursor, sys.ropeCap, LIVE_P_MAX, st.shift)
     }
     let exact: AnalysisResult | null = null
     if (sys && force && st.grabbed) {
@@ -134,9 +130,9 @@ export function useLivePull({
 
   const emitReadout = useCallback((now: number, frame: LiveFrame, force: boolean) => {
     const st = stateRef.current
-    const { onReadout: emit, model: m, diagram: dg } = inputs.current
+    const { onReadout: emit, model: m } = inputs.current
     if (!emit) return
-    // The readout describes the rope being held. Once it is let go the panel
+    // The readout describes the rope being held. Once it is let go the chip
     // clears at once, while the canvas still plays the fade and the wobble.
     if (!frame.grabbed || !frame.force || !frame.exact) {
       if (st.lastEmit !== -1) emit(null)
@@ -147,26 +143,7 @@ export function useLivePull({
     st.lastEmit = now
     const node = frame.grabbed
     const { px, py, P } = frame.force
-    const d = frame.exact.nodeDisplacements[node]
-    let peak: number | null = null
-    if (dg) {
-      peak = 0
-      for (const ef of Object.values(frame.exact.memberEndForces)) {
-        // No distributed load in Live: values are constant or linear, so the ends are the extremes.
-        const pair = dg === "AXIAL" ? [ef.N1, ef.N2] : dg === "SHEAR" ? [ef.V1, ef.V2] : [ef.M1, ef.M2]
-        for (const v of pair) if (Math.abs(v) > Math.abs(peak)) peak = v
-      }
-    }
-    emit({
-      nodeId: node,
-      P,
-      angleDeg: frame.force.angleDeg,
-      capped: frame.force.capped,
-      u: d?.u ?? 0,
-      v: d?.v ?? 0,
-      peak,
-      eq: equilibriumResidual(m, frame.exact, node, px, py),
-    })
+    emit({ nodeId: node, P, eq: equilibriumResidual(m, frame.exact, node, px, py) })
   }, [])
 
   // The loop re-schedules itself through a ref, so the frame callback stays
@@ -288,11 +265,6 @@ export function useLivePull({
   useEffect(() => () => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
   }, [])
-
-  // Changing the diagram or snap mid-pull should update the readout right away.
-  useEffect(() => {
-    if (stateRef.current.grabbed) ensureRunning()
-  }, [diagram, snap, ensureRunning])
 
   return { stateRef, pulling, begin, move, setShift, end }
 }

@@ -419,7 +419,8 @@ tabs/
 │                       section-select (grouped by material) + section-group (the pure grouping)
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
 ├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
-├── live/tools/         live-panel (readout, equilibrium badge, deformation scale, angle snap)
+├── live/tools/         live-controls (on-canvas stack: diagram switch, deformation slider,
+│                       equilibrium chip, unstable warning) + live-diagram-switch
 └── design/tools/       design-schedule (setup, one row per section) + design-report (results,
                     one row per member) + schedule-shared/schedule-controls (their split
                     pure/component halves), shared/ (verdict-group, section-picker,
@@ -446,7 +447,7 @@ Live mode applies one nodal force (Px, Py) whose value changes every frame, to a
 
 **Rope and spring** (`src/lib/live-physics.ts`). `ropeToForce()` maps the rope, measured from the node's *original* position so the force never depends on the drawing, to a force linear in length and capped at P_max. The drawn shape follows a damped 2D spring (2.5 Hz, ζ = 0.12; critically damped under `prefers-reduced-motion`) acting on the force vector. Because the shape is linear in (Px, Py), animating that one vector animates the whole structure consistently. Diagrams, reactions and numbers use the exact force, so the wobble never shows a wrong value.
 
-**No React in the hot path** (`src/canvas/use-live-pull.ts`). The pull state lives in refs and runs on `requestAnimationFrame` only while a rope is held, the spring is moving or the 150 ms release fade plays. Each tick redraws through a ref to the canvas's `draw()`; the side-panel readout is pushed to App state at most every 80 ms. Mouse pulls are tracked on `window` so leaving the canvas does not drop the rope. Drawing primitives live in `src/canvas/live-layer.ts`.
+**No React in the hot path** (`src/canvas/use-live-pull.ts`). The pull state lives in refs and runs on `requestAnimationFrame` only while a rope is held, the spring is moving or the 150 ms release fade plays. Each tick redraws through a ref to the canvas's `draw()`; the readout behind the equilibrium chip is pushed to App state at most every 80 ms. Live renders no flyout panel (`FlyoutPanel` returns null on the Live tab). Mouse pulls are tracked on `window` so leaving the canvas does not drop the rope. Drawing primitives live in `src/canvas/live-layer.ts`.
 
 **Stateless by construction.** App memoises `buildLiveSystem()` only while the Live tab is active, and the controller resets whenever that system changes, so leaving the tab discards everything. Live never calls `setModel`.
 

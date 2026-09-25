@@ -137,18 +137,11 @@ export function releaseFade(elapsedMs: number, durationMs: number): number {
   return (1 - t) * (1 - t)
 }
 
-/** What the Live side panel shows while (or just after) a node is pulled. */
+/** What the Live controls show while a node is pulled (the equilibrium chip). */
 export interface LiveReadout {
   nodeId: string
-  /** Rope force (kN) and direction (degrees CCW from +x) */
+  /** Rope force magnitude (kN) */
   P: number
-  angleDeg: number
-  capped: boolean
-  /** Real displacement of the pulled node (m) */
-  u: number
-  v: number
-  /** Largest |value| of the selected diagram, with its sign (kN or kN·m); null when none selected */
-  peak: number | null
   /** Global equilibrium residual: rope force plus all reactions (≈ 0) */
   eq: { Fx: number; Fy: number; M: number }
 }
