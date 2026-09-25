@@ -28,6 +28,8 @@ import {
 } from "@/lib/analysis-pipeline"
 import type { AnalysisResult } from "@/lib/analysis-pipeline"
 import { analyze, type SolverResult } from "@/lib/solver"
+import { buildLiveSystem } from "@/lib/live-solver"
+import type { LiveReadout } from "@/lib/live-physics"
 import {
   runDiagnostics,
   dofToLocation,
@@ -131,6 +133,11 @@ export default function App() {
   const [invertSFD, setInvertSFD] = useState(true)
   const [invertBMD, setInvertBMD] = useState(false)
   const [deformationScale, setDeformationScale] = useState(1)
+  // Live tab: view settings only. The pull itself lives in canvas refs and is
+  // gone when the tab closes (Live mode keeps no memory of what was pulled).
+  const [liveDeformScale, setLiveDeformScale] = useState(1)
+  const [liveSnap, setLiveSnap] = useState(false)
+  const [liveReadout, setLiveReadout] = useState<LiveReadout | null>(null)
   const [templateModal, setTemplateModal] = useState<"beam" | "frame" | "truss" | null>(null)
   const [showExamplesModal, setShowExamplesModal] = useState(false)
 
@@ -456,6 +463,13 @@ export default function App() {
     [comboResults, envelopeComboIds, combinations],
   )
 
+  // Live tab: stiffness assembled and factored once per visit, from geometry
+  // only (model loads are ignored). Leaving the tab drops it.
+  const liveSystem = useMemo(
+    () => activeTab === "Live" ? buildLiveSystem(model, { shearDeformation }) : null,
+    [activeTab, model, shearDeformation],
+  )
+
   const displayedResult = useMemo(
     () => pickDisplayedResult(
       analyzeViewMode,
@@ -611,7 +625,13 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
-    setActiveTool(tab === "Analyze" ? "REACTION" : tab === "Design" ? "SECTION_DESIGN" : null)
+    setActiveTool(
+      tab === "Analyze" ? "REACTION"
+        : tab === "Design" ? "SECTION_DESIGN"
+        : tab === "Live" ? "MOMENT"
+        : null,
+    )
+    setLiveReadout(null)
     // Entering Design lands on step 1: the code rules come before the section
     // they govern. Switching material mid-session keeps whichever pane you are
     // on — that reset lives here, on tab entry, not on tool change.
@@ -1516,6 +1536,12 @@ export default function App() {
             designResult={designResult}
             designPane={designPane}
             onDesignPaneChange={setDesignPane}
+            liveSystem={liveSystem}
+            liveReadout={liveReadout}
+            liveDeformScale={liveDeformScale}
+            onLiveDeformScaleChange={setLiveDeformScale}
+            liveSnap={liveSnap}
+            onLiveSnapChange={setLiveSnap}
           />
 
           <StructuralCanvas
@@ -1571,6 +1597,10 @@ export default function App() {
             designMaterialView={designMaterialView}
             onDesignMaterialViewChange={setDesignMaterialView}
             designMaterialsPresent={designMaterialsPresent}
+            liveSystem={liveSystem && liveSystem.ok ? liveSystem : null}
+            liveDeformScale={liveDeformScale}
+            liveSnap={liveSnap}
+            onLiveReadout={setLiveReadout}
           />
         </main>
       </div>

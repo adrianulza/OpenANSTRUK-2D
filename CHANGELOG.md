@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Live tab: pull the structure with a rope.** Press on any free node and drag. The rope is the point load: its direction is the load direction and its length sets the magnitude linearly, up to 100 kN. The structure deforms with a gentle spring (a slight lag, a bump when the rope goes taut, a wobble on release), while the selected N / V / M diagram and the support reactions grow, rotate and flip in real time at fixed reference scales. The panel shows the rope force, the pulled node's displacement, the peak internal force and a live equilibrium check. A deformation scale (0.1× to 10×) changes only the drawing; Shift or a toggle snaps the rope to 45°. Works with touch. Live mode ignores model loads and keeps no state: leaving the tab discards everything.
+- `src/lib/live-solver.ts`: factor-once, superpose-per-frame solver for a single moving nodal load, verified against `analyze()`.
+- Unit tests with Vitest (`npm test`).
+
+### Changed
+
+- `localStiffness`, `condensedTrussElement` and `transformMatrix` are exported from `solver.ts`, and the per-section shear rigidity moved into an exported `sectionShearRigidity()`. `analyze()` behaves exactly as before.
+- Nav tabs use tighter padding below 640 px so every tab, Live included, fits on a phone screen.
+
+---
+
 ## [1.3.0] — 2026-08-12
 
 **Design results are organised by what you are looking for, not by which

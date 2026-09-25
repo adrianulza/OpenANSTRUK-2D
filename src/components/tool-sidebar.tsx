@@ -19,7 +19,7 @@ import {
   ClipboardList,
 } from "lucide-react"
 
-export type TabType = "Model" | "Load" | "Analyze" | "Design"
+export type TabType = "Model" | "Load" | "Analyze" | "Design" | "Live"
 export type ToolType =
   | "SELECT"
   | "NODE"
@@ -121,6 +121,14 @@ const designTools: Tool[] = [
   { id: "DESIGN_REPORT", label: "DESIGN\nREPORT", icon: <ClipboardList size={20} /> },
 ]
 
+// Live tab: the rope pull is always active; these only pick which internal-force
+// diagram grows with it. Deselecting all shows the deformed shape and reactions only.
+const liveTools: Tool[] = [
+  { id: "AXIAL", label: "AXIAL", icon: <Activity size={20} /> },
+  { id: "SHEAR", label: "SHEAR", icon: <BarChart3 size={20} /> },
+  { id: "MOMENT", label: "MOMENT", icon: <TrendingUp size={20} /> },
+]
+
 interface ToolSidebarProps {
   activeTab: TabType
   activeTool: ToolType
@@ -134,6 +142,8 @@ export function ToolSidebar({ activeTab, activeTool, onToolSelect }: ToolSidebar
     ? loadTools
     : activeTab === "Design"
     ? designTools
+    : activeTab === "Live"
+    ? liveTools
     : analyzeTools
 
   const handleToolClick = (toolId: NonNullable<ToolType>) => {

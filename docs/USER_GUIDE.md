@@ -17,6 +17,8 @@ The workflow is linear: **Model → Load → Analyze → Design**. Use the tabs 
 3. **Analyze tab** — view results
 4. **Design tab** — check RC beam sections (flexure + shear)
 
+Beside the workflow sits the **Live tab**, a playground for building intuition: pull any node with a rope and watch the structure respond.
+
 ---
 
 ## Model Tab
@@ -127,6 +129,40 @@ Displays the axial force diagram (AFD). Blue = tension, red = compression.
 
 ### DEFORMATION
 Displays the deformed shape. Use the scale slider to exaggerate deformations for visibility.
+
+---
+
+## Live Tab
+
+Live mode turns your model into something you can hold. Press on a node and drag: a rope is tied to the node, and the rope **is** the point load.
+
+- **Direction** follows the rope.
+- **Magnitude** grows linearly with the rope length, up to **100 kN** when the rope reaches a quarter of the model's size. Past that the rope keeps stretching (drawn solid red), but the force stays at 100 kN.
+- The structure deforms as you pull, with a little spring in it: it lags slightly, bumps when the rope goes taut, and wobbles back when you let go. Only the drawing wobbles. Every number, diagram and reaction shows the exact static answer.
+
+**What you see while pulling**
+
+| Layer | Meaning |
+|---|---|
+| Faint grey structure | The original, undeformed geometry (diagrams are drawn on it) |
+| Purple structure | The deformed shape; truss members turn blue in tension, red in compression |
+| Red arrow and label | The rope force, e.g. `63.1 kN ∠ −90°` |
+| Blue/red arrows at supports | Reactions, sized by magnitude, flipping when they change sign |
+| AXIAL / SHEAR / MOMENT (sidebar) | Which internal-force diagram grows with the pull; click the active one again to hide diagrams |
+
+The panel shows the rope force, the real displacement of the pulled node, the largest value of the selected diagram, and an equilibrium check (rope force plus all reactions: ΣFx = ΣFy = ΣM = 0).
+
+**Which nodes can be pulled.** Any node free to translate, rollers included (pulling a roller along its restrained direction sends the force straight into its reaction). Pinned and fixed supports show a "not allowed" cursor. The rope attaches to **nodes only**, so to pull a beam at midspan, add a node there in the Model tab first.
+
+**Controls**
+
+- **Deformation Scale** (0.1× to 10×, default 1×) changes only how exaggerated the drawing is, never the forces. At 1× the largest possible deflection is drawn at half the rope cap.
+- **Snap angle to 45°**, or hold **Shift** while pulling. Press **Escape** to let go.
+- On a phone, pull with one finger. A second finger lets go and pinch-zooms. The panel starts folded so the structure stays visible; tap its header to unfold it.
+
+Live mode is stateless: it ignores the loads you defined in the Load tab and forgets everything when you leave the tab. Nothing you do there changes your model or appears in undo history.
+
+**Try this.** On a portal frame, pull a beam-column joint sideways, then straight down with the same rope length. The force is identical, yet the frame sways visibly one way and barely moves the other: that difference is stiffness.
 
 ---
 
@@ -246,7 +282,8 @@ Grid spacing and unit system can be adjusted via the settings panel accessible f
 |-----|--------|
 | Ctrl/⌘ + Z | Undo last edit |
 | Ctrl/⌘ + Y *(or Ctrl/⌘ + Shift + Z)* | Redo |
-| Escape | Cancel current action / deselect |
+| Escape | Cancel current action / deselect (Live tab: let go of the rope) |
+| Shift *(while pulling on the Live tab)* | Snap the rope angle to 45° steps |
 | Arrow keys | Navigate slides in Examples modal |
 
 ### Undo / Redo

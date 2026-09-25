@@ -21,6 +21,7 @@ A 2D structural analysis web application for modeling, loading, and analyzing fr
 - Direct stiffness method (DSM) solver — runs entirely in the browser
 - Shear force, bending moment, axial force, and deformation diagrams
 - RC design checks (beams + rectangular/circular columns, ACI 318-25 / SNI 2847:2019) and steel design checks (IWF / RHS / CHS / tee / single angle, AISC 360-16 / SNI 1729:2020) — see [Design Rules](docs/DESIGN_RULES.md)
+- **Live mode**: pull any node with a "rope" and watch the deformed shape, N/V/M diagrams and reactions respond in real time (touch supported)
 - Parametric template builder for beams, frames, and trusses
 - Undo / redo (buttons + Ctrl+Z / Ctrl+Y) covering all model and load edits
 - Save / load models as JSON from the File menu
@@ -61,6 +62,7 @@ npm run dev
 | `npm run build` | Type-check + production build |
 | `npm run preview` | Preview production build |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) |
 | `npm run format` | Format with Prettier |
 
 ## Tech Stack

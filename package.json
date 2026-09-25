@@ -10,6 +10,7 @@
     "build": "tsc -b config/tsconfig.json && vite -c config/vite.config.ts build && node config/check-dist.mjs",
     "preview": "vite -c config/vite.config.ts preview",
     "lint": "eslint -c config/eslint.config.js .",
+    "test": "vitest run -c config/vitest.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -59,6 +60,7 @@
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
     "typescript-eslint": "^8.58.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^3.2.7"
   }
 }

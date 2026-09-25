@@ -14,6 +14,8 @@ Model  →  Load  →  Analyze  →  Design
 
 Each step maps to a tab in the UI. The user builds a structure, assigns loads, runs analysis to view results, then checks RC beam sections (flexure + shear) on the Design tab.
 
+A fifth tab, **Live**, sits beside the workflow rather than after it: the user pulls a node with a rope and the structure responds in real time. See [Live Mode](#live-mode) below.
+
 ---
 
 ## Project Layout
@@ -417,6 +419,7 @@ tabs/
 │                       section-select (grouped by material) + section-group (the pure grouping)
 ├── load/tools/         point-load, dist-load, modify-load (+ DistributedLoadEditor), delete-load
 ├── analyze/tools/      select, reaction, diagram (shared by AXIAL/SHEAR/MOMENT), deformation
+├── live/tools/         live-panel (readout, equilibrium badge, deformation scale, angle snap)
 └── design/tools/       design-schedule (setup, one row per section) + design-report (results,
                     one row per member) + schedule-shared/schedule-controls (their split
                     pure/component halves), shared/ (verdict-group, section-picker,
@@ -430,6 +433,22 @@ read-only). One tool with an Overview/Edit toggle meant neither half was designe
 for its job. The sidebar order follows the workflow: SCHEDULE → RC → STEEL → REPORT.
 
 **Adding a new tool is a one-folder change.** The router in `flyout-panel.tsx` and the tool-sidebar palette in `tool-sidebar.tsx` are the only places outside `tabs/` you need to touch.
+
+---
+
+## Live Mode
+
+Live mode applies one nodal force (Px, Py) whose value changes every frame, to a structure that does not change while the tab is open. That shape of problem decides the design.
+
+**Factor once, superpose per frame** (`src/lib/live-solver.ts`). `buildLiveSystem()` assembles K from geometry only (model loads are ignored), applies the same restraint rules as `analyze()` and Cholesky-factors it once. It reuses the solver's element code (`localStiffness`, `condensedTrussElement`, `transformMatrix`, `sectionShearRigidity`, exported from `solver.ts` for this; `analyze()` itself is unchanged). For a grabbed node, `getUnitResponse()` back-substitutes two unit loads (Fx = 1, Fy = 1) and caches displacements, member end forces and reactions. `evaluateLive()` then returns `Px · unitX + Py · unitY` in the ordinary `AnalysisResult` shape, so the existing diagram code draws it. A frame costs a weighted sum, never a solve. `live-solver.test.ts` checks it against hand formulas and against `analyze()` on frames, trusses, mixed models and rollers, with and without shear deformation.
+
+**Frozen reference scales.** When the tab opens, `computeReferenceScales()` finds the largest displacement, |N|, |V|, |M| and reaction any grabbable node can produce at P_max in its worst direction. Over all rope directions the peak of a · Px + b · Py is P · √(a² + b²), and of a displacement vector P times the largest singular value of a 2×2 map, so no angle sweep is needed. Diagrams and reaction arrows are drawn against these fixed references, so they grow from zero with the pull instead of re-fitting every frame (the Analyze tab's diagrams re-fit; Live passes a `DiagramOverride` to the same draw functions).
+
+**Rope and spring** (`src/lib/live-physics.ts`). `ropeToForce()` maps the rope, measured from the node's *original* position so the force never depends on the drawing, to a force linear in length and capped at P_max. The drawn shape follows a damped 2D spring (2.5 Hz, ζ = 0.12; critically damped under `prefers-reduced-motion`) acting on the force vector. Because the shape is linear in (Px, Py), animating that one vector animates the whole structure consistently. Diagrams, reactions and numbers use the exact force, so the wobble never shows a wrong value.
+
+**No React in the hot path** (`src/canvas/use-live-pull.ts`). The pull state lives in refs and runs on `requestAnimationFrame` only while a rope is held, the spring is moving or the 150 ms release fade plays. Each tick redraws through a ref to the canvas's `draw()`; the side-panel readout is pushed to App state at most every 80 ms. Mouse pulls are tracked on `window` so leaving the canvas does not drop the rope. Drawing primitives live in `src/canvas/live-layer.ts`.
+
+**Stateless by construction.** App memoises `buildLiveSystem()` only while the Live tab is active, and the controller resets whenever that system changes, so leaving the tab discards everything. Live never calls `setModel`.
 
 ---
 
@@ -497,7 +516,9 @@ The flyout-panel palette is separately in [`src/lib/flyout-panel-colors.ts`](../
 
 ## Test Suite
 
-There are currently no automated tests. Manual testing relies on the smoke matrix in [`REFACTOR_PLAN.md`](../REFACTOR_PLAN.md) (steps S1–S21) and on loading templates from the NavBar:
+Unit tests run with Vitest: `npm test` (config in `config/vitest.config.ts`, tests next to the code as `src/**/*.test.ts`). They currently cover the Live solver and its interaction physics, including parity checks against `analyze()`.
+
+Beyond that, manual testing relies on the smoke matrix in [`REFACTOR_PLAN.md`](../REFACTOR_PLAN.md) (steps S1–S21) and on loading templates from the NavBar:
 
 - **template1** — simple beam (pin–roller); basic SFD/BMD
 - **template2** — cantilever; basic SFD/BMD

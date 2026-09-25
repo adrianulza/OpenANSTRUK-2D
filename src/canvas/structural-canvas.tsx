@@ -29,6 +29,16 @@ import {
   type BoxDirection,
 } from "@/canvas/box-selection"
 import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
+import { LIVE_P_MAX, type LiveSystem } from "@/lib/live-solver"
+import type { LiveReadout } from "@/lib/live-physics"
+import { useLivePull, type LiveDiagram } from "@/canvas/use-live-pull"
+import {
+  drawLiveDeformed,
+  drawLiveReactions,
+  drawRope,
+  drawGrabRings,
+  deformedNodeScreen,
+} from "@/canvas/live-layer"
 import {
   SCALE,
   COLOR_BRAND,
@@ -146,6 +156,28 @@ function clampPan(
   return { px: clampedPx, py: clampedPy }
 }
 
+/** Live mode: draw a diagram from this result at a fixed reference peak. */
+type DiagramOverride = {
+  result: AnalysisResult
+  /** Value drawn at the full reference height (kN or kN·m) */
+  peak: number
+  format?: (v: number) => string
+}
+
+/** Rope grab radius around a node, in screen pixels (mouse / finger). */
+const LIVE_GRAB_PX_MOUSE = 22
+const LIVE_GRAB_PX_TOUCH = 32
+
+/** Client (page) coordinates → world metres, unrounded, for the Live rope end. */
+function clientToWorldAt(
+  clientX: number, clientY: number, rect: DOMRect, panX: number, panY: number, zoom: number,
+): WorldPoint {
+  const { sx, sy } = axisCenter(rect)
+  const vmx = (clientX - rect.left - panX) / zoom
+  const vmy = (clientY - rect.top - panY) / zoom
+  return { x: (vmx - sx) / SCALE, y: (sy - vmy) / SCALE }
+}
+
 interface StructuralCanvasProps {
   activeTab: TabType
   activeTool: ToolType
@@ -211,6 +243,14 @@ interface StructuralCanvasProps {
   onDesignMaterialViewChange?: (m: DesignMaterial) => void
   /** Materials actually present among designable members — drives the switch. */
   designMaterialsPresent?: DesignMaterial[]
+  // Live tab
+  /** Factored stiffness for the Live tab; null when the tab is closed or the model is unstable. */
+  liveSystem?: LiveSystem | null
+  /** Visual-only deformation scale (0.1 to 10). */
+  liveDeformScale?: number
+  /** Snap the rope angle to 45° steps (touch-friendly twin of holding Shift). */
+  liveSnap?: boolean
+  onLiveReadout?: (r: LiveReadout | null) => void
 }
 
 export function StructuralCanvas({
@@ -268,6 +308,10 @@ export function StructuralCanvas({
   designMaterialView = null,
   onDesignMaterialViewChange,
   designMaterialsPresent = [],
+  liveSystem = null,
+  liveDeformScale = 1,
+  liveSnap = false,
+  onLiveReadout,
 }: StructuralCanvasProps) {
   // Display scale for force / moment labels drawn on canvas. Solver stores kN,
   // moment in kN·m; multiply by 1000 when displaying in N or N·m.
@@ -303,6 +347,32 @@ export function StructuralCanvas({
   const isPanningRef = useRef(false)
   const [isPanning, setIsPanning] = useState(false)
   const dragNodeRef = useRef<{ nodeId: NodeId } | null>(null)
+
+  // ── Live tab ──
+  // The pull runs its own requestAnimationFrame loop; it redraws through this
+  // ref because draw() is declared further down and changes with every prop.
+  const drawRef = useRef<() => void>(() => {})
+  const redrawLive = useCallback(() => drawRef.current(), [])
+  const liveDiagram: LiveDiagram =
+    activeTab === "Live" && (activeTool === "AXIAL" || activeTool === "SHEAR" || activeTool === "MOMENT")
+      ? activeTool
+      : null
+  const live = useLivePull({
+    liveSystem: activeTab === "Live" ? liveSystem : null,
+    model,
+    snap: liveSnap,
+    diagram: liveDiagram,
+    onReadout: onLiveReadout,
+    redraw: redrawLive,
+  })
+  const liveRef = useRef(live)
+  useEffect(() => { liveRef.current = live }, [live])
+  const activeTabRef = useRef(activeTab)
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+  const liveSystemRef = useRef(liveSystem)
+  useEffect(() => { liveSystemRef.current = liveSystem }, [liveSystem])
+  /** Node under the cursor on the Live tab, and whether the rope can attach there. */
+  const [liveHover, setLiveHover] = useState<{ id: NodeId; grabbable: boolean } | null>(null)
 
   // Refs for values needed inside the touch useEffect (which has empty deps and uses stale closure)
   const activeToolRef = useRef(activeTool)
@@ -1709,15 +1779,19 @@ export function StructuralCanvas({
   )
 
   const drawAxialDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect) => {
-      if (!analysisResult) return
+    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
+      // Live mode passes its own result and a frozen peak (so the diagram grows
+      // with the pull instead of re-fitting); Analyze uses the props as before.
+      const res = ov?.result ?? analysisResult
+      if (!res) return
+      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |N| sampled across all members at TARGET_PX (1 grid cell) at scale 1.0×.
       const TARGET_PX = 80
       let peakN = 0
       for (const m of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[m.id]
+        const ef = res.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -1728,10 +1802,11 @@ export function StructuralCanvas({
         }
       }
       // Use HALF of the conventional BASE so the mirrored (±) band reaches TARGET_PX overall.
-      const BASE = peakN > 1e-9 ? (TARGET_PX / peakN) * diagramScale * 0.5 : 0
+      const peakRef = ov ? ov.peak : peakN
+      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) * 0.5 : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[member.id]
+        const ef = res.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -1837,7 +1912,7 @@ export function StructuralCanvas({
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
           const prefix = val >= 0 ? "+" : ""
-          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
+          ctx.fillText(`${prefix}${fmtV(val)} ${forceLabel}`, lx, ly)
         }
 
         const p0 = pts[0], pN = pts[pts.length - 1]
@@ -1872,7 +1947,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             const fmt = (v: number) =>
-              `${v >= 0 ? "+" : ""}${formatValue(v * forceScale)} ${forceLabel}`
+              `${v >= 0 ? "+" : ""}${fmtV(v)} ${forceLabel}`
             // Stack perpendicular to the (now-rotated) member axis. After
             // ctx.rotate(angle), the member runs along local +x; "above" the
             // diagram is local −y, so first line goes slightly more negative
@@ -1895,7 +1970,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             const prefix = n1 >= 0 ? "+" : ""
-            ctx.fillText(`${prefix}${formatValue(n1 * forceScale)} ${forceLabel}`, 0, 0)
+            ctx.fillText(`${prefix}${fmtV(n1)} ${forceLabel}`, 0, 0)
             ctx.restore()
           }
         } else {
@@ -1915,15 +1990,19 @@ export function StructuralCanvas({
   )
 
   const drawShearDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect) => {
-      if (!analysisResult) return
+    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
+      // Live mode passes its own result and a frozen peak (so the diagram grows
+      // with the pull instead of re-fitting); Analyze uses the props as before.
+      const res = ov?.result ?? analysisResult
+      if (!res) return
+      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |V| sampled across all members renders at TARGET_PX at scale 1.0×
       const TARGET_PX = 80
       let peakV = 0
       for (const m of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[m.id]
+        const ef = res.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -1933,10 +2012,11 @@ export function StructuralCanvas({
           if (Math.abs(V) > peakV) peakV = Math.abs(V)
         }
       }
-      const BASE = peakV > 1e-9 ? (TARGET_PX / peakV) * diagramScale : 0
+      const peakRef = ov ? ov.peak : peakV
+      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[member.id]
+        const ef = res.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -2028,7 +2108,7 @@ export function StructuralCanvas({
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
           const prefix = val >= 0 ? "+" : ""
-          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
+          ctx.fillText(`${prefix}${fmtV(val)} ${forceLabel}`, lx, ly)
         }
 
         // Label end points (with invert sign adjustment)
@@ -2051,15 +2131,19 @@ export function StructuralCanvas({
   )
 
   const drawMomentDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect) => {
-      if (!analysisResult) return
+    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
+      // Live mode passes its own result and a frozen peak (so the diagram grows
+      // with the pull instead of re-fitting); Analyze uses the props as before.
+      const res = ov?.result ?? analysisResult
+      if (!res) return
+      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |M| sampled across all members renders at TARGET_PX at scale 1.0×
       const TARGET_PX = 80
       let peakM_all = 0
       for (const m of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[m.id]
+        const ef = res.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -2069,10 +2153,11 @@ export function StructuralCanvas({
           if (Math.abs(M) > peakM_all) peakM_all = Math.abs(M)
         }
       }
-      const BASE = peakM_all > 1e-9 ? (TARGET_PX / peakM_all) * diagramScale : 0
+      const peakRef = ov ? ov.peak : peakM_all
+      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = analysisResult.memberEndForces[member.id]
+        const ef = res.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -2156,7 +2241,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
-          ctx.fillText(`${formatValue(val * forceScale)} ${momentLabel}`, lx, ly)
+          ctx.fillText(`${fmtV(val)} ${momentLabel}`, lx, ly)
         }
 
         const bmdSign = invertBMD ? -1 : 1
@@ -2478,6 +2563,52 @@ export function StructuralCanvas({
     [model, analysisResult, adaptiveView, zoom]
   )
 
+  // Live tab layer. Diagrams and reactions use the exact rope force at frozen
+  // reference scales (so they grow from zero); the purple structure follows the
+  // spring. Diagrams sit on the faint undeformed outline, as in a textbook.
+  const drawLive = useCallback(
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      const sys = liveSystem
+      if (!sys) return
+      const s = adaptiveView ? 1 / zoom : 1
+      const frame = live.stateRef.current.frame
+      // At scale 1 the largest possible displacement (P_max, worst direction)
+      // draws at half the rope cap, so the rope always looks taut.
+      const k = sys.refs.disp > 1e-12 ? ((0.5 * sys.ropeCap) / sys.refs.disp) * liveDeformScale : 0
+      const fmt1 = (v: number) => (v * forceScale).toFixed(1)
+
+      if (frame?.exact) {
+        const ov = (peak: number) => ({ result: frame.exact!, peak, format: fmt1 })
+        if (liveDiagram === "AXIAL") drawAxialDiagram(ctx, rect, ov(sys.refs.N))
+        if (liveDiagram === "SHEAR") drawShearDiagram(ctx, rect, ov(sys.refs.V))
+        if (liveDiagram === "MOMENT") drawMomentDiagram(ctx, rect, ov(sys.refs.M))
+      }
+
+      drawLiveDeformed(ctx, rect, model, sys, frame?.shape ?? null, k, s, frame?.exact ?? null)
+
+      if (frame?.exact) {
+        drawLiveReactions(
+          ctx, rect, model, frame.exact, sys.refs.R, s,
+          (v) => `${fmt1(v)} ${forceLabel}`,
+          (v) => `${fmt1(v)} ${momentLabel}`,
+        )
+      }
+
+      if (frame?.grabbed && frame.force && frame.cursor) {
+        const nodePt = deformedNodeScreen(model, frame.shape, frame.grabbed, k, rect)
+        if (nodePt) {
+          const f = frame.force
+          const label = `${fmt1(f.P)} ${forceLabel} ∠ ${`${Math.round(f.angleDeg)}°`.replace("-", "\u2212")}`
+          drawRope(ctx, nodePt, worldToScreen(frame.cursor, rect), f, LIVE_P_MAX, label, s)
+        }
+      } else {
+        drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, s)
+      }
+    },
+    [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, forceScale, liveDiagram,
+      drawAxialDiagram, drawShearDiagram, drawMomentDiagram, model, forceLabel, momentLabel, liveHover],
+  )
+
   const drawIdPills = useCallback(
     (ctx: CanvasRenderingContext2D, rect: Rect) => {
       const s = adaptiveView ? 1 / zoom : 1
@@ -2636,9 +2767,15 @@ export function StructuralCanvas({
     ctx.scale(zoom, zoom)
 
     drawGrid(ctx, rect.width, rect.height)
+    // Live: the undeformed structure is a faint ghost; the live one is drawn on top.
+    const liveGhost = activeTab === "Live" && liveSystem ? 0.25 : 1
+    ctx.globalAlpha = liveGhost
     drawMembers(ctx, rect)
+    ctx.globalAlpha = 1
     drawSupports(ctx, rect)
+    ctx.globalAlpha = liveGhost
     drawNodes(ctx, rect)
+    ctx.globalAlpha = 1
     drawGizmo(ctx, rect)
 
     if (showDimensions) drawDimensions(ctx, rect)
@@ -2657,6 +2794,7 @@ export function StructuralCanvas({
       }
     }
     if (activeTab === "Design" && designResult) drawDesignLabels(ctx, rect)
+    if (activeTab === "Live") drawLive(ctx, rect)
 
     ctx.restore()
 
@@ -2701,7 +2839,11 @@ export function StructuralCanvas({
     drawReactions,
     designResult,
     drawDesignLabels,
+    liveSystem,
+    drawLive,
   ])
+
+  useEffect(() => { drawRef.current = draw }, [draw])
 
   useEffect(() => {
     draw()
@@ -2776,6 +2918,7 @@ export function StructuralCanvas({
       pinchMidX: 0,
       pinchMidY: 0,
       hasPanned: false,  // true only after finger moved beyond drag threshold
+      livePull: false,   // Live tab: a finger is holding a rope
     }
 
     const getTouchDist = (t1: Touch, t2: Touch) =>
@@ -2806,6 +2949,26 @@ export function StructuralCanvas({
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
+
+      // Live: one finger on a free node ties the rope to it. A second finger
+      // lets go of the rope and pinches instead.
+      if (activeTabRef.current === "Live") {
+        if (touchState.livePull && e.touches.length > 1) {
+          touchState.livePull = false
+          liveRef.current.end()
+        } else if (e.touches.length === 1) {
+          const sys = liveSystemRef.current
+          const t = e.touches[0]
+          const w = clientToWorldAt(t.clientX, t.clientY, rect, panXRef.current, panYRef.current, zoomRef.current)
+          const hit = sys ? hitTestNode(modelRef.current, w, LIVE_GRAB_PX_TOUCH / (SCALE * zoomRef.current)) : null
+          if (sys && hit && sys.grabbable.has(hit)) {
+            touchState.livePull = true
+            liveRef.current.begin(hit, w, false)
+            e.preventDefault()
+            return
+          }
+        }
+      }
 
       // MOVE_NODE screen drag — intercept single-finger touch on a node
       if (e.touches.length === 1 && activeToolRef.current === "MOVE_NODE" && moveNodeModeRef.current === "screen") {
@@ -2841,6 +3004,16 @@ export function StructuralCanvas({
       const container = containerRef.current
       if (!container) return
       const rect = container.getBoundingClientRect()
+
+      if (touchState.livePull && e.touches.length === 1) {
+        e.preventDefault()
+        const t = e.touches[0]
+        liveRef.current.move(
+          clientToWorldAt(t.clientX, t.clientY, rect, panXRef.current, panYRef.current, zoomRef.current),
+          false,
+        )
+        return
+      }
 
       // MOVE_NODE screen drag — move node live with snap
       if (dragNodeRef.current && e.touches.length === 1) {
@@ -2914,6 +3087,12 @@ export function StructuralCanvas({
     }
 
     const onTouchEnd = (e: TouchEvent) => {
+      if (touchState.livePull && e.touches.length === 0) {
+        touchState.livePull = false
+        liveRef.current.end()
+        e.preventDefault()
+        return
+      }
       // MOVE_NODE screen drag — release
       if (dragNodeRef.current && e.touches.length === 0) {
         dragNodeRef.current = null
@@ -2958,10 +3137,19 @@ export function StructuralCanvas({
     canvas.addEventListener("touchstart", onTouchStart, { passive: false })
     canvas.addEventListener("touchmove", onTouchMove, { passive: false })
     canvas.addEventListener("touchend", onTouchEnd, { passive: false })
+    // An interrupted touch (incoming call, gesture takeover) lets go of the rope.
+    const onTouchCancel = () => {
+      if (touchState.livePull) {
+        touchState.livePull = false
+        liveRef.current.end()
+      }
+    }
+    canvas.addEventListener("touchcancel", onTouchCancel)
     return () => {
       canvas.removeEventListener("touchstart", onTouchStart)
       canvas.removeEventListener("touchmove", onTouchMove)
       canvas.removeEventListener("touchend", onTouchEnd)
+      canvas.removeEventListener("touchcancel", onTouchCancel)
     }
   }, [])
 
@@ -2971,6 +3159,9 @@ export function StructuralCanvas({
     if (containerRect) {
       setCursorPx({ x: e.clientX - containerRect.left, y: e.clientY - containerRect.top })
     }
+    // Live pull: the window listener moves the rope end.
+    if (live.pulling) return
+
     // MOVE_NODE screen drag — move node live with snap
     if (dragNodeRef.current) {
       const w = toWorldCoords(e)
@@ -3028,6 +3219,12 @@ export function StructuralCanvas({
     } else if (deformHoverNodeId) {
       setDeformHoverNodeId(null)
     }
+    if (activeTab === "Live" && liveSystem) {
+      const hit = hitTestNode(model, w, LIVE_GRAB_PX_MOUSE / (SCALE * zoom))
+      if (hit !== (liveHover?.id ?? null)) {
+        setLiveHover(hit ? { id: hit, grabbable: liveSystem.grabbable.has(hit) } : null)
+      }
+    }
 
     // Update box selection rubber-band
     if ((activeTool === "SELECT" || activeTool === "DELETE" || (activeTab === "Model" && activeTool === "SUPPORT") || (activeTab === "Load" && activeTool === "MODIFY_LOAD")) && boxStartRef.current) {
@@ -3044,6 +3241,7 @@ export function StructuralCanvas({
   }
 
   const handleMouseLeave = () => {
+    if (liveHover) setLiveHover(null)
     if (snapped) setSnapped(null)
     if (deformHoverNodeId) setDeformHoverNodeId(null)
     setCursorPx(null)
@@ -3054,7 +3252,60 @@ export function StructuralCanvas({
     }
   }
 
+  // Live: while a rope is held, the pointer is tracked on the window so the
+  // pull keeps working when the cursor leaves the canvas.
+  const liveMouseCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => liveMouseCleanupRef.current?.(), [])
+  useEffect(() => {
+    if (activeTab !== "Live") liveMouseCleanupRef.current?.()
+    setLiveHover(null)
+  }, [activeTab, liveSystem])
+
+  const startLiveMousePull = (e: React.MouseEvent<HTMLCanvasElement>): boolean => {
+    const container = containerRef.current
+    if (!container || !liveSystem) return false
+    const rect = container.getBoundingClientRect()
+    const w = clientToWorldAt(e.clientX, e.clientY, rect, panXRef.current, panYRef.current, zoomRef.current)
+    const hit = hitTestNode(model, w, LIVE_GRAB_PX_MOUSE / (SCALE * zoomRef.current))
+    if (!hit || !liveSystem.grabbable.has(hit)) return false
+
+    e.preventDefault()
+    live.begin(hit, w, e.shiftKey)
+    const toWorld = (ev: MouseEvent) => {
+      const r = containerRef.current?.getBoundingClientRect()
+      return r ? clientToWorldAt(ev.clientX, ev.clientY, r, panXRef.current, panYRef.current, zoomRef.current) : null
+    }
+    const onMove = (ev: MouseEvent) => {
+      const p = toWorld(ev)
+      if (p) liveRef.current.move(p, ev.shiftKey)
+    }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Shift") liveRef.current.setShift(ev.type === "keydown")
+      if (ev.key === "Escape") cleanup()
+    }
+    const cleanup = () => {
+      liveRef.current.end()
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", cleanup)
+      window.removeEventListener("keydown", onKey)
+      window.removeEventListener("keyup", onKey)
+      window.removeEventListener("blur", cleanup)
+      liveMouseCleanupRef.current = null
+    }
+    liveMouseCleanupRef.current?.()
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", cleanup)
+    window.addEventListener("keydown", onKey)
+    window.addEventListener("keyup", onKey)
+    window.addEventListener("blur", cleanup)
+    liveMouseCleanupRef.current = cleanup
+    return true
+  }
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Live: grabbing a free node ties the rope to it; anywhere else pans as usual.
+    if (activeTab === "Live" && e.button === 0 && startLiveMousePull(e)) return
+
     // MOVE_NODE screen drag — intercept before pan logic
     if (activeTool === "MOVE_NODE" && moveNodeMode === "screen" && e.button === 0) {
       const w = toWorldCoords(e)
@@ -3268,8 +3519,12 @@ export function StructuralCanvas({
     setPanY(clamped.py)
   }, [panX, panY, zoom])
 
-  const cursorClass = isPanning
+  const cursorClass = isPanning || live.pulling
     ? "cursor-grabbing"
+    : activeTab === "Live" && liveHover
+    ? (liveHover.grabbable ? "cursor-grab" : "cursor-not-allowed")
+    : activeTab === "Live"
+    ? "cursor-default"
     : dragNodeRef.current
     ? "cursor-grabbing"
     : activeTool === "MOVE_NODE" && moveNodeMode === "screen"

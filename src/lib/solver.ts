@@ -102,7 +102,7 @@ function gaussSolve(K: number[][], F: number[]): GaussResult {
 // scales the bending block by 1/(1+Φ), with the rotational diagonal/off-diagonal terms
 // becoming (4+Φ) and (2−Φ). As Φ→0 this reduces algebraically to the Euler matrix, so the
 // GAs=0 path is byte-identical to the original formulation. Axial terms are unaffected.
-function localStiffness(EA: number, EI: number, L: number, GAs = 0): number[][] {
+export function localStiffness(EA: number, EI: number, L: number, GAs = 0): number[][] {
   const phi = GAs > 0 ? 12 * EI / (GAs * L * L) : 0
   const d   = 1 + phi
   const kv  = 12 * EI / (L**3 * d)        // shear (v–v) term
@@ -131,7 +131,7 @@ function localStiffness(EA: number, EI: number, L: number, GAs = 0): number[][] 
 // FEF_cc = F_r − K_rs · K_ss⁻¹ · F_s, padded back to length 6 with zeros at 2,5.
 //
 // Requires EI > 0 (Step 1 input guard enforces this at the section layer).
-function condensedTrussElement(
+export function condensedTrussElement(
   EA: number, EI: number, L: number, q1: number, q2: number,
   qx1 = 0, qx2 = 0, GAs = 0,
 ): { K_loc: number[][]; FEF_loc: number[] } | null {
@@ -182,7 +182,7 @@ function condensedTrussElement(
 }
 
 // Transforms local → global DOFs. c=cos(α), s=sin(α), α=atan2(dy,dx).
-function transformMatrix(c: number, s: number): number[][] {
+export function transformMatrix(c: number, s: number): number[][] {
   return [
     [ c,  s, 0,  0,  0, 0],
     [-s,  c, 0,  0,  0, 0],
@@ -222,19 +222,21 @@ export interface AnalyzeOptions {
   shearDeformation?: boolean
 }
 
+// Per-member shear rigidity G·A_s (kN) used to build the Timoshenko element.
+// Returns 0 — the Euler element — when shear deformation is off, or when the
+// section has no positive shear area A_s (legacy/manual sections that left it
+// blank). The latter mirrors the γ≤0 self-weight skip: silent Euler fallback,
+// no crash, no invented data. Exported so the Live solver builds the same element.
+export function sectionShearRigidity(sec: Section, shearDeformation: boolean | undefined): number {
+  if (!shearDeformation) return 0
+  const As = (sec["Aκ2"] ?? 0) * 1e-6                          // mm² → m²
+  if (As <= 0) return 0
+  const G = (sec.derived?.G ?? shearModulus(sec.E, sec.nu ?? 0.3)) * 1000  // MPa → kN/m²
+  return G * As                                               // kN
+}
+
 export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverResult {
-  // Per-member shear rigidity G·A_s (kN) used to build the Timoshenko element.
-  // Returns 0 — the Euler element — when shear deformation is off, or when the
-  // section has no positive shear area A_s (legacy/manual sections that left it
-  // blank). The latter mirrors the γ≤0 self-weight skip: silent Euler fallback,
-  // no crash, no invented data.
-  const memberGAs = (sec: Section): number => {
-    if (!opts?.shearDeformation) return 0
-    const As = (sec["Aκ2"] ?? 0) * 1e-6                          // mm² → m²
-    if (As <= 0) return 0
-    const G = (sec.derived?.G ?? shearModulus(sec.E, sec.nu ?? 0.3)) * 1000  // MPa → kN/m²
-    return G * As                                               // kN
-  }
+  const memberGAs = (sec: Section): number => sectionShearRigidity(sec, opts?.shearDeformation)
 
   const nodes   = Object.values(model.nodes)
   const members = Object.values(model.members)

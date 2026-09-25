@@ -22,7 +22,7 @@ interface NavBarProps {
   subBar?: React.ReactNode
 }
 
-const tabs: TabType[] = ["Model", "Load", "Analyze", "Design"]
+const tabs: TabType[] = ["Model", "Load", "Analyze", "Design", "Live"]
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ export function NavBar({
             ref={btnRef}
             onClick={fileOpen ? close : openDropdown}
             className={cn(
-              "relative flex items-center gap-1 px-6 h-11 text-sm font-medium transition-colors",
+              "relative flex items-center gap-1 px-2 sm:px-6 h-11 text-sm font-medium transition-colors",
               fileOpen ? "text-[#1a2f5e]" : "text-gray-500 hover:text-gray-700"
             )}
           >
@@ -228,7 +228,12 @@ export function NavBar({
 
           {tabs.map((tab, i) => (
             <div key={tab} className="flex items-center">
-              {i > 0 && (
+              {/* Live is a playground beside the workflow, not a step after
+                  Design, so it gets a divider instead of a chevron. */}
+              {i > 0 && tab === "Live" && (
+                <span className="h-4 w-px bg-gray-200 mx-1 shrink-0" aria-hidden />
+              )}
+              {i > 0 && tab !== "Live" && (
                 <ChevronRight
                   size={13}
                   strokeWidth={1.75}
@@ -238,13 +243,25 @@ export function NavBar({
               <button
                 onClick={() => onTabChange(tab)}
                 className={cn(
-                  "relative px-6 h-11 text-sm font-medium transition-colors",
+                  "relative px-2 sm:px-6 h-11 text-sm font-medium transition-colors",
                   activeTab === tab
                     ? "text-[#1a2f5e]"
                     : "text-gray-500 hover:text-gray-700"
                 )}
               >
-                {tab}
+                {tab === "Live" ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2" aria-hidden>
+                      {activeTab === "Live" && (
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60 motion-safe:animate-ping" />
+                      )}
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                    </span>
+                    {tab}
+                  </span>
+                ) : (
+                  tab
+                )}
                 {activeTab === tab && (
                   <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1a2f5e]" />
                 )}
