@@ -4,7 +4,7 @@ export type { PrincipalProperties }
 
 /**
  * Section geometric properties.
- * Naming follows reference software local-axis convention:
+ * Local-axis convention:
  *   axis 1 = along member; axis 3 = strong-axis bending; axis 2 = weak-axis.
  */
 export interface SectionProperties {

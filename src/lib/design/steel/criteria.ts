@@ -1,6 +1,6 @@
 /**
  * Steel design criteria (AISC 360-16 + AISC 341-16 / SNI 1729:2020 + SNI 7860).
- * Global, reference software-Preferences style. Pure domain module: no React imports.
+ * Global design preferences. Pure domain module: no React imports.
  */
 
 import type { FrameType } from "../core/types"

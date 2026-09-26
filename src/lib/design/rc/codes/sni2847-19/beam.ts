@@ -127,7 +127,7 @@ export interface PhiMnResult {
  * - φ ramps from phiCompression to phiTension over εty → 0.005 (21.2.2); the
  *   ramp always uses the *actual* fy for εty, independent of fyOverride.
  * - Compression steel force uses (f's − 0.85f'c) to net out displaced concrete.
- *   For Mpr the caller passes AsPrime = 0 (book/reference convention — tension steel only).
+ *   For Mpr the caller passes AsPrime = 0 (textbook convention: tension steel only).
  */
 export function phiMnProvided(
   As: number,

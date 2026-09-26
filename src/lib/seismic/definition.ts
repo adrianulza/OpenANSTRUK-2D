@@ -39,7 +39,7 @@ export const SEISMIC_ANALYSIS_LABELS: Record<SeismicAnalysisKind, string> = {
  * The time-history block, read when `analysis` is "lth".
  *
  * ⚠ R, Cd, Ie AND THE DESIGN SPECTRUM ARE NOT APPLIED — the record × scale is
- * the input, as in reference software's linear direct-integration case. One component,
+ * the input, as in a linear direct-integration time-history case. One component,
  * along global X.
  */
 export interface SeismicLthSettings {

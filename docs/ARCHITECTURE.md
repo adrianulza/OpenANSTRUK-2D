@@ -196,7 +196,7 @@ StructureModel {
 **Key design decisions:**
 - IDs are string-keyed monotonic counters (`"n1"`, `"m1"`, `"l1"`, `"s1"`, …). They never reset during a session.
 - One load per node (point loads), one load per member (distributed loads) — enforced by the UI.
-- Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (reference software-style — frame element with M3 releases at both ends; carries transverse load locally between its end nodes but transmits only axial force at the joints). See the Solver section for details.
+- Members have an optional `memberType`: `"frame"` (default; full beam-column with moment stiffness) or `"truss"` (a frame element with M3 releases at both ends; carries transverse load locally between its end nodes but transmits only axial force at the joints). See the Solver section for details.
 - `PointLoad` stores `{fx, fy}` global components in kN. The flyout supports both direct component input and angular input (magnitude + angle) — conversion happens in the UI layer.
 - `DistributedLoad` supports two modes: `"local-axis"` (default — `wStart`/`wEnd` act in the +local-2 direction, where local-2 = i→j unit vector rotated +90° CCW) and `"global-axis"` (X/Y world components).
 - `Section` supports two authoring modes: `manual` (E, I, A entered directly) and `parametric` (materialClass + shape + dimensions, computed via `lib/sections/compute.ts`).
@@ -282,7 +282,7 @@ So a vertical column under self-weight shows the correct linear AFD (full integr
 - The same condensation transforms the FEF vector: `FEF_cc = F_r − K_rs · K_ss⁻¹ · F_s`
 - After padding back to 6×6 / length 6 with zeros at the θ positions, the element is shape-compatible with the frame path; the only difference is that its θ rows/cols are zero.
 
-The result: transverse loads (including self-weight) produce a real simply-supported moment diagram between the end nodes — exactly matching reference software — while end moments stay zero at the joints. Requires `EI > 0`; the input layer guards I33 > 0.
+The result: transverse loads (including self-weight) produce a real simply-supported moment diagram between the end nodes, matching the hand solution, while end moments stay zero at the joints. Requires `EI > 0`; the input layer guards I33 > 0.
 
 A leftover detail: pure-truss nodes (those connected only to released-end members) have zero θ stiffness in global K. The solver pins those θ DOFs to zero to keep K invertible.
 
@@ -339,7 +339,7 @@ Capture is observational: a `[model]` effect pushes the previous model onto the 
 
 ### Shear Deformation (Timoshenko, v1.0.9)
 
-Opt-in shear flexibility, toggled by **"Enable Shear Deformation"** in the Settings panel (default off). `localStiffness(EA, EI, L, GAs = 0)` computes `Φ = 12·EI/(GAs·L²)` and scales the bending block by `1/(1+Φ)` (rotational diagonal `(4+Φ)EI/(L(1+Φ))`, carry-over `(2−Φ)EI/(L(1+Φ))`); axial terms unchanged. `GAs=0 ⇒ Φ=0`, so the off path is byte-identical to Euler. `analyze(model, { shearDeformation })` resolves per-member `GAs = G·As` where `As = Aκ2·1e-6` and `G = (sec.derived?.G ?? shearModulus(E, ν))·1000`; a missing/≤0 `Aκ2` falls back to Euler for that member. Applies through `condensedTrussElement` too, so trusses honor the toggle. FEF, recovery, and diagrams are untouched. Verified vs reference software on Example 5 (`validation/shear_deformation_example5.md`).
+Opt-in shear flexibility, toggled by **"Enable Shear Deformation"** in the Settings panel (default off). `localStiffness(EA, EI, L, GAs = 0)` computes `Φ = 12·EI/(GAs·L²)` and scales the bending block by `1/(1+Φ)` (rotational diagonal `(4+Φ)EI/(L(1+Φ))`, carry-over `(2−Φ)EI/(L(1+Φ))`); axial terms unchanged. `GAs=0 ⇒ Φ=0`, so the off path is byte-identical to Euler. `analyze(model, { shearDeformation })` resolves per-member `GAs = G·As` where `As = Aκ2·1e-6` and `G = (sec.derived?.G ?? shearModulus(E, ν))·1000`; a missing/≤0 `Aκ2` falls back to Euler for that member. Applies through `condensedTrussElement` too, so trusses honor the toggle. FEF, recovery, and diagrams are untouched. Verified against an independent hand calculation on Example 5 (`validation/shear_deformation_example5.md`).
 
 ### Analysis Diagnostics & Lazy Solve (v1.0.6)
 
@@ -421,7 +421,7 @@ The moment diagram is **negated before offsetting** so that positive (sagging) m
 
 ### AFD — mirrored band + i/j labels (v1.0.7+)
 
-Unlike SFD/BMD, the AFD fills **both** sides of the member centerline symmetrically (a mirrored trapezoidal band). This removes the left/right side ambiguity that reference-style one-sided AFDs introduce — the same fill reads the same regardless of member i→j ordering. The colors (blue = tension, red = compression) carry the sign.
+Unlike SFD/BMD, the AFD fills **both** sides of the member centerline symmetrically (a mirrored trapezoidal band). This removes the left/right side ambiguity that one-sided AFDs introduce — the same fill reads the same regardless of member i→j ordering. The colors (blue = tension, red = compression) carry the sign.
 
 Labels:
 

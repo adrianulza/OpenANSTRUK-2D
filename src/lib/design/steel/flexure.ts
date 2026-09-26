@@ -298,7 +298,7 @@ function boxShape(inp: FlexureInput): FlexureResult {
   let outOfScope: string | undefined
   const web = cf.elements.find((e) => e.name === "web")
   if (web && web.cls !== "compact") {
-    // F7-5 (the reference manual §3.5.3.4.3 applies it to both noncompact and slender webs).
+    // F7-5, applied here to both noncompact and slender webs (AISC F7.3).
     // The bracket grows without bound with λ, so past h/t ≈ 324 the raw value
     // goes NEGATIVE. AISC never intends a negative flexural strength; that is
     // the formula running out of calibration, not a real capacity. Refuse the
@@ -335,9 +335,9 @@ function roundShape(inp: FlexureInput): FlexureResult {
   let Mn = Mp
   let governing: FlexureResult["governing"] = "yielding"
 
-  // AISC F8 user note / the reference manual §3.5.3.5: the clause applies only while
-  // D/t < 0.45E/Fy. Past that a round HSS "is considered to be too slender and
-  // it is not designed" (the reference manual §3.5.2.2.3.2). F8-3 keeps returning a number well
+  // AISC F8 scope: the clause applies only while D/t < 0.45E/Fy. Past that a
+  // round HSS is treated as too slender and is not designed (the same limit as
+  // AISC E7 / Table B4.1a for round HSS in compression). F8-3 keeps returning a number well
   // beyond the limit — 40 400 kN·m at 3x the limit in the boundary sweep — so
   // the guard has to be explicit.
   // `>=`, not `>`: F8 is stated as applying for D/t < 0.45E/Fy, so the limit
@@ -421,9 +421,9 @@ function teeShape(inp: FlexureInput): FlexureResult {
     Lp = 1.76 * r22 * Math.sqrt(E / Fy) // F9-8
     // F9-9:  Lr = 1.95·(E/Fy)·[√(Iy·J)/Sx]·√(1 + 2.36·(Fy/E)·(d·Sx/J))
     //
-    // NOTE the grouping. the reference manual's manual (p. 3-58) typesets the first radical as
-    // √(Iy·J/S33), which cannot be right: that is √(mm⁴·mm⁴/mm³) = mm^2.5, and
-    // Lr must come out a length. AISC 360-16 F9-9 has √(Iy·J) over Sx, giving
+    // NOTE the grouping. The first radical is NOT √(Iy·J/S33): that would be
+    // √(mm⁴·mm⁴/mm³) = mm^2.5, and Lr must come out a length. AISC 360-16 F9-9
+    // has √(Iy·J) over Sx, giving
     // mm⁴/mm³ = mm. The second radical is dimensionless either way. Unlike F2-6
     // there is NO nested radical here.
     Lr =
@@ -465,7 +465,7 @@ function teeShape(inp: FlexureInput): FlexureResult {
 
   // Local buckling. Only ONE of the two applies, decided by which element is in
   // compression — F9.3 is skipped when the flange is in tension and F9.4 when
-  // the stem is (the reference manual §3.5.3.6.1.3 / §3.5.3.6.1.4).
+  // the stem is (AISC F9.3 / F9.4).
   let MnLocal = Infinity
   if (stemInTension) {
     const fl = cf.elements.find((e) => e.name === "flange")
@@ -517,18 +517,14 @@ function teeShape(inp: FlexureInput): FlexureResult {
  * check is H2 on the pair.
  *
  * `SwMin`/`SzMin` are the moduli to the WORST extreme fibre about each axis,
- * taken over every real polygon vertex — heel included, which is what the reference manual's
- * manual asks for (p. 3-68: "considering the possibility of yielding at the heel
- * and both of the leg tips"). reference software agrees exactly on the minor axis: its
- * `McMinor` reproduces `1.5·Fy·SzMin` to five decimal places on an
- * L100×100×10, and that value is set by the HEEL.
+ * taken over every real polygon vertex, heel included, so that yielding at the
+ * heel and at both leg tips is considered (AISC F10.1). On the minor axis the
+ * governing value is set by the HEEL.
  *
- * On the MAJOR axis reference diverges, and the reason is now measured rather than
- * guessed: it evaluates F10 on the thin-walled two-line idealisation, so its
- * extreme fibre sits at the leg-tip MID-THICKNESS (|z| = 67.175 mm) instead of
- * the real outer corner (70.711 mm). Ours is the true extreme fibre and is
- * therefore smaller — conservative. See DESIGN_STEEL.md §S14.1 C and
- * validation/reference-bridge/probe_angle_ltb.py.
+ * On the MAJOR axis the extreme fibre is the real outer corner of the leg tip,
+ * not the leg-tip mid-thickness of a thin-walled two-line idealisation. The
+ * true extreme fibre gives the smaller modulus, which is conservative. See
+ * DESIGN_STEEL.md §S14.1 C.
  */
 function angleShape(inp: FlexureInput): FlexureResult {
   const { g, Fy, E, Lb, A, principal } = inp
@@ -544,30 +540,25 @@ function angleShape(inp: FlexureInput): FlexureResult {
   }
 
   const { rz, SwMin, SzMin } = principal
-  const t = Math.min(g.tf, g.tw) // leg thickness (the reference manual §3.5.3.8.2: t = min(tb, tf))
+  const t = Math.min(g.tf, g.tw) // leg thickness: t = min(tb, tf) (AISC F10.2)
 
   // Cb = 1.0 for single angles.
   //
-  // the reference manual's manual (p. 3-67) says Cb comes from F1-1 capped at 1.5, but reference software
-  // itself uses 1.0 — and that is now MEASURED, not inferred from the PMM
-  // table's Cb column. The same equal-leg angle was run at one span under three
-  // load patterns whose F1-1 values are 1.136 (UDL), 1.316 (midspan point) and
-  // 2.27→1.5 (cantilever tip): all three returned McMajor = 11.8068 kN·m,
-  // identical to five decimal places. Mcr is linear in Cb, so computing it from
-  // the moment diagram would put us up to 50 % above reference with no code basis for
-  // the extra capacity.
+  // F10.2 allows Cb from F1-1 capped at 1.5. We take 1.0 instead: Mcr is linear
+  // in Cb, so the moment-diagram value could raise the LTB capacity by up to
+  // 50 %, and the 2D model cannot confirm the bracing and load-height
+  // assumptions that capacity relies on for a single angle.
   //
   // 1.0 is what F1 explicitly permits as the conservative value, and matches
   // this engine's policy of falling back to 1.0 whenever the unbraced segment
   // cannot be resolved (see `memberCb` in strategy.ts).
-  // See validation/reference-bridge/probe_angle_ltb.py.
   const Cb = 1.0
 
   // AISC F10.2: βw is positive with the short leg in compression and negative
   // with the long leg in compression. Our 2D check cannot know which toe is in
   // compression over the whole unbraced length — and both principal moment signs
-  // occur along a real member — so we take the adverse value, which is what the reference manual
-  // does too ("conservatively taken as negative for unequal-leg angles").
+  // occur along a real member — so we take the adverse value: βw is
+  // conservatively taken as negative for unequal-leg angles.
   const betaW = -Math.abs(principal.betaW)
 
   /** Leg local buckling, F10-6..F10-8, on the worse of the two legs. */
@@ -591,11 +582,10 @@ function angleShape(inp: FlexureInput): FlexureResult {
     // That collapsed form is the same equation AISC 360-05/10 printed as F10-5,
     //     Me = 0.46·E·b²·t²·Cb/Lb
     // because 0.46 is just 9/8 · 2/√24 = 0.45928, i.e. 9A·rz·t/8 evaluated in
-    // the thin-wall limit A → 2bt, rz → b/√24. reference software still uses the 0.46
-    // shortcut; 360-16 writes it in terms of the ACTUAL Ag, rz and t, which is
-    // what we use. On an L100×100×10 that is 84 039 vs 92 000 kN·m·mm — ours
-    // 9.5 % lower, i.e. conservative. Measured across 5 spans × 3 thicknesses ×
-    // 3 leg sizes to within 0.09 %; see DESIGN_STEEL.md §S14.1 C.
+    // the thin-wall limit A → 2bt, rz → b/√24. 360-16 writes it in terms of
+    // the ACTUAL Ag, rz and t, which is what we use. On an L100×100×10 that is
+    // 84 039 vs 92 000 kN·m·mm for the 0.46 shortcut: ours 9.5 % lower, i.e.
+    // conservative. See DESIGN_STEEL.md §S14.1 C.
     const k = (4.4 * betaW * rz) / (Lb * t)
     const Mcr = ((9 * E * A * rz * t * Cb) / (8 * Lb)) * (Math.sqrt(1 + k * k) + k)
     if (Mcr > 0) {
@@ -617,9 +607,9 @@ function angleShape(inp: FlexureInput): FlexureResult {
   }
 
   // ── Minor principal axis (z) — yielding + leg local buckling only ─────────
-  // "The nominal flexural strength for bending about the minor principal axis
-  // for the limit state of lateral-torsional buckling is not needed because the
-  // limit state of LTB does not apply for minor axis bending" (the reference manual §3.5.3.8.2).
+  // The LTB limit state does not apply to bending about the minor principal
+  // axis (AISC F10.2 is written for the major principal axis only), so no LTB
+  // strength is computed here.
   const MnZ = Math.min(1.5 * Fy * SzMin, legLocal(SzMin))
 
   return {

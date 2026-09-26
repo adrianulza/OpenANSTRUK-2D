@@ -14,9 +14,9 @@ SNI 1729:2020 is an adopted translation of AISC 360 with no formula deltas that
 reach this engine, so unlike RC there is **no `codes/<code>/` split** — one
 module set serves both. Clause numbers below are AISC 360-16.
 
-The implementation spec is the reference manual's own *Steel Frame Design AISC 360-16* manual
-(`validation/reference_verification/design_steel/SFD-AISC-360-16.pdf`), Chapter 3.
-Where that manual and the AISC text diverge, the divergence is named explicitly
+The implementation follows the AISC 360-16 text clause by clause. Where a clause
+is ambiguous, or a worked example disagrees with the equation it illustrates, the
+resolution is named explicitly
 in [§S8](#s8-combined-forces-chapter-h) and [§S14](#s14-open-issues--known-defects-not-fixed) rather than silently resolved.
 
 ---
@@ -38,7 +38,7 @@ selection from a catalogue is not implemented.
 
 Every steel member runs the **same combined-force check** regardless of its role
 tag — unlike RC there is no separate beam and column formulation, only different
-demands. This is measured, not assumed ([§S11.2](#s112-member-role)), and it is
+demands. This follows from how AISC 360 is organised ([§S11.2](#s112-member-role)), and it is
 why the role is **inferred from geometry and read-only**, and why steel carries
 **no per-section design input at all** ([§S11.3](#s113-fixed-member-parameters)).
 
@@ -124,7 +124,7 @@ could make the dropped terms non-zero:
 - **F6** (minor-axis flexure) is unreachable and absent.
 - **G6** (minor-axis shear) is unreachable and absent.
 - The `Mr22/Mc22` term of H1-1a/H1-1b is identically zero and is dropped, as is
-  H1.3's `Mr22/Mc22 ≤ 0.05` negligibility gate (the reference manual §3.6.1) — the condition it
+  H1.3's `Mr22/Mc22 ≤ 0.05` negligibility gate — the condition it
   tests is satisfied by construction.
 
 Compression still checks **both** axes: weak-axis flexural buckling is an
@@ -155,14 +155,11 @@ rather than H1, and why `sections/shapes/angle.ts` carries a `principal` block.
 The strategy branches on the **presence of that block**, not on the shape name, so
 a future unsymmetric shape inherits the path.
 
-> **The known 2D boundary.** reference software solves the same beam in 3D, and an
-> unsymmetric section there develops a genuine **out-of-plane** moment `M22`
-> which *partially cancels* `Mz`. Measured on the bridge: reference reports
-> `MrMinor = 0.794 kN·m` on an L150×90×12, resolving to `Mz = −0.596` where our
-> `M22 = 0` gives `Mz = −1.343`. Our value is the larger one, so the D/C is
-> conservative — up to **24.7 %** high on that case. A one-bending-DOF element
-> cannot produce that moment; this is a permanent property of the 2D model, not
-> a defect to fix ([§S14](#s14-open-issues--known-defects-not-fixed)).
+> **The known 2D boundary.** In a 3D analysis an unsymmetric section under
+> in-plane load develops a genuine **out-of-plane** moment `M22`, which
+> *partially cancels* `Mz`. A one-bending-DOF element cannot produce that moment,
+> so our `M22 = 0` gives the larger `|Mz|` and the D/C is conservative. This is a
+> permanent property of the 2D model, not a defect to fix ([§S14](#s14-open-issues--known-defects-not-fixed)).
 
 ---
 
@@ -200,14 +197,15 @@ inputs. The mapping is where two shape conventions are pinned down:
 Three notes on the two new rows:
 
 - **The tee flange uses the ROLLED row (case 10), not the built-up case 11** our
-  IWF uses. That asymmetry is deliberate: the reference manual Table 3-1's T-Shape entry is case
-  10 with no built-up variant, AISC F9.3 references case 10 directly, and a WT is
+  IWF uses. That asymmetry is deliberate: AISC F9.3 references case 10 directly,
+  and a WT is
   physically made by splitting a rolled I-shape. No `kc` appears.
 - **A tee stem is measured over the FULL nominal depth** `d/tw`, not `h − tf`
-  (the reference manual §3.3(d)). It is an unstiffened element free along its lower edge, not a
+  (Table B4.1b case 14, `d` the full depth of the tee). It is an unstiffened
+  element free along its lower edge, not a
   plate framed between two flanges.
-- **An angle leg is classified on its full width** `b/t`, with no half-width —
-  the reference manual §3.3(b), "for legs of angles … the width `b` is the full leg width". Both
+- **An angle leg is classified on its full width** `b/t`, with no half-width.
+  AISC B4.1a(a)(2): for legs of angles the width `b` is the full leg dimension. Both
   legs are checked and the worse governs, which matters once legs may be unequal.
 
 ### S4.3 A tee is classified by the sign of the moment
@@ -215,14 +213,13 @@ Three notes on the two new rows:
 Table B4.1b classifies **compression** elements. A tee has only one element in
 compression at a time, so `classifyFlexure` takes a `momentSign`: sagging
 classifies the flange alone, hogging the stem alone. The same section can
-therefore report two different classes — verified against reference software, which returns
-"Compact" sagging and "Non-Compact" hogging for the same WT300×200. The reported
+therefore report two different classes: a WT300×200 classifies as "Compact"
+sagging and "Non-Compact" hogging. The reported
 `sectionClass` is the one at the **governing station**.
 
-> **Why the box flange uses 1.40 and not 1.49.** the reference manual Table 3-1 lists
-> "Rectangular HSS" (λr = 1.40√(E/Fy)) and "Box" (λr = 1.49√(E/Fy)) as separate
-> rows, and since `steelGeom` models this shape as a welded box the 1.49 row
-> looks like the match. It is not, and F7-2 says why: its constants are
+> **Why the box flange uses 1.40 and not 1.49.** Table B4.1b also carries a
+> λr = 1.49√(E/Fy) row (case 18), and since `steelGeom` models this shape as a
+> welded box that row can look like the match. It is not, and F7-2 says why: its constants are
 > calibrated against 1.40. At `λ = 1.40√(E/Fy)`,
 > `3.57·λ·√(Fy/E) − 4.0 = 3.57·1.40 − 4.0 = 1.0` **exactly**, so F7-2 lands
 > precisely on `My` and hands over to F7-3 with no step. Paired with 1.49 the
@@ -230,8 +227,8 @@ therefore report two different classes — verified against reference software, 
 > opens a 0.16 % upward discontinuity — caught by the monotonicity check in
 > `validation/steel_boundary_sweep.mts`. AISC Table B4.1b case 17, which
 > Chapter F7 actually references, covers "rectangular HSS **and boxes** of
-> uniform thickness" in one row at 1.40. the reference manual's 1.49 row matches case 18
-> (cover/diaphragm plates between lines of welds), which is not the case F7 is
+> uniform thickness" in one row at 1.40. The 1.49 row, case 18, covers
+> cover/diaphragm plates between lines of welds, which is not the case F7 is
 > written against.
 
 ### S4.2 Axial limits (Table B4.1a)
@@ -239,8 +236,8 @@ therefore report two different classes — verified against reference software, 
 Compression has no "compact" tier — only nonslender and slender. Cases 2 (I-shape
 flange, with `kc`), 5 (I-shape web), 6 (box walls, λr = `1.40√(E/Fy)`) and 9
 (round HSS, λr = `0.11E/Fy`) are implemented. The **axial** box row is 1.40 in
-the reference manual Table 3-2, which lists only "Box" — no separate HSS row — so no ambiguity
-arises there.
+Table B4.1a case 6, which covers HSS and boxes together, so no ambiguity arises
+there.
 
 ---
 
@@ -266,15 +263,16 @@ governs**. The `Fy/Fe ≤ 2.25` test is algebraically the same branch point as
 `KL/r ≤ 4.71√(E/Fy)`. `KL/r > 200` raises an advisory, not a rejection — 360-16
 makes it a user note, not a limit.
 
-**A single angle uses `rz` for both axes** — the reference manual §3.5.2: *"For Single Angles, the
-minimum (principal) radius of gyration, `rz`, is used instead of `r22` and `r33`,
-conservatively, in computing `KL/r`."* E4 below still uses the true `rw`/`rz`
-pair.
+**A single angle uses `rz` for both axes.** The minimum (principal) radius of
+gyration `rz` replaces `r22` and `r33` in `KL/r`, which is conservative and is
+the E3 route taken in place of E5 ([§S13](#s13-not-implemented--deferred-scope) item 9).
+E4 below still uses the true `rw`/`rz` pair.
 
 ### S5.2a Torsional and flexural-torsional buckling (E4)
 
 `Fe = min(Fe_flexural, Fe_torsional)`, so E4 can only ever **lower** a capacity.
-Skipped for closed sections (box, pipe) per AISC E4 scope / the reference manual §3.5.2.1.2.1.
+Skipped for closed sections (box, pipe) per AISC E4 scope and its user note:
+torsional buckling does not govern closed HSS.
 
 ```
 r̄0² = x0² + y0² + (I22 + I33)/Ag                              (E4-9)
@@ -299,11 +297,10 @@ so `x0 = 0` leaves the `(Fe−Fe22)` factor and a quadratic in **`Fe33`**, while
 is `y0` and E4-3 takes `Fe22`. An **equal-leg angle** is symmetric about its
 *major principal* axis, so its offset is `x0 = w0` and E4-3 takes `Fe33`.
 
-> **the reference manual's manual mis-prints the tee case** (§3.5.2.1.2.2.3): the numerator reads
-> `(Fe22 + Fez)` but the radicand denominator reads `(Fe33 + Fez)²`. Both come
-> from the same quadratic, so they cannot both be right. AISC E4-3 uses the axis
-> of symmetry throughout; the denominator is `(Fe22 + Fez)²`, and that is what is
-> implemented.
+> **The tee case uses the axis of symmetry throughout.** The numerator
+> `(Fe22 + Fez)` and the radicand denominator come from the same quadratic, so
+> they must use the same axis. AISC E4-3 with 2-2 as the axis of symmetry gives
+> the denominator `(Fe22 + Fez)²`, and that is what is implemented.
 
 **E4-4 is solved by bisection**, and the bracket is *proved*, not assumed: the
 cubic is `−Fe33·Fe22·Fez < 0` at `Fe = 0`, and at `Fe = min(Fe33, Fe22, Fez)` one
@@ -318,9 +315,9 @@ value is `≥ 0`. A sign change always exists between them.
 > counted exactly once either way. `steel_angle_tee_clauses.mts` asserts that as
 > an invariant (`Pn` continuity across the branch), not as a comment.
 
-**Kz = K22 and Lz = the full member length**, per the reference manual §3.5.2's stated defaults. A
-user-shortened `Lb` deliberately does **not** shorten `Lz` — that matches reference software
-out of the box, which is what the bridge compares against.
+**Kz = K22 and Lz = the full member length.** Nothing that shortens `Lb` is
+taken to shorten `Lz`: lateral bracing does not by itself imply torsional
+restraint, so the full length is the conservative value.
 
 Enabling E4 for the IWF closed the residual risk previously recorded in §S13;
 the existing 15/15, 14/14, 86/86 and 21/21 anchors were re-run and are unchanged,
@@ -341,7 +338,7 @@ c2  = (1 − √(1 − 4c1)) / (2c1)                        (E7-4)
 applied only when `λ > λr·√(Fy/Fcr)`; otherwise `be = b`. `Fcr` is computed on
 the **gross** section first, then used to size the effective widths.
 
-**Table E7.1 has three rows**, reproduced as the reference manual Table 3-3:
+**Table E7.1 has three rows:**
 
 | Case | Slender element | c1 | c2 | Used for |
 |---|---|---|---|---|
@@ -350,7 +347,7 @@ the **gross** section first, then used to size the effective widths.
 | (c) | All other elements | **0.22** | 1.49 | IWF flange **outstands** |
 
 > A built-up I-shape web is a stiffened element that is not an HSS wall, so it is
-> **row (a), c1 = 0.18** — the code value, not a the reference manual deviation. AISC Example 0002's
+> **row (a), c1 = 0.18**, the code value. AISC Example 0002's
 > `c1 = 0.18 / c2 = 1.31` is simply row (a).
 
 **Effective area for an I-shape web** is `Ae = Ag − (h − be)·tw`. AISC Example
@@ -367,10 +364,10 @@ D/t ≤ 0.11E/Fy            →  Ae = Ag
 D/t ≥ 0.45E/Fy            →  Ae = 0  → member REFUSED
 ```
 
-The third branch is a **rejection**, not a capacity: the reference manual §3.5.2.2.3.2 says such a
-section "is considered to be too slender and it is not designed". The comparison
-is `>=` rather than `>`, which closes the gap the printed branches leave at
-exactly `0.45E/Fy` (the middle case is written `<` and the third `>`).
+The third branch is a **rejection**, not a capacity: E7-7 defines `Ae` only for
+`D/t < 0.45E/Fy`, so beyond that limit there is no capacity to report and the
+section is not designed. The comparison is `>=` rather than `>`, so a section at
+exactly `0.45E/Fy`, outside E7-7's open range, is refused as well.
 
 ---
 
@@ -405,11 +402,8 @@ with `c = 1.0` for doubly-symmetric I-shapes (F2-8a). Then:
 `J`, `Cw`, `rts` and `ho` come from `sections/shapes/iwf.ts`. **`J` uses the
 per-strip finite-aspect-ratio correction** `J = ⅓·Σ bᵢtᵢ³(1 − 0.63·tᵢ/bᵢ)`. The
 uncorrected `⅓Σbt³` overestimates `J` — by 3.7 % for a 400×200×13×8 shape — which
-inflates `Lr` and `Fcr` and so the LTB capacity. reference software's section-property
-calculator uses the corrected form (it returns `J = 343 907 mm⁴` for that shape,
-matching to six significant figures) **even though the reference manual's own hand-calc PDFs quote
-the uncorrected form**. The software and its documentation disagree here; the
-software is right.
+inflates `Lr` and `Fcr` and so the LTB capacity. The corrected form gives
+`J = 343 907 mm⁴` for that shape.
 
 ### S6.2 Cb policy (F1-1)
 
@@ -434,8 +428,7 @@ full-member `Cb` reaches 2.273 against a true end-segment value of 1.25.)
 
 Two clause-level exceptions stand: **F9** (tees) and **F10** (single angles)
 carry no `Cb` term at all, and F10 pins it to 1.0. The result reports the value
-the clause actually used, not the diagram-derived one — a distinction the
-reference software comparison caught.
+the clause actually used, not the diagram-derived one.
 
 ### S6.3 F9 — tees, the sign-dependent shape
 
@@ -460,10 +453,9 @@ opposite sign of `B` collapses the bracket `B + √(1+B²)` toward zero instead 
 letting it grow. That is what makes a hogging tee so much weaker — measured at
 **31.4 vs 60.0 kN·m** on the same WT300×200 in `steel_pipeline_smoke.mts`.
 
-> **F9-9's radical grouping.** the reference manual's manual (p. 3-58) typesets `Lr` with
-> `√(Iy·J/S33)`, which cannot be right: that is `√(mm⁴·mm⁴/mm³) = mm^2.5` and
-> `Lr` must be a length. AISC F9-9 has `√(Iy·J)` **over** `Sx`, giving
-> `mm⁴/mm³ = mm`. Unlike F2-6 there is no nested radical. Implemented as AISC
+> **F9-9's radical grouping.** AISC F9-9 has `√(Iy·J)` **over** `Sx`, giving
+> `mm⁴/mm³ = mm`, as `Lr` must be a length. Grouping it as `√(Iy·J/S33)` would
+> give `√(mm⁴·mm⁴/mm³) = mm^2.5`, which is dimensionally impossible. Unlike F2-6 there is no nested radical. Implemented as AISC
 > writes it and asserted dimensionally in the clause sweep.
 
 > **F9's stem-buckling branches do not join, and that is the code's doing.** At
@@ -499,35 +491,32 @@ Leg local buckling (both axes):
   compact / noncompact (F10-7) / slender (F10-8)
 ```
 
-The **minor principal axis has no LTB** (the reference manual §3.5.3.8.2), so `MnZ` is just
+The **minor principal axis has no LTB** (F10.2 addresses the major principal
+axis only), so `MnZ` is just
 yielding capped by leg local buckling.
 
 - **`βw` is taken adverse.** AISC F10.2 makes it positive with the short leg in
   compression and negative with the long leg in compression; a 2D check cannot
   know which toe is in compression over the whole unbraced length, and both
-  principal signs occur along a real member. We use `−|βw|`, which is what the reference manual
-  does too. `βw` is exactly **0** for equal legs, collapsing F10-4 to
+  principal signs occur along a real member. We use `−|βw|`, the conservative
+  sign. `βw` is exactly **0** for equal legs, collapsing F10-4 to
   `Mcr = 9EA·rz·t·Cb/(8Lb)`.
-- **`Cb` is pinned to 1.0 for angles.** the reference manual's manual p. 3-67 says `Cb` comes from
-  F1-1 capped at 1.5, but reference software itself uses 1.0 — and that is *measured*, not
-  read off a table column: the same angle at one span under three load patterns
-  whose F1-1 values are 1.136, 1.316 and 2.27→1.5 all returned `McMajor = 11.8068`,
-  identical to five decimal places. `Mcr` is linear in `Cb`, so computing it from
-  the moment diagram would sit up to 50 % above reference with no code basis for the
-  extra capacity. F1 explicitly permits 1.0 as the conservative value.
+- **`Cb` is pinned to 1.0 for angles.** F10.2 allows `Cb` from F1-1, capped at
+  1.5 for single angles. `Mcr` is linear in `Cb`, so the diagram-derived value
+  would raise `Mcr` by up to 50 %. We take `Cb = 1.0`, which F1 permits in all
+  cases as the conservative value.
 - **`Sc` is the worst extreme fibre** (`SwMin`/`SzMin`) over every real polygon
-  vertex, heel included — exactly what the reference manual p. 3-68 asks for ("considering the
-  possibility of yielding at the heel **and** both of the leg tips"). reference agrees
-  on the minor axis: its `McMinor` reproduces `1.5·Fy·SzMin` to five decimal
-  places, and that value is set by the heel. On the **major** axis reference measures to
-  the leg-tip mid-thickness instead — the thin-walled idealisation — which makes
-  its `Sw` 5.2 % larger. See [§S14.1 C](#s141-measured-divergences-from-reference software-tee--angle).
+  vertex, heel included, so yielding at the heel **and** at both leg tips is
+  considered (F10.1). On the minor axis that value is set by the heel. On the
+  **major** axis a thin-walled idealisation would measure to the leg-tip
+  mid-thickness instead, giving an `Sw` 5.2 % larger than ours. See
+  [§S14.1 C](#s141-known-conservative-simplifications-tee--angle).
 - **F10-4 vs the legacy `0.46·E·b²·t²`.** For an equal-leg angle `βw = 0` and
   F10-4 collapses to `9EA·rz·t·Cb/(8Lb)`. That is the *same equation* AISC
   360-05/10 printed as F10-5, since `0.46 = 9/8 · 2/√24 = 0.45928` is just the
-  thin-wall evaluation of `9·A·rz·t/8`. reference still uses the `0.46` shortcut; 360-16
-  writes it in terms of the actual `Ag`, `rz` and `t`, which is what we use — 9.5 %
-  lower, i.e. conservative.
+  thin-wall evaluation of `9·A·rz·t/8`. 360-16 writes it in terms of the actual
+  `Ag`, `rz` and `t`, which is what we use. That is 9.5 % lower than the `0.46`
+  shortcut, i.e. conservative.
 
 ### S6.5 `MnNoLTB`
 
@@ -555,10 +544,9 @@ AISC H1-2 and was removed with the H1.3 alternative; see
 `kv = 1.2` is far below an I-shape's 5.34 because a tee stem and an angle leg are
 unstiffened along a free edge rather than framed between two flanges.
 
-Chapter G is evaluated on the **geometric** axes even for an angle — the reference manual §3.5.4:
-*"The nominal shear strengths are calculated for shears along the geometric axes
-for all sections"* — so the solver's local-2 `V` feeds straight in, with no
-principal-axis resolution. Both `φVn` values matched reference software to **0.000 %**.
+Chapter G is evaluated on the **geometric** axes even for an angle (G3 works on
+the leg resisting the shear), so the solver's local-2 `V` feeds straight in, with
+no principal-axis resolution.
 
 **`φv = 0.90`**, the general value. The `φv = 1.00` rolled-shape shortcut of
 G2.1(a) is deliberately **not** used: our parametric IWF is not a catalogue
@@ -586,8 +574,8 @@ When `|Pr| < 1e-9` the check degenerates to `Mr33/Mc33` and is reported as
 ```
 
 Applied to **every single angle**, and to a **tee under negative major-axis
-moment** — the reference manual §3.6.2: *"any T-Shape or Double-Angle shape when subjected to
-negative major axis moment is checked using the equation given in Section H2"*.
+moment** (stem in compression). For the tee this is a deliberate conservative
+choice: H2's linear sum is harsher than H1.
 
 H2-1 is written in stresses, but each flexural term is `(Mr/S)/(φMn/S)` and the
 section modulus **cancels identically**, so the check reduces to the moment form
@@ -595,15 +583,13 @@ section modulus **cancels identically**, so the check reduces to the moment form
 
 Terms are summed as **absolute** ratios — every component taken adverse. This
 pairs correctly with the min-over-all-fibres capacities of
-[§S6.4](#s64-f10--single-angles-on-the-principal-axes), and it is exactly what
-reference software does: its PMM Details table reports `TotalRatio = MMajRatio + MMinRatio`
-as a plain linear sum, and its principal resolution matches ours to four decimals
-(`Mw = 3.9725` computed vs `3.9723` reported).
+[§S6.4](#s64-f10--single-angles-on-the-principal-axes): the total is a plain
+linear sum of the major and minor principal ratios.
 
 Note that with no minor-axis moment H2 degenerates to `Pr/Pc + Mr33/Mc33` — a
 straight linear interaction, **harsher** than H1-1a's 8/9 factor and H1-1b's
 `Pr/2Pc`. A hogging tee therefore gets a stiffer check than the same tee sagging,
-which is the point of the reference manual §3.6.2. Angles and tees are not granted the H1.3
+which is the intent of routing it to H2. Angles and tees are not granted the H1.3
 alternative.
 
 ### S8.1 H1.3 is not implemented
@@ -638,10 +624,10 @@ H1.3-adjacent assertion tested a `Cb` double-count, not the branch selection.
 Deleting the clause removes the class rather than trading three fixes for a
 relaxation the engine does not need.
 
-Applicability was also a live AISC-vs-tool question: AISC H1.3 is titled *"Doubly
+Applicability was also an open question: AISC H1.3 is titled *"Doubly
 Symmetric **Rolled** Compact Members…"* and this engine models its parametric IWF
-as built-up throughout, while the reference manual §3.6.1 omits the "rolled" restriction and
-reference software applies the alternative anyway. That question is now moot.
+as built-up throughout, so the clause would not strictly apply to it. That
+question is now moot.
 
 `validation/steel_boundary_sweep.mts` §K asserts the removal — no axial level may
 produce an `H1-2` result.
@@ -654,7 +640,7 @@ The interaction equation needs the axial force and the moment **acting
 together**, so nothing may be enveloped independently. `strategy.ts` walks
 **`N_STATIONS = 11`** uniformly spaced stations on every enabled combination,
 evaluates `memberInternalForces` at each, and keeps the station with the worst
-ratio. This matches the reference manual §2.2's station model.
+ratio. The eleven stations include both ends and midspan.
 
 Solver `N` is tension-positive; AISC `Pr` is compression-positive, so `Pr = −N`.
 
@@ -752,9 +738,8 @@ render one pill instead, and are **material-scoped**: an RC member renders
 nothing under a `stl-*` report, exactly as a mode-mismatched RC member renders
 nothing under `req-*`/`chk-*`.
 
-`pass` uses **D/C ≤ 1.0**, the AISC unity check. the reference manual's default limit is 0.95
-(visible as `DCLimit` in its PMM table), which is a tool preference rather than a
-code requirement.
+`pass` uses **D/C ≤ 1.0**, the AISC unity check. No extra margin below 1.0 is
+applied, since AISC requires none.
 
 ### S11.2 Member role
 
@@ -767,17 +752,15 @@ code requirement.
 otherwise                      →  brace
 ```
 
-`ROLE_ANGLE_TOL_DEG = 15` is a **declared convention, not a clause** — it matches
-the design-orientation rule reference software/reference software use. The rule reads `|Δx|`, `|Δy|`, so
+`ROLE_ANGLE_TOL_DEG = 15` is a **declared convention, not a clause**. The rule reads `|Δx|`, `|Δy|`, so
 it is invariant under swapping the member's i and j nodes.
 
 **Role changes no capacity.** AISC 360 is organised by limit state (Chapters
 D/E/F/G/H), not by member type: every member runs the same Chapter H check, and a
-beam simply reaches it with `Pr = 0`, where H1-1b degenerates to `Mr/Mc`. This
-was confirmed against reference software — three simply supported beams with zero axial
-returned `RatioType = PMM`, equation `(H1-1b)`, `PRatio = 0`, and a fully
-computed `PcComp`. reference carries the same distinction (`DesignType = Beam`) and it
-selects no equation there either.
+beam simply reaches it with `Pr = 0`, where H1-1b degenerates to `Mr/Mc`. A
+simply supported beam with zero axial force therefore still reports equation
+`(H1-1b)`, a zero axial ratio and a fully computed `PcComp`; the role selects no
+equation.
 
 Role therefore exists only to label the DESIGN SCHEDULE and to pick a report deck
 (**brace uses the column deck** — like a column it is axial-dominated, so the
@@ -799,8 +782,7 @@ and — the assertion that matters — that `ratio`, `equation`, `PcComp`, `Mc33
 ### S11.3 Fixed member parameters
 
 Three quantities AISC needs are **fixed by documented convention** rather than
-entered. All three match reference software's own defaults for the same members, measured
-through the bridge (`XLLTB = 1`, `K1Major = K1Minor = K2Major = K2Minor = 1`).
+entered.
 
 | | Value | Direction |
 |---|---|---|
@@ -911,11 +893,9 @@ comply. Reported rather than absorbed.
 
 ## S12. Validation
 
-Two independent axes: the reference manual's published hand calculations, and a **live reference software
-round-trip** through the API bridge at `validation/reference-bridge/`. The bridge
-builds each case in reference software with real shape geometry (`shape` mode, so reference
-classifies the section itself), runs it, and diffs reference's own design tables
-against ours.
+Two independent axes: published AISC worked examples, and independent
+recomputation (exact polygon integration for section geometry, clause-by-clause
+branch and continuity sweeps) that shares no code with the engine under test.
 
 | Script | Anchors | Result |
 |---|---|---|
@@ -927,49 +907,22 @@ against ours.
 | `validation/steel_angle_tee_clauses.mts` | **F9 / F10 / E4 / G3 / H2 branch + continuity sweep.** F9 sign split and both LTB handovers, the F9-9 dimensional check, F10 branch continuity and the `βw = 0` collapse, `E4-4 → min(Fe22, E4-3)` plus `Pn` continuity across the branch, the cubic residual, G3's `Cv2` boundaries, and H2 ≥ H1 at three axial levels | **79/79** |
 | `validation/steel_seismic.mts` | **AISC 341 detailing — structure, not coefficients** (see [§S11.4.1](#-s1141-coefficient-provenance--read-before-relying-on-this)). OMF produces no seismic block and an OMF run is byte-identical to an SMF run in every strength field; the three classes are distinct; every `λhd` is strictly below its `λmd` twin; the web limit is monotonic, continuous and floored in `Ca`; `Ca` round-trips through its own definition; tension gives `Ca = 0`; D1.2 applies to beams only; SCWB responds to axial and to the `1.1·Ry` beam term. **It is what found the mis-transcribed highly-ductile web coefficient** | **39/39** |
 | `validation/steel_member_role.mts` | **Member role.** Classification at and around both 15° boundaries, i↔j swap invariance over 360 sampled angles, translation invariance, the degenerate zero-length case — and the invariant that matters: `ratio`, `equation`, `PcComp`, `PcTens`, `Mc33`, `Vc`, `shearRatio`, `Cb`, `Lb`, `slenderness`, `Fcr`, `Fe` are **identical** for the same member run as beam, column and brace. Also pins `Lb = L` and `Cb` = the F1-1 value | **31/31** |
-| `validation/reference-bridge/compare_props.py` | Our section properties vs **reference software's own** `GetSectProps`, for IWF, two tees and three angles including **both** unequal orientations — the stage that pinned down the axis mapping empirically | **all match @ 0.5 %**, `J` a bounded known delta |
 | `validation/steel_ui_smoke.mts` | **Render smoke test for the STEEL UI.** `npm run build` type-checks the decks but never runs them, so a bad index or a divide-by-zero in a chart scale would ship silently. Renders the preview, both charts and the tool to static markup with `react-dom/server` across all five shapes plus the degenerate inputs a user can actually produce (shapeless section, `t ≥ leg`, zero dims, no result yet); asserts finite curve values, monotonic `φMn(Lb)` and no `NaN` in any SVG coordinate. **It is what found the F9-10 cancellation** ([§S6.3](#s63-f9--tees-the-sign-dependent-shape)). Also asserts the element-type control is *absent* and that a 45° member routes to the brace report | **94/94** |
-| `validation/reference-bridge/probe_angle_ltb.py` | **The designed experiment that settled §S14.1 B and C**, kept as a regression stage. 19 variants in one reference session: the angle across 5 spans × 3 thicknesses × 3 leg sizes × 3 load patterns, and a hogging tee across 6 `d/tw` values. Asserts the *characterisation* — `Mn` linear in `√Lb`, `My` = the midline-toe modulus, `Mcr·Lb` = `0.46E·b²t²`, `0.46 ≡ 9/8·2/√24`, and `McMajor ≡ φ·Fy·S33` at every tee slenderness | **23/23** |
-| `validation/reference-bridge/run_all.py` | Eight stages: bridge vs published PDFs (14), axis/sign mapping over four orientations (21), simply-supported beam (45), portal frame canary (63), **steel design IWF + RHS + CHS** (21), **section properties tee + angle** (13 sections), **steel design tee + angle** (35), **divergence characterisation** (23) | **all 8 stages; design 21/21 @ 0.000 % and 35/35 @ 2 % with 6 declared deltas** |
-| `validation/run_all.mjs` | Unattended aggregator: every `*.mts`/`*.mjs` suite + `npm run build` + `npm run lint` in one command, `--with-reference` to chain the bridge. Lint is gated against a recorded baseline so a pre-existing hooks-rule error does not mask a new one | **20 suites** |
+| `validation/run_all.mjs` | Unattended aggregator: every `*.mts`/`*.mjs` suite + `npm run build` + `npm run lint` in one command. Lint is gated against a recorded baseline so a pre-existing hooks-rule error does not mask a new one | **20 suites** |
 
-**Coverage is now even across all five shapes.** the reference manual publishes only two worked
-steel examples and both are I-shapes, so RHS, CHS, tee and angle had no
-third-party number. The bridge closes that: reference software computes its own section
-properties and classification from the same dimensions, and `McMajor`, `PcComp`,
-`PcTension`, `Cb`, `TotalRatio`, `PhiVnMajor` and `SectClass` all agree to
-**0.000 %** for IWF/RHS/CHS.
+**Coverage across the five shapes.** The two published worked examples are both
+I-shapes. RHS, CHS, tee and angle are covered by the independent geometry
+recomputation in `steel_angle_tee_props.mts` and by the clause, continuity and
+invariant sweeps above. The deliberate conservative simplifications specific to
+the tee and angle are listed in
+[§S14.1](#s141-known-conservative-simplifications-tee--angle).
 
-For the tee and angle the agreement is close but not exact, and every residual is
-**measured, bounded, direction-checked and explained** rather than tolerated:
-`cases/steel_angle_tee.json` declares each one in a `_knownDeltas` block that
-`compare_design.py` enforces — a delta still **fails** if it grows past its bound
-or flips sign, so a real regression is caught while a documented difference stops
-reading as a defect. What matched exactly is as informative as what did not:
-
-| Quantity | Agreement |
-|---|---|
-| `α` (principal rotation) | `MajAxisAng = 0.785` rad = **45.000°**, exact |
-| Principal resolution `Mw`, `Mz` | **4 decimal places** (3.9725 vs 3.9723) |
-| `McMinor` (F10 minor axis) | **0.02 %** |
-| `PcTension`, `PhiVnMajor` | **0.000 %** |
-| `PcComp` (with E4 active) | **0.13 – 0.39 %** |
-| `SectClass`, `Cb` | exact on all five members |
-| Sagging tee `McMajor` / `TotalRatio` | **0.088 %** |
-
-The declared deltas are covered in [§S14.1](#s141-measured-divergences-from-reference software-tee--angle),
-where all four now have an identified cause.
-
-**The bridge also settled the orientation question empirically.** IWF, RHS and
-CHS are doubly symmetric, so an axis mix-up is invisible in them; a tee and an
-angle would expose one. Building `L150×90` and `L90×150` and reading reference's own
-`GetSectProps` back showed `I33` matching ours in **both** orientations, so
-reference's geometric axes coincide with ours and no correction is needed. That was
-measured, not reasoned from the reference manual Figure 3-1's "2-2 parallel to the longer leg"
-note.
+**Orientation.** IWF, RHS and CHS are doubly symmetric, so an axis mix-up is
+invisible in them; a tee and an angle would expose one. `steel_angle_tee_props.mts`
+checks both leg orientations of an unequal angle, so a swapped axis fails there.
 
 An **adversarial cross-check** was run in two blind halves — one agent
-re-deriving both PDFs without seeing the implementation, another auditing the
+re-deriving both published examples without seeing the implementation, another auditing the
 implementation clause by clause without seeing the derivation. Findings and
 their resolutions are recorded in [§S10](#s10-refusals--sections-the-engine-declines-to-design)
 and [§S14](#s14-open-issues--known-defects-not-fixed).
@@ -988,12 +941,12 @@ would otherwise be silently mis-designed, it is refused ([§S10](#s10-refusals--
 | 3 | **AISC F4** — noncompact-web I-shapes | `Rpc` web-plastification factor, `Mn = Rpc·My`, `Lp` per F4-7 (uses `rt`, not `r22`), `Lr` per F4-8, compression-flange yielding / LTB / FLB / tension-flange yielding branches | Refused instead ([§S10](#s10-refusals--sections-the-engine-declines-to-design)). Common enough in a deep built-up girder that it is the most likely of these to be wanted next |
 | 4 | **AISC F5** — slender-web I-shapes | `Rpg` bending-strength reduction and its four limit states | Refused instead. Rare in a sensibly proportioned member |
 | 5 | **Tension rupture (D2-2)** | `Ae` from a net section: bolt-hole geometry, shear lag factor `U`, connection type | No connection model exists anywhere in OpenAnstruk. `Ae = Ag` and only yielding is checked |
-| 6 | **Sway-frame K** | the reference manual §2.10's `K2` alignment-chart nomograph: joint-stiffness summation across the whole model and the `tan α` transcendental solve | `K33 = K22 = 1.0`, **fixed and not overridable** — the engine is limited to braced frames ([§S11.3](#s113-fixed-member-parameters)) |
+| 6 | **Sway-frame K** | The sway-frame alignment-chart nomograph (AISC Commentary Appendix 7): joint-stiffness summation across the whole model and the `tan α` transcendental solve | `K33 = K22 = 1.0`, **fixed and not overridable** — the engine is limited to braced frames ([§S11.3](#s113-fixed-member-parameters)) |
 | 7 | **Second-order amplification** | `B1` (member `P-δ`) and `B2` (storey `P-Δ`) multipliers of AISC Appendix 8 | The solver is first-order. For a sway-sensitive frame the user must supply amplified demands |
 | 8 | **Torsion (H3)** | Box/pipe torsional strength, and combined torsion + shear + flexure | The 2D solver has no torsional DOF, so there is no torsional demand to check against. Permanent |
-| 9 | **AISC E5** — single-angle end-condition slenderness | The modified `KL/r` of E5 for angles connected through one leg | Needs connection data (number of fasteners, which leg, restraint at the far end) that no model in OpenAnstruk carries. the reference manual skips it for the same reason. E3 on `rz` is used instead, which is the conservative route the reference manual names |
+| 9 | **AISC E5** — single-angle end-condition slenderness | The modified `KL/r` of E5 for angles connected through one leg | Needs connection data (number of fasteners, which leg, restraint at the far end) that no model in OpenAnstruk carries. E3 on `rz` is used instead, which is conservative |
 | 10 | **Angle out-of-plane moment** | The `M22` an unsymmetric section genuinely develops under in-plane load | **Permanent** — the frame element has one bending DOF. Our `M22 = 0` makes the minor-principal component larger, so the D/C is conservative ([§S3.1](#s31-the-angle-carve-out--one-moment-two-components)) |
-| 11 | **Catalogue section selection** | Auto-selecting an economical shape from a section list | Steel is always a *check* of the assigned section. The the reference manual manual frames selection as picking from a predefined list, which is out of scope |
+| 11 | **Catalogue section selection** | Auto-selecting an economical shape from a section list | Steel is always a *check* of the assigned section. Selection would mean picking from a predefined section list, which is out of scope |
 | 12 | **Intermediate lateral bracing** | A model concept for brace points along a member, so `Cb` and `Lb` could be resolved per segment | `Lb ≡ L` ([§S11.3](#s113-fixed-member-parameters)); subdividing a member is the workaround. Also what makes the AISC 341 D1.2 check advisory rather than binding |
 | 13 | **Minor-axis flexure (F6), minor shear (G6), geometric `Mr22/Mc22`** | — | **Permanently** unreachable: one bending DOF means the *geometric* `Mu22 ≡ 0`. Exact, not an approximation — but note the angle carve-out at [§S3.1](#s31-the-angle-carve-out--one-moment-two-components), where a geometric moment still produces two *principal* components |
 | 14 | **Steel in Save/Load** | Design criteria, section inputs and results are App state only | Same boundary as RC and as load cases/combinations ([§13](DESIGN_RULES.md#13-known-limitations)) |
@@ -1005,55 +958,34 @@ would otherwise be silently mis-designed, it is refused ([§S10](#s10-refusals--
 
 Found and characterised, deliberately left open. Ranked by consequence.
 
-### S14.1 Measured divergences from reference software (tee + angle)
+### S14.1 Known conservative simplifications (tee + angle)
 
-All four are **conservative** — our capacity is lower or our D/C higher — all are
-enforced as bounded, direction-checked `_knownDeltas` in
-`cases/steel_angle_tee.json`, and **all four now have an identified cause**.
+Four deliberate simplifications apply to the tee and the single angle. All four
+are **conservative**: each gives a lower capacity or a higher D/C than a less
+simplified treatment would, and each has a stated code basis.
 
-Two of them (B and C) were settled by a designed experiment rather than by
-argument: `validation/reference-bridge/probe_angle_ltb.py` builds 19 variants in one
-reference session — 5 spans × 3 thicknesses × 3 leg sizes × 3 load patterns for the
-angle, and a 6-point `d/tw` sweep for the tee — and **asserts** the resulting
-characterisation, so a reference software upgrade that changed its behaviour would fail the
-suite instead of silently invalidating this table.
+| # | What we do | Effect | Why kept |
+|---|---|---|---|
+| A | **Angle D/C from in-plane `Mz` only.** The principal resolution uses the geometric `M22 = 0`; no out-of-plane `M22` is modelled | In a 3D analysis an out-of-plane `M22` would partially cancel `Mz`. With `M22 = 0` our `Mz` magnitude, and so the D/C, is the larger value | **Permanent** property of a one-bending-DOF element ([§S3.1](#s31-the-angle-carve-out--one-moment-two-components)). Ours is the larger, safe value |
+| B | **Hogging tee: F9.4 stem local buckling applied.** Whenever the stem is in compression (`Mr < 0`), the three-branch `Fcr` of F9-17 to F9-19 is evaluated on `d/tw` | `McMajor` falls below `φ·Fy·S33` once `d/tw > 0.84√(E/Fy)`; at `d/tw = 55` the clause cuts capacity by 59 % | AISC F9.4 requires it. We follow the clause |
+| C | **Equal-leg angle: F10 on exact polygon geometry**, not a thin-walled two-line idealisation. Two separable effects, see below | `McMajor` lower than the thin-wall evaluation would give | 360-16 F10-4 is written in terms of the *actual* `Ag`, `rz`, `t`. Ours follows the current edition and is conservative |
+| D | **`J` for tee + angle without a plate-junction term.** `J = ⅓·Σ bᵢtᵢ³(1 − 0.63·tᵢ/bᵢ)` over the plates, with nothing added where they meet | `J` lower than a model with a junction or fillet allowance | Same reasoning as the RHS corner radius ([§S4](#s4-section-classification-table-b41a--b41b)): our geometry has no fillet, so our `J` should not assume one, and every formula here cites a clause. Lower `J` lowers `Lr` and `Mcr`, which is conservative |
 
-| # | What | Size | Cause | Why not "fixed" |
-|---|---|---|---|---|
-| A | **Angle D/C** vs reference | up to **24.7 %** high | reference's 3D analysis develops a real out-of-plane `M22` that partially cancels our `Mz`. Confirmed exactly from reference's own PMM row: `MrMajorDsgn`/`MrMinorDsgn` are **our** resolution formula applied to its `(M33, M22)` — `(2.3625 + 0.9325)/√2 = 2.3299` ✓. With `M22 = 0` we get `Mz = −1.671` where reference gets `−1.011` | **Permanent** property of a one-bending-DOF element ([§S3.1](#s31-the-angle-carve-out--one-moment-two-components)). Ours is the larger, safe value |
-| B | **Hogging tee `McMajor`** | **11.6 %** low | **reference does not apply AISC F9.4 at all.** Measured at `d/tw` = 20, 27, 30, 35, 45, 55: `McMajor / (φ·Fy·S33) = 1.00000` at *every* one — including `d/tw = 55`, where the clause would cut capacity by 59 %. The sweep spans both the `0.84` and `1.52√(E/Fy)` boundaries and both the F9-18 and F9-19 branches | **the reference manual's own manual p. 3-60 prints the exact three-branch `Fcr` we implement**, gated on `Mr < 0`. This is reference diverging from its own documentation. We follow the clause |
-| C | **Equal-leg angle `McMajor`** | **6.1 %** low | **reference evaluates F10 on the thin-walled two-line idealisation; we use exact polygon geometry.** Two separable effects — see below | 360-16 F10-4 is written in terms of the *actual* `Ag`, `rz`, `t`. Ours follows the current edition and is conservative |
-| D | **`J` for tee + angle** | **1.6 – 5.1 %** low | reference adds a **junction term** at the plate intersection. For an angle it is exactly **`0.17500·t⁴`**, constant to 5 d.p. across `t` = 8/10/12/16, legs of 75/100/150, and both unequal orientations — 8 independent readings. A tee's junction has two thicknesses so it is bounded rather than pinned | Same reasoning as the RHS corner radius ([§S4](#s4-section-classification-table-b41a--b41b)): our geometry has no fillet, so our `J` should not assume one. No published closed form reproduces the constant, and every formula here cites a clause. Lower `J` lowers `Lr` and `Mcr` — conservative. IWF matches reference **exactly** |
+**Simplification C in full.** The thin-walled idealisation differs from exact
+geometry in two independent places:
 
-**Divergence C in full.** The two effects were separated without assuming either,
-because when `Mcr ∝ 1/Lb` the AISC F10-2 ladder is exactly linear in `√Lb`:
+1. **`My`**: the thin-wall model measures the major-axis modulus to the leg-tip
+   **mid-thickness** fibre (`|z| = 67.175 mm` on the reference angle) instead of
+   the real outer corner at `70.711 mm`. Its `Sw` is therefore **5.2 % larger**
+   than ours.
+2. **`Mcr`**: in the thin-wall limit `A → 2bt`, `rz → b/√24`, F10-4's
+   `9·A·rz·t/8` becomes `0.46·E·b²·t²`, the **AISC 360-05/10 F10-5** form, since
+   `0.46 = 9/8 · 2/√24 = 0.45928`. With the **real** `A` and `rz` the same
+   equation gives `Mcr·Lb = 84 039 kN·m·mm` against about `92 000` for the `0.46`
+   form, **9.5 % lower**.
 
-```
-Mn = 1.92·My − 1.17·My^1.5·√(Lb/C)
-```
-
-so the **intercept fixes `My`** and the **slope fixes `Mcr`**, independently. The
-fit over five spans has a maximum residual of `0.003 kN·m`, confirming the `1/Lb`
-form; then:
-
-1. **`My`** — the fitted intercept lands on `10.6616 kN·m`, which is
-   `Fy·Iw/67.175` — the leg-tip **mid-thickness** fibre, not the real outer corner
-   at `70.711`. reference's `Sw` is therefore **5.2 % larger** than ours.
-2. **`Mcr`** — the fitted `Mcr·Lb = 92 080` matches `0.46·E·b²·t²` (**AISC
-   360-05/10 F10-5**) to 0.09 %, at every span, thickness and leg size. That
-   constant is not independent: `0.46` is `9/8 · 2/√24 = 0.45928`, i.e. F10-4's
-   `9·A·rz·t/8` evaluated in the thin-wall limit `A → 2bt`, `rz → b/√24`. With the
-   **real** `A` and `rz` the same equation gives `84 039` — **9.5 % lower**.
-
-For **unequal-leg** angles reference uses F10-4 on the real `A` and `rz` and agrees with
-us to **0.05 %**. That is why only the equal-leg case ever diverged, and it is the
-strongest evidence that the difference is the idealisation and nothing else.
-
-**`Cb` is genuinely 1.0 in reference**, not merely reported as such: the same angle at
-one span under three load patterns whose F1-1 values are 1.136, 1.316 and
-2.27→1.5 returned `McMajor = 11.8068` for all three, identical to five decimal
-places. the reference manual's manual p. 3-67 says `Cb` comes from F1-1 capped at 1.5; the program
-does not. We use 1.0, which F1 permits as the conservative value.
+For an **unequal-leg** angle F10-4 is always evaluated with the real `A` and
+`rz`, so simplification C only changes the equal-leg case.
 
 ### S14.2 Standing issues
 
@@ -1061,19 +993,19 @@ does not. We use 1.0, which F1 permits as the conservative value.
 |---|---|---|---|---|
 | 1 | **Advanced overrides desynchronise torsional properties.** `J`, `Cw`, `rts`, `ho` are neither editable nor recomputed when a user overrides `S33b`, `Z33`, `r22`, `I33` or `A` | `tabs/model/tools/material/advanced-panel.tsx` | LTB then mixes overridden section moduli with parametric torsional properties. **Silent** | Needs a decision on whether an override should invalidate derived properties or expose them for editing |
 | 2 | **`Seff` in F7-3 is a linear scale**, `Seff = S33·(be/b)`, not the true effective section modulus | `flexure.ts` | Measured **10 % low** on a 300×300×6 box (528 463 vs 587 090 mm³). Conservative — under-reports capacity, never over | Honestly commented; the exact form needs the shifted neutral axis of the reduced section |
-| 3 | `pass` uses **D/C ≤ 1.0**; the reference manual's default limit is **0.95** | `strategy.ts` | Reporting only — no capacity changes | 1.0 is the AISC unity check; 0.95 is a tool preference. A product decision |
+| 3 | `pass` uses **D/C ≤ 1.0**, with no extra margin | `strategy.ts` | Reporting only — no capacity changes | 1.0 is the AISC unity check; a lower design limit would be a product decision |
 | 4 | `FlexureInput.I22` is **required but never read** by the I-shape / box / round branches | `flexure.ts` | None — the tee's F9 path does read it, so it is dead only for the other shapes | Cosmetic |
-| 5 | `raw: MemberZoneDemands` is threaded into the steel strategy and **never destructured** | `strategy.ts`, `run-design.ts` | None. Steel uses 11 uniform stations; RC uses exact analytic extremes from that same object | An asymmetry, not an error — station sampling matches the reference manual §2.2 |
+| 5 | `raw: MemberZoneDemands` is threaded into the steel strategy and **never destructured** | `strategy.ts`, `run-design.ts` | None. Steel uses 11 uniform stations; RC uses exact analytic extremes from that same object | An asymmetry, not an error |
 | 6 | With an empty `efByCombo` the station loop never runs, `best.ratio` stays −1, and `pass` reports **true** with `worstFlexureDC = 0` | `strategy.ts` | None today — `run-design.ts` catches the empty case first | Unreachable; latent if that guard is ever removed |
 | 7 | **`tee.ts` defaults are a concrete slab-beam** (`bf 1000, tf 100, bw 300, h 600`), not a steel WT | `sections/shapes/tee.ts` | A user picking a steel tee in the MATERIAL tool starts from an implausible section and must retype every dimension | `defaults` is shared between the concrete and steel paths; making it material-aware is a MATERIAL-tool change, not a design one |
 | 8 | `S33b`/`S33t` mean **opposite ends** for a tee and an angle | `sections/shapes/{tee,angle}.ts` | None today — the angle path reads `principal.SwMin`/`SzMin` and never touches them. Latent if a future consumer assumes `S33b` is always the governing modulus | Renaming them to `S33min`/`S33max` would touch every shape and the persisted `derived` cache. Documented in both shape headers instead |
 | 9 | **Six pre-existing ESLint errors** (`react-hooks/refs`, `react-hooks/immutability`) in `App.tsx` and `structural-canvas.tsx` | outside the design engine | None to design. They predate this work and are unrelated to it | `validation/run_all.mjs` gates lint against a recorded baseline (6 errors / 28 warnings) so a **new** problem still fails the suite. Lower the baseline when they are fixed; never raise it |
 
-**Closed since the last revision.** The old entry *"the reference manual takes the min over the two
-toes, so our heel-inclusive `Sc` is a conservative divergence"* was **wrong** and
-has been removed: the reference manual p. 3-68 asks for the heel *and* both leg tips, and reference's
-`McMinor` reproduces our heel-governed `SzMin` to five decimal places. The real
-divergence is on the major axis and is §S14.1 C.
+**Closed since the last revision.** An earlier entry claimed that `Sc` should be
+taken over the two leg toes only, making our heel-inclusive `Sc` a conservative
+simplification. It was **wrong** and has been removed: F10.1 considers yielding
+at the heel *and* both leg tips, so the heel-inclusive value is simply the code
+value. The remaining major-axis simplification is §S14.1 C.
 
 ---
 

@@ -1,6 +1,6 @@
 /**
  * RC PREFERENCES — the code-level setup for reinforced concrete, step 1 of the
- * RC design tool (reference software "Design Preferences" style). One column of labelled
+ * RC design tool, laid out as a design-preferences form. One column of labelled
  * fields; values apply to every concrete member in the model.
  *
  * Lives beside the RC section pane rather than in a shared criteria tool: the

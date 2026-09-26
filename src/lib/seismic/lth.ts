@@ -16,7 +16,7 @@
  *      instant can be drawn later.
  *
  * ⚠ R, Cd, Ie AND THE DESIGN SPECTRUM ARE NOT APPLIED — the record × scale is
- * the input, as in reference software's linear direct-integration case.
+ * the input, as in a linear direct-integration time-history case.
  *
  * ⚠ THE CASE RESULT IS THE SIGNED PEAK ENVELOPE: each quantity takes its value
  * at the instant of largest magnitude. The MRS convention, so the ±E
@@ -110,7 +110,7 @@ const EF_KEYS = ["N1", "V1", "M1", "N2", "V2", "M2"] as const
 /**
  * The two modes the Rayleigh damping is fitted at: mode 1 (the longest
  * period) and the first mode at which the cumulative X participation reaches
- * 90 %, the usual reference software / reference software practice. With C = αM + βK the damping is
+ * 90 %, the usual practice. With C = αM + βK the damping is
  * exactly ζ at both, a little below ζ between them and above it outside, so
  * the modes that carry the response are damped close to the target.
  *

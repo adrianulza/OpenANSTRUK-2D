@@ -12,11 +12,10 @@
  *
  * ⚠ THE TWO SETS ARE NOT EXACT CONVERSIONS OF EACH OTHER. The code rounds both:
  * the exact SI equivalent of 0.016 ft is 0.0465529…, and ASCE prints 0.0466. So
- * a comparison against reference software — which computes in feet with the imperial set —
- * shows a systematic 0.03–0.06 % difference in Ta. Measured on a 10.5 m frame:
- * reference 0.3869 s against 0.38679 s here. That is the code's own rounding, present
- * in both programs, and NOT something to "fix" by switching to converted
- * constants; doing so would stop matching the published SI table.
+ * a calculation done in feet with the imperial set differs systematically from
+ * one done in metres with the SI set by a few hundredths of a percent in Ta.
+ * That is the code's own rounding, and NOT something to "fix" by switching to
+ * converted constants; doing so would stop matching the published SI table.
  *
  * `taFrom` is exported separately so a caller with its own (Ct, x) — a published
  * example in imperial units, say — can use the same ladder without the metric
@@ -31,22 +30,20 @@ export type StructuralSystem =
   | "other"
 
 /**
- * Table 12.8-2, SI. `x` is dimensionless; `Ct` assumes hn in METRES.
- *
- * The `CtType` column is reference software's enumeration for the same rows, measured from
- * its API rather than assumed — see `validation/reference-bridge/probe_auto_seismic.py`.
+ * Table 12.8-2, SI. `x` is dimensionless; `Ct` assumes hn in METRES. The
+ * imperial (hn in feet) Ct of each row is noted beside it.
  */
-export const SYSTEM_CT: Record<StructuralSystem, { Ct: number; x: number; ctType: number }> = {
-  // reference prints "0.028ft, 0.8"
-  "steel-moment": { Ct: 0.0724, x: 0.8, ctType: 0 },
-  // reference prints "0.016ft, 0.9"
-  "concrete-moment": { Ct: 0.0466, x: 0.9, ctType: 1 },
-  // reference prints "0.03ft, 0.75"
-  "steel-braced-eccentric": { Ct: 0.0731, x: 0.75, ctType: 2 },
+export const SYSTEM_CT: Record<StructuralSystem, { Ct: number; x: number }> = {
+  // Imperial: Ct = 0.028, x = 0.8
+  "steel-moment": { Ct: 0.0724, x: 0.8 },
+  // Imperial: Ct = 0.016, x = 0.9
+  "concrete-moment": { Ct: 0.0466, x: 0.9 },
+  // Imperial: Ct = 0.03, x = 0.75
+  "steel-braced-eccentric": { Ct: 0.0731, x: 0.75 },
   // Same row as the EBF in Table 12.8-2.
-  "steel-braced-buckling-restrained": { Ct: 0.0731, x: 0.75, ctType: 2 },
-  // reference prints "0.02ft, 0.75"
-  other: { Ct: 0.0488, x: 0.75, ctType: 3 },
+  "steel-braced-buckling-restrained": { Ct: 0.0731, x: 0.75 },
+  // Imperial: Ct = 0.02, x = 0.75
+  other: { Ct: 0.0488, x: 0.75 },
 }
 
 export const SYSTEM_LABELS: Record<StructuralSystem, string> = {
@@ -95,17 +92,8 @@ export type PeriodSource = "approximate" | "computed" | "cu-limit" | "user"
 
 /**
  * The three ways to fix the period.
- *
- * These line up one-to-one with reference's `PeriodFlag`, measured: 1 = Approximate,
- * 2 = Prog Calc, 3 = User.
  */
 export type PeriodMode = "approximate" | "computed" | "user"
-
-export const PERIOD_FLAG: Record<PeriodMode, number> = {
-  approximate: 1,
-  computed: 2,
-  user: 3,
-}
 
 export interface GoverningPeriodInput {
   Ta: number
@@ -133,9 +121,7 @@ export interface GoverningPeriod {
  *
  * ⚠ "user" mode is NOT capped. A user who types a period is overriding the
  * clause deliberately, and silently applying Cu·Ta would make the field lie
- * about what it does. reference behaves the same way — measured: a UserT of 1.2345 s
- * on a frame whose Cu·Ta is 0.54 s produced Cs = 0.0405, i.e. the full 1.2345 s
- * was used. The UI is responsible for saying the cap is not applied.
+ * about what it does. The UI is responsible for saying the cap is not applied.
  */
 export function governingPeriod(input: GoverningPeriodInput): GoverningPeriod {
   const upperLimit = input.Cu * input.Ta

@@ -142,7 +142,7 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 #### Scope Limitations
 - Limited to simple IFC structures (no complex connections)
 - Detailing is template-based (not generative AI)
-- a BIM platform integration read-only initially
+- BIM platform integration read-only initially
 
 ---
 

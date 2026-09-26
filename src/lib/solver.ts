@@ -149,7 +149,7 @@ function localStiffness(EA: number, EI: number, L: number, GAs = 0): number[][] 
   ]
 }
 
-// Truss element (v1.0.4): frame element with M3 releases at both ends (reference software style).
+// Truss element (v1.0.4): frame element with M3 releases at both ends.
 // Implemented by static condensation of θᵢ, θⱼ from the full 6×6 frame stiffness.
 // The result is a 6×6 matrix whose θ rows/cols are zero (matching the released-DOF
 // boundary condition) but whose transverse (v) rows/cols carry the simply-supported
@@ -551,8 +551,8 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
 
 /**
  * Returns internal forces at distance x (metres) from node-A along the member.
- * Sign conventions: N positive=tension, V positive=reference software (force on positive face in
- * positive local-2 direction; right-portion pushes left-portion upward for horizontal members),
+ * Sign conventions: N positive=tension, V positive = force on positive face in
+ * positive local-2 direction (right-portion pushes left-portion upward for horizontal members),
  * M positive=sagging (CCW on left face).
  */
 export function memberInternalForces(
@@ -608,8 +608,8 @@ function closedFormForces(
 ): { N: number; V: number; M: number } {
   const { q1, q2, qx1, qx2 } = ef
   // Axial: dN/dx = -qx  →  N(x) = N1 - qx1·x - (qx2-qx1)·x²/(2L)
-  // reference software convention: dV_ref/dx = -q  →  V(x) = V1 - q1·x - (q2-q1)·x²/(2L)
-  // Moment unchanged (sagging +): dM/dx = -V_ref  →  M(x) = M1 - V1·x + q1·x²/2 + …
+  // Shear (V positive on positive face in +local-2): dV/dx = -q  →  V(x) = V1 - q1·x - (q2-q1)·x²/(2L)
+  // Moment unchanged (sagging +): dM/dx = -V  →  M(x) = M1 - V1·x + q1·x²/2 + …
   const N = ef.N1 - qx1 * x - (qx2 - qx1) * x * x / (2 * L)
   const V = ef.V1 - q1 * x - (q2 - q1) * x * x / (2 * L)
   const M = ef.M1 - ef.V1 * x + q1 * x * x / 2 + (q2 - q1) * x * x * x / (6 * L)

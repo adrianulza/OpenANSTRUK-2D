@@ -251,8 +251,7 @@ would not notice the furniture returning around the message.
 reinforcement definition *is* its design type: a column takes a perimeter bar
 grid and ties, a beam takes top/bottom/side bars and stirrups. Those are
 different data, not two views of one thing — so the choice belongs where the
-rebar is defined. This is also what reference software does ("P-M2-M3 Design (Column)" vs
-"M3 Design Only (Beam)" in the section dialog), and it matches how engineers
+rebar is defined. It also matches how engineers
 work: `C1 500×500` and `B1 300×500` are defined separately rather than one
 section reused as both.
 

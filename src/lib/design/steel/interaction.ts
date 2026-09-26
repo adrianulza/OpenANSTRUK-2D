@@ -99,8 +99,8 @@ export interface H2Input {
 /**
  * AISC H2 — unsymmetric members, and singly symmetric members outside H1's
  * scope. Applied to every single angle, and to a tee under NEGATIVE major-axis
- * moment (the reference manual §3.6.2: "any T-Shape or Double-Angle shape when subjected to
- * negative major axis moment is checked using the equation given in Section H2").
+ * moment: a tee or double angle with its stem in flexural compression is
+ * checked with H2 rather than H1 (AISC H1 scope, H2).
  *
  *     | f_ra/F_ca + f_rbw/F_cbw + f_rbz/F_cbz |  ≤  1.0            (H2-1)
  *
@@ -113,10 +113,9 @@ export interface H2Input {
  * signed alternative would evaluate H2-1 at each extreme fibre and could let two
  * terms partially cancel, but that only makes sense paired with per-fibre
  * capacities; ours are already the minimum over all extreme fibres (see
- * `flexure.ts::angleShape`). reference software does the same: its PMM table reports
- * `TotalRatio = PRatio + MMajRatio + MMinRatio` as a plain linear sum
- * (0.197339 + 0.165518 = 0.362857 on the validation angle), so this matches
- * measured behaviour and is not merely the conservative choice.
+ * `flexure.ts::angleShape`). The total is therefore the plain linear sum
+ * `P ratio + M_major ratio + M_minor ratio`, which is the conservative reading
+ * of H2-1.
  */
 export function h2Ratio(inp: H2Input): InteractionResult {
   const { Pr, PcComp, PcTens, MrW, MrZ, McW, McZ } = inp

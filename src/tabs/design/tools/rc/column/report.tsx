@@ -202,7 +202,7 @@ function InteractionChart({
   const yPzero = yP(0)
   const yCap = yP(-curve.caps.PnMax)
 
-  // Radial reference lines (control-point-style): origin → each control point,
+  // Radial reference lines: origin → each control point,
   // extended out to the unreduced (nominal) curve and mirrored to the −M side.
   // A grey dot marks each landing on the nominal curve.
   const rays = curve.controlPoints
@@ -316,7 +316,7 @@ function InteractionChart({
           )
         })()}
 
-        {/* control-point control points (φ design loop). Labels match the table's Point
+        {/* Interaction-diagram control points (φ design loop). Labels match the table's Point
             column (POINT_LABEL); LABEL (#374151), mirrored to both ±M sides. The
             squash apex (maxComp / Pₒ) is drawn separately above. Points on the
             M = 0 axis (Pnt,max) are labelled once. */}

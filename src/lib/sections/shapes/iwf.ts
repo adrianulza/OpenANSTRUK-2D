@@ -19,17 +19,16 @@ function compute(dims: Record<string, number>): SectionProperties {
   const r22 = Math.sqrt(I22 / A)
 
   // ── Torsional / warping properties (AISC 360-16 steel design) ──────────────
-  // Doubly-symmetric I-shape, fillets ignored — matches the "built-up wide
-  // flange" idealisation the reference manual uses in its own verification hand calcs.
+  // Doubly-symmetric I-shape, fillets ignored: the built-up (welded) wide
+  // flange idealisation.
   //   ho  = h − tf              (distance between flange centroids)
   //   Cw  = I22·ho²/4           (AISC F2-4 / Table for doubly-symmetric shapes)
   //   rts = √(√(I22·Cw)/S33)    (AISC F2-7)
   //
   // J uses the per-strip finite-aspect-ratio correction — see `torsionStrip` in
   // ./principal.ts, which is shared with the angle and tee so there is exactly
-  // one definition of it. Verified against reference software's own section-property
-  // calculator: J = 343 907 mm⁴ for a 400x200x13x8 shape, matching to 6
-  // significant figures.
+  // one definition of it. For a 400x200x13x8 shape this gives
+  // J = 343 907 mm⁴.
   const J = 2 * torsionStrip(b, tf) + torsionStrip(hw, tw)
   const ho = h - tf
   const Cw = (I22 * ho ** 2) / 4

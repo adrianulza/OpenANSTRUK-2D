@@ -10,7 +10,7 @@
  *
  * E4 enters as `Fe = min(Fe_flexural, Fe_torsional)`, so it can only ever LOWER
  * a capacity. It is skipped entirely for closed sections (box, pipe) and solid
- * shapes, per AISC E4's own scope and the reference manual §3.5.2.1.2.1.
+ * shapes, per AISC E4's own scope.
  *
  * Units: mm, MPa, N internally; kN at the boundary.
  */
@@ -23,8 +23,8 @@ import { classifyAxial, kc, type SteelGeom } from "./rules"
  *
  * The axes labelled 33/22 here are whichever pair E4 is being evaluated in:
  * the GEOMETRIC axes for an I-shape or tee, but the PRINCIPAL axes for a single
- * angle (33 ↔ major w, 22 ↔ minor z), per the reference manual §3.5.2 "For angle sections, the
- * principal moment of inertia and radii of gyration are used for computing Fe."
+ * angle (33 ↔ major w, 22 ↔ minor z): for angle sections the principal moments
+ * of inertia and radii of gyration are used for computing Fe (AISC E4, E5).
  */
 export interface E4Input {
   /** St. Venant torsional constant, mm⁴. */
@@ -46,7 +46,7 @@ export interface E4Input {
   r22: number
   /**
    * Effective length used for BOTH Fe33 and Fe22 inside E4. For an angle this
-   * is `max(K33·L33, K22·L22)` (the reference manual §3.5.2); for other shapes the caller passes
+   * is `max(K33·L33, K22·L22)`, the conservative choice; for other shapes the caller passes
    * the per-axis value it already uses for E3.
    */
   KL33: number
@@ -131,12 +131,10 @@ export interface E4Result {
  * symmetric about its MAJOR principal axis, so its offset is `x0` (= w0) and
  * E4-3 takes **Fe33**.
  *
- * > the reference manual's manual mis-prints the tee case (§3.5.2.1.2.2.3): the numerator reads
- * > `(Fe22 + Fez)` but the radicand denominator reads `(Fe33 + Fez)²`. Those
- * > cannot both be right — the two come from the same quadratic. AISC E4-3 uses
- * > the axis of symmetry throughout, so the denominator is `(Fe22 + Fez)²`, and
- * > that is what is implemented. Whether reference software the SOFTWARE reproduces its own
- * > manual's typo is a question for the bridge, recorded in DESIGN_STEEL.md §S14.
+ * > For the tee the implemented form uses the axis of symmetry throughout, in
+ * > both the numerator `(Fe22 + Fez)` and the radicand denominator
+ * > `(Fe22 + Fez)²` (AISC 360-16 Eq. E4-3). Both terms come from the same
+ * > quadratic, so they must refer to the same axis. See DESIGN_STEEL.md §S14.
  *
  * ## The two branches report different things — deliberately
  *
@@ -235,14 +233,14 @@ export function effectiveWidth(
 }
 
 // AISC Table E7.1 — effective width imperfection adjustment factors. THREE
-// cases, reproduced verbatim as the reference manual Table 3-3 (SFD-AISC-360-16, p. 3-32):
+// cases:
 //
 //   (a) stiffened elements except walls of square and rectangular HSS  0.18
 //   (b) wall of square and rectangular HSS                             0.20
 //   (c) all other elements                                             0.22
 //
 // So a built-up I-shape WEB is case (a) = 0.18 — the code value, not a
-// deviation. Example 0002's c1 = 0.18 / c2 = 1.31 is simply Table E7.1 row (a).
+// deviation: c1 = 0.18 / c2 = 1.31 is simply Table E7.1 row (a).
 // An I-shape flange OUTSTAND is case (c) = 0.22. A box/RHS wall is case (b).
 const C1_STIFFENED = 0.18 // (a) I-shape webs
 const C1_HSS_WALL = 0.20 // (b) square/rectangular HSS + box walls
@@ -269,7 +267,7 @@ export function compressionStrength(inp: CompressionInput): CompressionResult {
   const FeFlex = (Math.PI ** 2 * E) / slenderness ** 2 // E3-4
 
   // E4 — torsional / flexural-torsional buckling. Ignored for closed sections
-  // (box, pipe) and solid shapes per AISC E4 scope / the reference manual §3.5.2.1.2.1: a closed
+  // (box, pipe) and solid shapes per AISC E4 scope: a closed
   // section's torsional stiffness is high enough that the mode cannot govern.
   const e4 =
     inp.e4 && g.kind !== "rhs" && g.kind !== "chs"
@@ -285,8 +283,8 @@ export function compressionStrength(inp: CompressionInput): CompressionResult {
   const Fcr = fcrFlexural(Fy, Fe)
 
   // E7: reduce the area for slender elements. Note Fcr itself is computed on
-  // the GROSS section first, then used to size the effective widths - this is
-  // the order the reference manual's Example 0002 follows and it matches AISC E7.
+  // the GROSS section first, then used to size the effective widths, which is
+  // the order AISC E7 prescribes.
   const axial = classifyAxial(g, Fy, E)
   const slender = axial.cls === "slender"
   let tooSlender = false
@@ -329,11 +327,11 @@ export function compressionStrength(inp: CompressionInput): CompressionResult {
       // Round HSS is not an effective-WIDTH case - E7.2 reduces Ae directly.
     }
     if (g.kind === "chs") {
-      // AISC E7-7 / the reference manual 3.5.2.2.3.2 — round HSS, three branches:
+      // AISC E7-7 — round HSS, three branches:
       //   D/t ≤ 0.11E/Fy               : Ae = Ag                (no reduction)
       //   0.11E/Fy < D/t < 0.45E/Fy    : Ae = [0.038E/(Fy·D/t) + 2/3]·Ag
-      //   D/t ≥ 0.45E/Fy               : Ae = 0  — "too slender and it is not
-      //                                  designed" (the reference manual 3.5.2.2.3.2)
+      //   D/t ≥ 0.45E/Fy               : Ae = 0  (too slender, not designed:
+      //                                  outside Table B4.1a / E7 scope)
       // The third branch is a REJECTION, not a capacity: `tooSlender` is raised
       // so the strategy layer refuses the member instead of reporting Pn = 0,
       // which would read as a solved-but-failing section.

@@ -95,8 +95,8 @@ export function seismicCoefficient(input: SeismicCoefficientInput): SeismicCoeff
  * The distribution exponent k, §12.8.3.
  *
  * 1 at T <= 0.5 s, 2 at T >= 2.5 s, linear in T between. ⚠ Linear — NOT the
- * rounded-to-the-nearest-tenth convention some references use. The the reference manual anchor
- * pins this: at T = 0.5204 s the published k is 1.0102, which is
+ * rounded-to-the-nearest-tenth convention some references use. A published
+ * example pins this: at T = 0.5204 s its k is 1.0102, which is
  * 1 + (0.5204 − 0.5)/2 exactly and would be 1.0 under any rounding rule.
  */
 export function kExponent(T: number): number {

@@ -4,10 +4,9 @@
  * **Role does not change the check.** AISC 360 is organised by limit state
  * (Chapters D/E/F/G/H), not by member type: every steel member runs the same
  * Chapter H combined-force check, and a beam simply arrives at it with `Pr = 0`,
- * where H1-1b degenerates to `Mr/Mc`. This was confirmed against reference software — three
- * simply supported beams with zero axial reported `RatioType = PMM`, equation
- * `(H1-1b)`, `PRatio = 0`, and a fully computed `PcComp`. Role therefore exists
- * only to label the schedule and to pick a report deck.
+ * where H1-1b degenerates to `Mr/Mc` (with `Pr/Pc = 0` and Pc still fully
+ * computed). Role therefore exists only to label the schedule and to pick a
+ * report deck.
  *
  * That is why there is no user control for it. A per-section `elementType`
  * override used to exist; it was on the wrong entity (role is per MEMBER — one
@@ -32,8 +31,8 @@ export type SteelMemberRole = "beam" | "column" | "brace"
 
 /**
  * Half-angle tolerance in degrees. A **declared convention**, not a clause —
- * it matches the design-orientation rule reference software/reference software use (near-vertical is a
- * column, near-horizontal a beam, anything else a brace).
+ * it is a common design-orientation rule (near-vertical is a column,
+ * near-horizontal a beam, anything else a brace).
  *
  * Known limitation: a portal-frame rafter pitched more than this reads as
  * `brace`, which is structurally wrong — it is a beam-column. Harmless while

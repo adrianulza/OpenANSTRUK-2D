@@ -46,13 +46,12 @@ export interface PrincipalProperties {
   alpha: number
   Iw: number     // mm⁴ — major principal moment of inertia
   Iz: number     // mm⁴ — minor principal moment of inertia
-  rw: number     // mm  — √(Iw/A); the "r_max" of the reference manual §3.5.2
+  rw: number     // mm  — √(Iw/A); the "r_max" (major principal radius of gyration)
   rz: number     // mm  — √(Iz/A); the "r_min", governs single-angle E3 slenderness
   /**
    * Elastic section moduli about the principal axes, to the WORST extreme
-   * fibre — for an angle the heel and both leg toes are all considered, per
-   * the reference manual §3.5.3.8.2 ("the possibility of yielding at the heel and both of the
-   * leg tips").
+   * fibre — for an angle the heel and both leg toes are all considered, so
+   * that yielding at the heel and at both leg tips is covered (AISC F10.1).
    */
   SwMin: number  // mm³ — Iw / max|z|
   SzMin: number  // mm³ — Iz / max|w|
@@ -101,7 +100,7 @@ export interface Section {
   }
   /**
    * Derived properties cached when authored parametrically.
-   * Naming follows reference software local-axis convention (axis 3 = strong, axis 2 = weak).
+   * Local-axis convention: axis 3 = strong, axis 2 = weak.
    */
   derived?: {
     G:    number  // MPa
@@ -217,7 +216,7 @@ export function deleteMultiSelection(model: StructureModel, sel: MultiSelection)
 import { buildParametricSection } from "@/lib/sections/compute"
 
 export const defaultSections: Record<SectionId, Section> = {
-  // RC 300x500 — parametric concrete, values match reference software exactly (verified).
+  // RC 300x500 — parametric concrete.
   rc300x500: buildParametricSection({
     id: "rc300x500", name: "B1-300x500",
     materialClass: "concrete", shape: "rect",

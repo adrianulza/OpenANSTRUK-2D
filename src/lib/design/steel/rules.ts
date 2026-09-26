@@ -8,8 +8,7 @@
  *
  * Pure domain module: no React imports. All inputs mm / MPa.
  *
- * Reference: the reference manual "Steel Frame Design AISC 360-16" Tables 3-1 and 3-2, which
- * reproduce AISC Table B4.1b and B4.1a respectively.
+ * Reference: AISC 360-16 Table B4.1b (flexure) and Table B4.1a (axial).
  */
 
 import type { SectionShape } from "@/lib/model"
@@ -55,8 +54,8 @@ function classify(lambda: number, lambdaP: number | undefined, lambdaR: number):
 /**
  * kc for built-up I-shape flanges (AISC Table B4.1b note a), clamped to
  * 0.35 ≤ kc ≤ 0.76. Our parametric IWF is always treated as built-up (welded)
- * because it carries no fillet data — the same idealisation the reference manual uses in its
- * "built-up wide flange" verification example.
+ * because it carries no fillet data, so the built-up (welded) flange rows of
+ * Table B4.1b apply.
  */
 export function kc(h: number, tw: number): number {
   if (!(h > 0 && tw > 0)) return 0.76
@@ -80,8 +79,8 @@ export interface SteelGeom {
    * Depth used for web/stem classification, mm.
    *   I-shape : clear web between flanges, h − 2·tf
    *   box     : clear web, h − 2·t
-   *   tee     : the FULL nominal depth h — the reference manual §3.3(d), "for stems of tees, d is
-   *             taken as the full nominal depth of the section"
+   *   tee     : the FULL nominal depth h (AISC B4.1): for stems of tees, d is
+   *             taken as the full nominal depth of the section
    *   angle   : the vertical leg length d
    */
   hw: number
@@ -104,8 +103,6 @@ export function steelGeom(kind: SectionShape, dims: Record<string, number>): Ste
       // flat width is therefore exactly the outside dimension less TWO
       // thicknesses, and using 3t here would both contradict our own section
       // geometry and understate λ (unconservative for classification).
-      // reference software models SetTube the same way — confirmed by matching φVn in
-      // validation/reference-bridge/cases/steel_shapes.json.
       const { b, h, t } = dims
       return { kind, b: b - 2 * t, h, tf: t, tw: t, hw: h - 2 * t }
     }
@@ -116,7 +113,7 @@ export function steelGeom(kind: SectionShape, dims: Record<string, number>): Ste
     case "tee": {
       // Steel WT: flange on top, stem down. `bw` is the stem thickness.
       // `hw = h`, NOT h − tf: AISC measures a tee stem over the full nominal
-      // depth (the reference manual §3.3(d)), because the stem is an unstiffened element free
+      // depth (AISC B4.1), because the stem is an unstiffened element free
       // along its bottom edge rather than a plate framed between two flanges.
       const { bf, tf, bw, h } = dims
       return { kind, b: bf, h, tf, tw: bw, hw: h }
@@ -124,8 +121,8 @@ export function steelGeom(kind: SectionShape, dims: Record<string, number>): Ste
     case "angle": {
       // Single angle. `b` = horizontal leg (along geometric axis 3), `d` =
       // vertical leg (axis 2), one thickness `t` for both. Legs are unstiffened
-      // outstands, so each is classified on its FULL width (the reference manual §3.3(b), "for
-      // legs of angles ... the width b is the full leg width") — there is no
+      // outstands, so each is classified on its FULL width (AISC B4.1: for
+      // legs of angles the width b is the full leg width) — there is no
       // half-width as there is for an I-shape flange.
       const b = dims.b
       const t = dims.t
@@ -137,14 +134,14 @@ export function steelGeom(kind: SectionShape, dims: Record<string, number>): Ste
   }
 }
 
-// ── Flexural classification (Table B4.1b / the reference manual Table 3-1) ────────────────────
+// ── Flexural classification (Table B4.1b) ────────────────────────────────────
 
 /**
  * @param momentSign Sign of the design moment, for singly symmetric shapes where
  *   which element is in COMPRESSION depends on it. Only the tee reads it: AISC
  *   classifies compression elements, so a tee stem in tension is not classified
- *   at all, and neither is a flange in tension. Verified against reference software, which
- *   reports the same tee as "Compact" sagging and "Non-Compact" hogging.
+ *   at all, and neither is a flange in tension. The same tee can therefore
+ *   classify as "Compact" sagging and "Non-Compact" hogging.
  *   Defaults to +1 (sagging), which is inert for every doubly symmetric shape.
  */
 export function classifyFlexure(
@@ -172,9 +169,9 @@ export function classifyFlexure(
   } else if (g.kind === "rhs") {
     // Case 17 — flange: λp = 1.12√(E/Fy), λr = 1.40√(E/Fy).
     //
-    // the reference manual Table 3-1 splits "Rectangular HSS" (λr = 1.40√(E/Fy)) from "Box"
-    // (λr = 1.49√(E/Fy)), and since `steelGeom` models this shape as a welded
-    // box it is tempting to take the 1.49 row. That is wrong here, and F7-2
+    // Table B4.1b also has a λr = 1.49√(E/Fy) row (case 18), and since
+    // `steelGeom` models this shape as a welded box it is tempting to take the
+    // 1.49 row. That is wrong here, and F7-2
     // says why: its constants are calibrated against 1.40. At λ = 1.40√(E/Fy),
     //     3.57·λ·√(Fy/E) − 4.0  =  3.57·1.40 − 4.0  =  1.0  (exactly)
     // so F7-2 lands precisely on My and hands over to F7-3 with no step. Pair
@@ -182,9 +179,9 @@ export function classifyFlexure(
     // F7-2 → F7-3 handover opens a 0.16% upward discontinuity — caught by the
     // monotonicity check in validation/steel_boundary_sweep.mts. AISC Table
     // B4.1b case 17, which Chapter F7 actually references, covers "rectangular
-    // HSS AND BOXES of uniform thickness" in ONE row at 1.40. the reference manual's 1.49 row
-    // matches case 18 (cover/diaphragm plates between lines of welds), which is
-    // not the case F7 is written against.
+    // HSS AND BOXES of uniform thickness" in ONE row at 1.40. The 1.49 row is
+    // case 18 (cover/diaphragm plates between lines of welds), which is not the
+    // case F7 is written against.
     const lamF = g.b / g.tf
     elements.push({
       name: "flange", lambda: lamF, lambdaP: 1.12 * sq, lambdaR: 1.40 * sq,
@@ -209,16 +206,16 @@ export function classifyFlexure(
     // A tee is singly symmetric, so only ONE of its two elements is in
     // compression at a time. Sagging (momentSign +1) puts the flange in
     // compression and the stem in tension; hogging reverses it. Table B4.1b
-    // classifies COMPRESSION elements, so the tension-side element is left out
-    // — which is why reference software reports this same section as "Compact" sagging and
-    // "Non-Compact" hogging.
+    // classifies COMPRESSION elements, so the tension-side element is left out,
+    // which is why the same section can be "Compact" sagging and "Non-Compact"
+    // hogging.
     if (momentSign >= 0) {
       // Case 10 — flanges of tees: λp = 0.38√(E/Fy), λr = 1.0√(E/Fy).
       //
       // Note the asymmetry with our IWF above, which uses the BUILT-UP case 11
-      // (λr = 0.95√(kc·E/FL), kc-dependent). the reference manual Table 3-1's T-Shape row is
-      // case 10 — the rolled limit — with no built-up variant offered, and AISC
-      // F9.3 references case 10 directly. A WT is made by splitting a rolled
+      // (λr = 0.95√(kc·E/FL), kc-dependent). The tee flange row is case 10,
+      // the rolled limit, with no built-up variant, and AISC F9.3 references
+      // case 10 directly. A WT is made by splitting a rolled
       // I-shape, so the rolled row is also the physically right one. Kept as the
       // code writes it rather than "harmonised" with the IWF treatment.
       const lamF = g.b / (2 * g.tf)
@@ -254,7 +251,7 @@ export function classifyFlexure(
   return { cls: worst(elements), elements }
 }
 
-// ── Axial classification (Table B4.1a / the reference manual Table 3-2) ───────────────────────
+// ── Axial classification (Table B4.1a) ───────────────────────────────────────
 
 /**
  * Compression has no "compact" tier — only nonslender (reported here as
@@ -327,7 +324,7 @@ export function classifyAxial(g: SteelGeom, Fy: number, E: number): Classificati
   return { cls: worst(elements), elements }
 }
 
-/** Human label matching reference software's "Compact"/"NonCompact"/"Slender" output. */
+/** Human label for the section class: "Compact" / "NonCompact" / "Slender". */
 export function classLabel(c: SectionClass): string {
   return c === "compact" ? "Compact" : c === "noncompact" ? "NonCompact" : "Slender"
 }

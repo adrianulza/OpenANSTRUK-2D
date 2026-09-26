@@ -29,7 +29,7 @@ Click anywhere on the canvas to place a node. Nodes snap to a 0.5 m grid. If you
 ### MEMBER
 Click once to start a member, click again to end it. Members connect two nodes. Use the flyout panel (right side) to choose between:
 - **Frame** — full beam-column with bending stiffness (default)
-- **Truss** — frame with moment releases at both ends. Transmits only axial force to adjoining members at the joints, but carries transverse load locally between its end nodes (a distributed load or self-weight produces a simply-supported moment diagram on the member). Matches reference software's truss behavior.
+- **Truss** — frame with moment releases at both ends. Transmits only axial force to adjoining members at the joints, but carries transverse load locally between its end nodes (a distributed load or self-weight produces a simply-supported moment diagram on the member).
 
 Duplicate members (same two endpoints) are rejected.
 
@@ -298,6 +298,6 @@ The **Undo** and **Redo** buttons sit just below the zoom slider in the top-righ
 
 ## Verification
 
-OpenAnstruk-2D's solver has been verified against reference software on standard textbook examples — simply supported and overhanging beams, a three-member truss, a portal frame, and shear-deformation and steel-design cases — agreeing to 0.000% on the compared quantities.
+OpenAnstruk-2D's solver has been verified against textbook examples and independent hand calculations: simply supported and overhanging beams, a three-member truss, a portal frame, and shear-deformation and steel-design cases — agreeing to 0.000% on the compared quantities.
 
-The comparison harness and its reference software reference models are not part of this repository and never have been. If you find a discrepancy, please report it with the model and the numbers you expected — see [CONTRIBUTING.md](CONTRIBUTING.md).
+The comparison models are not part of this repository. If you find a discrepancy, please report it with the model and the numbers you expected — see [CONTRIBUTING.md](CONTRIBUTING.md).

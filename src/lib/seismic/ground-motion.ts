@@ -4,8 +4,8 @@
  * A record is a uniformly sampled acceleration history — `values[i]` is the
  * ground acceleration at `t = i·dt`. Uniform sampling is a contract, not a
  * convenience: the Newmark integration steps at exactly `dt` (no subdivision,
- * no interpolation), which is also what makes the reference software comparison
- * interpolation-free.
+ * no interpolation), which also keeps comparisons against reference
+ * solutions interpolation-free.
  *
  * Built-in records are code constants; user-imported records live in App
  * state (`groundMotions`), guarded by `reconcileGroundMotions`. A record id is derived from its name at import time; built-in ids win on

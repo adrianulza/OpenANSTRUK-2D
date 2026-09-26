@@ -1,6 +1,6 @@
 // Root config. VS Code's TS server requires a tsconfig.json at the workspace root,
-// but this file is NOT only a shim: `validation/run_all.mjs` and every reference-bridge
-// script pass it to `tsx --tsconfig`, because paths resolve relative to the file
+// but this file is NOT only a shim: `validation/run_all.mjs` and the local comparison
+// scripts pass it to `tsx --tsconfig`, because paths resolve relative to the file
 // that declares them and config/tsconfig.json's would resolve from config/.
 // Its `@/*` must stay in lockstep with config/tsconfig.json and config/vite.config.ts.
 {

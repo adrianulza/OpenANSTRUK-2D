@@ -92,7 +92,7 @@ export const COLOR_DIAGRAM_STROKE    = "#1e293b"  // diagram outline and label
 export const DIAGRAM_LINE_WIDTH      = 1.5
 
 // ── Design tab (v1.1): D/C ratio colour bands ────────────────────────────────
-// reference software-style member colouring by worst flexural demand/capacity ratio.
+// Member colouring by worst flexural demand/capacity ratio.
 export const COLOR_DESIGN_LOW  = "#2563eb"  // blue   — D/C in [0, 0.25)
 export const COLOR_DESIGN_MID  = "#16a34a"  // green  — D/C in [0.25, 0.50)
 export const COLOR_DESIGN_WARN = "#eab308"  // yellow — D/C in [0.50, 0.75)

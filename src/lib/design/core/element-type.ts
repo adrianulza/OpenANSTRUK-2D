@@ -5,10 +5,10 @@
  * reinforcement definition *is* its design type: a column takes a perimeter bar
  * grid and ties, a beam takes top/bottom/side bars and stirrups. They are
  * different data, not two views of one thing, so the choice belongs where the
- * rebar is defined. This matches reference software, whose section dialog offers
- * "P-M2-M3 Design (Column)" against "M3 Design Only (Beam)" — and matches how
- * engineers actually work, defining `C1 500×500` and `B1 300×500` separately
- * rather than reusing one section as both.
+ * rebar is defined: a column section is designed for P-M2-M3 and a beam section
+ * for M3 only. It also matches how engineers actually work, defining
+ * `C1 500×500` and `B1 300×500` separately rather than reusing one section as
+ * both.
  *
  * Steel is the opposite and deliberately so: nothing per-section differs between
  * a steel beam and a steel column, and the same IWF genuinely serves as both, so

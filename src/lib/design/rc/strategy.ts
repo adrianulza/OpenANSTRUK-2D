@@ -228,7 +228,7 @@ function capacityEndMoments(
       neg: code.phiMnBars(barsCompressionBottom(g.layout, g.h), g.b, g.h, g.fc, cr, fyOver).Mn,
     }
   }
-  // Required mode — book/reference convention: tension steel only (AsPrime = 0).
+  // Required mode, textbook convention: tension steel only (AsPrime = 0).
   return {
     pos: code.phiMnProvided(zone.AsReqBottom ?? 0, 0, flexGeomPos(g), cr, fyOver).Mn,
     neg: code.phiMnProvided(zone.AsReqTop ?? 0, 0, flexGeomNeg(g), cr, fyOver).Mn,

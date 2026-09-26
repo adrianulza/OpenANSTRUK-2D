@@ -44,7 +44,7 @@ export interface RadioOption<T extends string> {
   trailing?: ReactNode
 }
 
-/** A vertical radio group under its own heading (the reference software / reference shape). */
+/** A vertical radio group under its own heading. */
 export function Radio<T extends string>({
   label,
   value,

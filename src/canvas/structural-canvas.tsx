@@ -3571,7 +3571,7 @@ export function StructuralCanvas({
       </div>
 
       {/* Design tab: report selector — directly below the zoom card. Chooses which
-          per-member quantity is overlaid on the canvas (reference software/reference software-style). */}
+          per-member quantity is overlaid on the canvas. */}
       {activeTab === "Design" && designResult && designResult.ok && (
         <div className="absolute top-14 right-3 z-10 flex flex-col gap-1 border rounded-lg px-2.5 py-1.5 shadow-sm select-none pointer-events-auto bg-background/90 border-border">
           <span className="text-[10px] font-medium text-muted-foreground">Design Results</span>

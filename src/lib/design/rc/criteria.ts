@@ -1,6 +1,6 @@
 /**
- * RC design criteria (ACI 318-14 / SNI 2847:2019) — global, reference software-Preferences
- * style. Pure domain module: no React imports.
+ * RC design criteria (ACI 318-14 / SNI 2847:2019): global design preferences.
+ * Pure domain module: no React imports.
  */
 
 import type { FrameType } from "../core/types"

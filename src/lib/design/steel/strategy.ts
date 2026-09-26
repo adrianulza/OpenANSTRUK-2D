@@ -2,9 +2,9 @@
  * Steel member design strategy (AISC 360-16 / SNI 1729:2020).
  *
  * Checks every design station of every enabled combination and reports the
- * governing one, mirroring how reference software works (the reference manual manual §2.2/§2.3) rather
- * than enveloping P and M independently — for an interaction equation the
- * axial and the moment must be the ones acting TOGETHER.
+ * governing one, rather than enveloping P and M independently: for an
+ * interaction equation (AISC H1, H2) the axial and the moment must be the ones
+ * acting TOGETHER.
  *
  * Pure domain module: no React imports.
  *
@@ -37,8 +37,9 @@ import { isSteelPropsError, resolveSteelSection, steelFlexureInput } from "./sec
 import { shearStrength } from "./shear"
 import { h2Ratio, interactionRatio } from "./interaction"
 
-/** Design stations per member. the reference manual defaults to at least 3; 11 gives a smooth
- *  envelope without meaningful cost at our model sizes. */
+/** Design stations per member. At least 3 are needed to capture ends and
+ *  midspan; 11 gives a smooth envelope without meaningful cost at our model
+ *  sizes. */
 const N_STATIONS = 11
 
 export interface SteelMemberInput {
@@ -99,9 +100,8 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
 
   /**
    * Effective-length factors are fixed at 1.0 and the unbraced length is always
-   * the full member length. Both match reference software's own defaults for these members
-   * (`K1Major = K1Minor = K2Major = K2Minor = 1`, `XLLTB = 1`), measured via the
-   * bridge.
+   * the full member length (K = 1.0 about both axes, Lb/L = 1.0), the default
+   * design assumptions for these members.
    *
    * `Lb = L` is CONSERVATIVE — a laterally braced beam has more capacity than
    * this reports (measured: +27.3% on a 6 m IWF400x200 braced at third points).
@@ -154,15 +154,14 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
   // ── Axial capacities (independent of station) ──
   //
   // AISC E4 data. Evaluated in the GEOMETRIC axes for an I-shape or tee, but in
-  // the PRINCIPAL axes for an angle — the reference manual §3.5.2: "For angle sections, the
-  // principal moment of inertia and radii of gyration are used for computing Fe.
-  // Also, the maximum value of KL … is used in place of K22L22 or K33L33."
+  // the PRINCIPAL axes for an angle (AISC E4, E5): for angle sections the
+  // principal moments of inertia and radii of gyration are used for computing
+  // Fe, and the larger of K22L22 and K33L33 is used in place of either one, the
+  // conservative choice.
   //
-  // Kz = K22 and Lz = the full member length, per the reference manual §3.5.2's stated defaults
-  // ("Kz … taken equal to KLTB", "Lz … taken equal to L22 by default"). With
-  // K fixed at 1.0 every effective length here collapses to the member length,
-  // which is exactly what reference software uses out of the box — the basis the bridge
-  // compares against.
+  // Kz = K22 and Lz = the full member length (torsional effective length taken
+  // equal to the minor-axis unbraced length). With K fixed at 1.0 every
+  // effective length here collapses to the member length.
   const KLmax = Math.max(K33 * Lmm, K22 * Lmm)
   const e4: E4Input | undefined =
     rs.J !== undefined && rs.Cw !== undefined
@@ -184,9 +183,9 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
       : undefined
 
   // A single angle's flexural buckling is checked on the MINIMUM principal
-  // radius of gyration for both axes — the reference manual §3.5.2: "For Single Angles, the
-  // minimum (principal) radius of gyration, rz, is used instead of r22 and r33,
-  // conservatively, in computing KL/r." E4 above still uses the true rw/rz pair.
+  // radius of gyration for both axes: the minimum (principal) radius of
+  // gyration, rz, is used instead of r22 and r33, conservatively, in computing
+  // KL/r (AISC E3, E5). E4 above still uses the true rw/rz pair.
   const rAx33 = isUnsymmetric ? principal!.rz : r33
   const rAx22 = isUnsymmetric ? principal!.rz : r22
 
@@ -293,11 +292,11 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
           McZ: cr.phiB * (flexPos.MnZ ?? 0),
         })
       } else if (hogging) {
-        // the reference manual §3.6.2: "any T-Shape or Double-Angle shape when subjected to
-        // negative major axis moment is checked using the equation given in
-        // Section H2". With no minor-axis moment the H2 sum degenerates to
-        // Pr/Pc + Mr33/Mc33 — a straight linear interaction, notably harsher
-        // than H1-1a's 8/9 factor at high axial load.
+        // A tee or double angle under negative major-axis moment (stem in
+        // flexural compression) is checked with AISC H2. With no minor-axis
+        // moment the H2 sum degenerates to Pr/Pc + Mr33/Mc33 — a straight
+        // linear interaction, notably harsher than H1-1a's 8/9 factor at high
+        // axial load.
         res = h2Ratio({
           Pr, PcComp, PcTens, MrW: Mr, MrZ: 0, McW: cap.Mc33, McZ: 1,
         })
@@ -313,10 +312,10 @@ export function designMemberSteel(inp: SteelMemberInput): MemberDesignResult {
           ratio: res.ratio, equation: res.equation, combo: comboId, x,
           Pr, Mr, Mc33: cap.Mc33, Mn: flex.Mn, Mp: flex.Mp,
           Lp: flex.Lp, Lr: flex.Lr,
-          // Report the Cb the clause ACTUALLY used. AISC F10 pins it to 1.0 for
-          // a single angle (see flexure.ts::angleShape), so surfacing the
+          // Report the Cb the clause ACTUALLY used. The single-angle F10 check
+          // pins it to 1.0 (see flexure.ts::angleShape), so surfacing the
           // member's diagram-derived value here would misreport the basis of
-          // the capacity — and did, until the reference software comparison caught it.
+          // the capacity.
           Cb: isUnsymmetric ? 1.0 : Cb,
           limit: flex.governing,
           MnNoLTB: flex.MnNoLTB,

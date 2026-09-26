@@ -63,14 +63,14 @@ export function shearStrength(g: SteelGeom, Fy: number, E: number, Ag: number): 
   }
   if (g.kind === "chs") {
     // G5: Vn = Fcr·Ag/2 with Fcr = 0.78E/(D/t)^1.5 ≤ 0.6Fy.
-    // The code permits the larger of two Fcr expressions; the reference manual uses only this
-    // one, and so do we - the difference is conservative.
+    // The code permits the larger of two Fcr expressions (G5-2a / G5-2b); we
+    // use only this one, which is conservative.
     const Dt = (g.D ?? g.h) / g.tf
     const Fcr = Math.min(0.6 * Fy, (0.78 * E) / Math.pow(Dt, 1.5))
     return { Vn: ((Fcr * Ag) / 2) * N_TO_KN, Cv: Fcr / (0.6 * Fy), Aw: Ag / 2 }
   }
   if (g.kind === "tee") {
-    // G3 (the reference manual §3.5.4.1.2): Vn = 0.6·Fy·Aw·Cv2 with kv = 1.2 — far below an
+    // G3: Vn = 0.6·Fy·Aw·Cv2 with kv = 1.2 — far below an
     // I-shape's 5.34, because a tee stem is unstiffened along its free lower
     // edge rather than framed between two flanges. Aw = d·tw on the FULL
     // nominal depth.
@@ -80,9 +80,9 @@ export function shearStrength(g: SteelGeom, Fy: number, E: number, Ag: number): 
   }
   if (g.kind === "angle") {
     // G3: Aw = b·t on the leg PARALLEL to the shear. Chapter G is evaluated on
-    // the GEOMETRIC axes even for an angle — "The nominal shear strengths are
-    // calculated for shears along the geometric axes for all sections"
-    // (the reference manual §3.5.4) — so in-plane shear (local-2) is carried by the vertical
+    // the GEOMETRIC axes even for an angle (nominal shear strengths are
+    // computed for shears along the geometric axes for all sections, AISC G3),
+    // so in-plane shear (local-2) is carried by the vertical
     // leg, which `steelGeom` puts in `hw`/`tw`.
     const Aw = g.hw * g.tw
     const Cv = cv2(g.hw / g.tw, 1.2, E, Fy)

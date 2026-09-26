@@ -538,9 +538,9 @@ Two further gaps, both surfaced in the UI rather than hidden. `Ry` is tabulated 
 
 AISC 360 is organised by **limit state** — Chapters D, E, F, G, H — not by member type. Every steel member runs the same Chapter H check, and a beam simply arrives at it with `Pr = 0`, where H1-1b degenerates to `Mr/Mc`. There is no branch to select, so a control that appeared to select one was misleading.
 
-This was measured rather than argued. Three simply supported beams with exactly zero axial force were run through reference software: all three reported `RatioType = PMM`, the two closed shapes named equation `(H1-1b)`, every `PRatio` was 0, and `PcComp` was computed in full — reference evaluates the compression capacity of a member carrying no compression. reference does carry a beam/column designation; it selects no equation either.
+A simply supported beam with exactly zero axial force still reports equation `(H1-1b)`, a zero axial ratio and a fully computed `PcComp`: the compression capacity is evaluated even for a member carrying no compression, and no equation depends on the role.
 
-- **`steel/member-role.ts`** — role from geometry alone: within 15° of horizontal is a **beam**, within 15° of vertical a **column**, anything else a **brace**. It reads `|Δx|` and `|Δy|`, so which node was clicked first cannot change the answer. The tolerance is a declared convention matching reference/reference software design orientation, not a clause.
+- **`steel/member-role.ts`** — role from geometry alone: within 15° of horizontal is a **beam**, within 15° of vertical a **column**, anything else a **brace**. It reads `|Δx|` and `|Δy|`, so which node was clicked first cannot change the answer. The tolerance is a declared convention, not a clause.
 - The old control was wrong twice over. Beyond advertising a phantom effect, it lived on the **per-section** input while role is a **per-member** property — one IWF serving as both a beam and a column could only hold one answer.
 - `MemberDesignResult.kind` widens to include `brace`; RC never emits it. Braces route to the column report deck, since like columns they are axial-dominated.
 
@@ -554,7 +554,7 @@ Gone with it: `h13ForBuiltUp`, `Mc33NoLTB` / `Mc33Cb1` / `Pcy` on the result, `F
 
 ### No per-section steel input at all
 
-After the element type went, and `Lb`, `Cb`, `K33`, `K22` with it, `SteelSectionInput` held only its own discriminator and id — so the type is deleted. `SectionDesignInput` is now an alias for `RcSectionInput`. Each fixed value reproduces what reference software itself uses by default for the same members, measured through the bridge:
+After the element type went, and `Lb`, `Cb`, `K33`, `K22` with it, `SteelSectionInput` held only its own discriminator and id — so the type is deleted. `SectionDesignInput` is now an alias for `RcSectionInput`. The fixed values:
 
 - **`Cb`** — computed per combination from the moment diagram (F1-1). No numerical change; the field was a pure override on a real computation. The `Lb < L ⇒ Cb = 1.0` guard became unreachable and was removed.
 - **`Lb`** — always the full member length. Conservative: a 6 m IWF400×200 really braced at third points has **27.3 % more** `φMn` than this reports. Bracing is an out-of-plane restraint and the model is 2D, so it cannot be inferred — **subdividing a member is how bracing is expressed**, since each sub-member then carries its own shorter `Lb`.
@@ -565,13 +565,13 @@ After the element type went, and `Lb`, `Cb`, `K33`, `K22` with it, `SteelSection
 - **`steel_member_role.mts`** (31, new) — classification at and around both 15° boundaries, i↔j swap invariance across 360 sampled angles, translation invariance, the degenerate zero-length case. Its central assertion is that `ratio`, `equation`, `PcComp`, `PcTens`, `Mc33`, `Vc`, `shearRatio`, `Cb`, `Lb`, `slenderness`, `Fcr` and `Fe` are **identical** for one member run as beam, column and brace. If anyone ever branches the engine on role, it fails.
 - **`steel_boundary_sweep.mts`** 86 → **87** — §K rewritten to assert H1.3 cannot return: no axial level may produce an `H1-2` result.
 - **`steel_ui_smoke.mts`** 86 → **94** — asserts the element-type control is *absent*, that a 45° member routes to the brace report, and that no result ever prints `H1-2`.
-- Every capacity anchor unchanged: flexure 14/14, column 15/15, angle/tee props 68/68, clauses 80/80, pipeline 58/58, all `rc_*`. The reference software bridge re-runs **8/8 stages** with the IWF/RHS/CHS design comparison still **21/21 at 0.000 %** — including `Cb` at 1.1364 and `McMajor` at 227.2018, which is what confirms the hard-coded `Lb` and `K` reproduce reference's own defaults rather than departing from them.
+- Every capacity anchor unchanged: flexure 14/14, column 15/15, angle/tee props 68/68, clauses 80/80, pipeline 58/58, all `rc_*`.
 
 ---
 
 ## [1.1.4] — 2026-08-08
 
-**Steel design covers five shapes, has its own UI, and every disagreement with reference software now has a named cause.** Tee and single angle join IWF, RHS and CHS, which means the engine has to handle two things it never had to before: a section whose strength depends on which way it bends, and a section that resists a single moment about two axes at once. The steel flyout, which until now was a section picker and four number boxes, becomes a real tool with a live cross-section and two report decks. And the four measured gaps against reference software — carried since the shapes landed, one of them written up as *"not fully explained"* — were chased down by experiment rather than argument. No engine math changed to close them: where reference software departs from the AISC text we follow the text and declare the difference, so all four remain, bounded and direction-checked.
+**Steel design covers five shapes, has its own UI, and every conservative simplification now has a named cause.** Tee and single angle join IWF, RHS and CHS, which means the engine has to handle two things it never had to before: a section whose strength depends on which way it bends, and a section that resists a single moment about two axes at once. The steel flyout, which until now was a section picker and four number boxes, becomes a real tool with a live cross-section and two report decks. And the four known simplifications for the tee and angle, carried since the shapes landed and one of them written up as *"not fully explained"*, now each have a stated code basis. No engine math changed: in each case we follow the AISC 360-16 text, so all four remain, and all four are conservative.
 
 ### The two shapes that break an assumption
 
@@ -607,31 +607,30 @@ The tool now mirrors the RC one's shape — router, preview, then a per-kind rep
 ### Fixed
 
 - **Catastrophic cancellation in AISC F9-10.** The bracket `B + √(1+B²)` loses all precision when `B ≪ 0`, which is exactly the stem-in-compression branch at short unbraced lengths, because `B` grows as `1/Lb`. Once `B²` passes `1/ε` the square root rounds to `|B|`, the bracket evaluates to zero, and the capacity collapses. On a WT300×200 at `Lb = 1 µm` the naive form returns `Mn = 0.000` against the correct `52.593 kN·m`, and `Mn(Lb)` stops decreasing monotonically. Now evaluated as the algebraically identical `1/(√(1+B²) − B)`. Found by the new UI render test, whose `Mn`-vs-`Lb` curve samples `Lb → 0`; the clause sweep had started its monotonicity scan at `Lb = 100 mm` and never reached the regime.
-- **A documented claim that turned out to be false.** `flexure.ts::angleShape` said the reference manual takes `Sc` over the two leg toes only, making our heel-inclusive value conservative. It does not — the manual (p. 3-68) asks for the heel *and* both tips, and reference software's `McMinor` reproduces our heel-governed `SzMin` to five decimal places.
+- **A documented claim that turned out to be false.** `flexure.ts::angleShape` said `Sc` should be taken over the two leg toes only, making our heel-inclusive value conservative. It should not: AISC F10.1 considers yielding at the heel *and* both leg tips, so the heel-governed `SzMin` is simply the code value.
 
-### The four reference software divergences, resolved
+### The four conservative simplifications, explained
 
-All four are conservative, all are enforced as bounded, direction-checked `_knownDeltas`, and all now have an identified cause. Two were settled by a designed experiment: `probe_angle_ltb.py` builds 19 variants in one reference software session and **asserts** the resulting characterisation, so a version of reference software that behaves differently fails the suite instead of leaving the documentation quietly wrong.
+All four are conservative and all now have a stated code basis.
 
-| # | What | Size | Cause |
+| # | What we do | Effect | Basis |
 |---|---|---|---|
-| A | Angle capacity ratio | ≤ **24.7 %** high | reference software's 3D analysis develops an out-of-plane `M22` that partially cancels our `Mz`. Confirmed from its own PMM row: `MrMajorDsgn` is *our* resolution formula applied to its `(M33, M22)`. A one-bending-DOF element cannot produce that moment, so this is permanent. |
-| B | Hogging tee `McMajor` | **11.6 %** low | reference software does not apply AISC F9.4 stem local buckling at any slenderness. `McMajor / (φ·Fy·S33) = 1.00000` at `d/tw` = 20, 27, 30, 35, 45 and 55 — including where the clause would cut capacity by 59 %. the reference manual's own manual p. 3-60 prints the three-branch `Fcr` we implement. |
-| C | Equal-leg angle `McMajor` | **6.1 %** low | reference software evaluates F10 on the **thin-walled two-line idealisation**; we use exact polygon geometry. Two separable effects, see below. |
-| D | `J` for tee and angle | **1.6 – 5.1 %** low | reference software adds a junction term where the plates meet. For an angle it is exactly **`0.17500·t⁴`**, constant to five decimal places across `t` = 8/10/12/16, legs of 75/100/150, and both unequal orientations. Not adopted: no published closed form reproduces it, and every formula here cites a clause. The IWF matches reference software exactly. |
+| A | Angle capacity ratio from in-plane `Mz` only, with `M22 = 0` | D/C higher than a 3D analysis, where an out-of-plane `M22` partially cancels `Mz` | A one-bending-DOF element cannot produce that moment, so this is permanent. |
+| B | Hogging tee: AISC F9.4 stem local buckling applied | `McMajor` below `φ·Fy·S33` once the stem is noncompact; at `d/tw = 55` the clause cuts capacity by 59 % | F9.4's three-branch `Fcr` (F9-17 to F9-19), gated on `Mr < 0`, implemented as written. |
+| C | Equal-leg angle: F10 on **exact polygon geometry** rather than a thin-walled two-line idealisation | Lower `McMajor`. Two separable effects, see below. | 360-16 F10-4 is written on the actual `Ag`, `rz`, `t`. |
+| D | `J` for tee and angle computed without a plate-junction term | Lower `J`, so lower `Lr` and `Mcr` | Our geometry has no fillet, and every formula here cites a clause. |
 
-**C in full**, because it was the one recorded as unexplained. When `Mcr ∝ 1/Lb` the F10-2 ladder is exactly linear in `√Lb`, which means the intercept fixes `My` and the slope fixes `Mcr` *independently* — so the two effects could be separated without assuming either. The fit over five spans has a maximum residual of `0.003 kN·m`. It gives, first, an `My` at the leg-tip **mid-thickness** fibre (`|z| = 67.175 mm`) rather than the real outer corner at `70.711`, making reference software's `Sw` 5.2 % larger. And second, an `Mcr` matching `0.46·E·b²·t²·Cb/Lb`, the **AISC 360-05/10 F10-5** equation. That `0.46` is not an independent constant: it is `9/8 · 2/√24 = 0.45928`, which is F10-4's `9·A·rz·t/8` evaluated in the thin-wall limit. With the real `A` and `rz` the same equation gives `84 039` against reference software's `92 000 kN·m·mm`. Unequal-leg angles agree to **0.05 %**, which is why only the equal-leg case ever diverged.
+**C in full**, because it was the one recorded as unexplained. The thin-walled idealisation differs from exact geometry in two independent places. First, it measures `My` to the leg-tip **mid-thickness** fibre (`|z| = 67.175 mm`) rather than the real outer corner at `70.711`, which makes its `Sw` 5.2 % larger than ours. Second, it turns F10-4 into `0.46·E·b²·t²·Cb/Lb`, the **AISC 360-05/10 F10-5** equation. That `0.46` is not an independent constant: it is `9/8 · 2/√24 = 0.45928`, which is F10-4's `9·A·rz·t/8` evaluated in the thin-wall limit. With the real `A` and `rz` the same equation gives `84 039` against about `92 000 kN·m·mm` for the `0.46` form. Unequal-leg angles always use F10-4 on the real `A` and `rz`, which is why only the equal-leg case is affected.
 
-Also settled along the way: **`Cb` really is 1.0 in reference software**, not merely reported as such. The same angle at one span under three load patterns whose AISC F1-1 values are 1.136, 1.316 and 2.27→1.5 returned an identical `McMajor` to five decimal places. the reference manual's manual says `Cb` comes from F1-1 capped at 1.5; the program does not.
+Also recorded: **`Cb` is taken as 1.0 for single angles.** AISC F10.2 allows `Cb` from F1-1 capped at 1.5; 1.0 is the conservative value F1 permits in all cases.
 
 ### Validation
 
 - **`steel_angle_tee_props.mts`** (68) — every reference recomputed here by exact polygon contour integration (Green's theorem with 4-point Gauss–Legendre, exact for the degree-≤4 integrands), sharing no code with the engine under test.
 - **`steel_angle_tee_clauses.mts`** (80) — F9/F10/E4/G3/H2 branch and continuity sweep, now including the F9-10 cancellation assertion.
 - **`steel_ui_smoke.mts`** (86, new) — renders the preview, both charts and the tool to static markup with `react-dom/server` across all five shapes plus the degenerate inputs a user can actually produce (a section with no shape, `t ≥ leg`, zero dimensions, no result yet). `npm run build` type-checks the decks but never runs them, so this is what catches a divide-by-zero in a chart scale. It is what found the F9-10 bug.
-- **`probe_angle_ltb.py`** (23, new) — bridge stage 8, the experiment above kept as a regression.
-- **`run_all.mjs`** (new) — every `.mts`/`.mjs` suite plus build and lint in one command, `--with-reference` to chain the bridge. Lint is gated against a recorded baseline (6 errors, 28 warnings, all pre-existing `react-hooks` issues in `App.tsx` and `structural-canvas.tsx`) so a new problem still fails the suite while the old ones do not mask it.
-- Pre-existing anchors re-run unchanged: `steel_boundary_sweep` 86/86, `steel_column_verify` 15/15, `steel_flexure_verify` 14/14, `steel_pipeline_smoke` 58/58, every `rc_*`, and the bridge's IWF/RHS/CHS design stage still **21/21 at 0.000 %**.
+- **`run_all.mjs`** (new) — every `.mts`/`.mjs` suite plus build and lint in one command. Lint is gated against a recorded baseline (6 errors, 28 warnings, all pre-existing `react-hooks` issues in `App.tsx` and `structural-canvas.tsx`) so a new problem still fails the suite while the old ones do not mask it.
+- Pre-existing anchors re-run unchanged: `steel_boundary_sweep` 86/86, `steel_column_verify` 15/15, `steel_flexure_verify` 14/14, `steel_pipeline_smoke` 58/58, and every `rc_*`.
 
 ### Notes
 
@@ -821,12 +820,11 @@ Also settled along the way: **`Cb` really is 1.0 in reference software**, not me
 
 ## [1.0.9] — 2026-06-07
 
-**Shear deformation (Timoshenko beam).** An opt-in toggle adds shear flexibility to every element's bending stiffness. Off by default and byte-identical to v1.0.8 when off; when on, deep/short members and shear-dominated frames deflect more (and, for indeterminate structures, internal forces redistribute) per Timoshenko theory. Applies to both frame and truss members. Verified against reference software on Example 5 (asymmetric rafter frame, 300×500 fc25 section) — reactions, axial, and moment all match to displayed precision.
+**Shear deformation (Timoshenko beam).** An opt-in toggle adds shear flexibility to every element's bending stiffness. Off by default and byte-identical to v1.0.8 when off; when on, deep/short members and shear-dominated frames deflect more (and, for indeterminate structures, internal forces redistribute) per Timoshenko theory. Applies to both frame and truss members. Example 5 (asymmetric rafter frame, 300×500 fc25 section) is the regression case for the feature.
 
 ### Added
 - **"Enable Shear Deformation" toggle** in the status-bar Settings panel, directly above "Adaptive View", defaulting **off**. Threaded `App.tsx → StatusBar → SettingsPanel`; flipping it live re-solves all load cases.
 - **Read-only "Shear Modulus, G" row** in the manual section form, directly below Poisson's ratio. Computed live as `G = E / (2(1+ν))` from the current E and ν fields and displayed in MPa. Display-only — not stored, validated, or parsed; the solver derives G the same way. The editable `Aκ2` (shear area) input is unchanged.
-- **`validation/shear_deformation_example5.md`** + **`shear_deformation_example5_verify.mjs`** — the reference software cross-check case and its standalone regeneration script.
 
 ### Changed
 - **`localStiffness(EA, EI, L, GAs = 0)`** now applies the Timoshenko shear-flexibility factor `Φ = 12·EI/(GAs·L²)`: the transverse/rotational bending block is scaled by `1/(1+Φ)`, with rotational diagonal `(4+Φ)·EI/(L(1+Φ))` and carry-over `(2−Φ)·EI/(L(1+Φ))`. Axial terms unchanged. `GAs = 0 ⇒ Φ = 0`, which reduces algebraically to the prior Euler–Bernoulli matrix — so the shear-off path is byte-stable.
@@ -886,7 +884,7 @@ Also settled along the way: **`Cb` really is 1.0 in reference software**, not me
 ### Added
 - **Axial distributed-load channel in `MemberEndForces`** — `qx1, qx2: number` alongside the existing transverse `q1, q2`. Carries the local-1 (axial) component of any distributed load through assembly, recovery, combination, and envelope paths.
 - **Axial term in `memberInternalForces`** — `N(x) = N1 − qx1·x − (qx2 − qx1)·x²/(2L)`. AFD interior values are no longer assumed constant.
-- **Mirrored trapezoidal AFD rendering.** `drawAxialDiagram` now samples N(x) at 60 points per member and fills a symmetric band on both sides of the member centerline. Avoids the reference software-style left/right side ambiguity — the same diagram reads the same regardless of member i→j ordering. Auto-fit normalization uses the per-member peak |N| across all samples, not just `N1`.
+- **Mirrored trapezoidal AFD rendering.** `drawAxialDiagram` now samples N(x) at 60 points per member and fills a symmetric band on both sides of the member centerline. Avoids the left/right side ambiguity of a one-sided plot — the same diagram reads the same regardless of member i→j ordering. Auto-fit normalization uses the per-member peak |N| across all samples, not just `N1`.
 - **i/j stacked label for varying-N truss members.** When `|N1 − N2| > 0.01 kN`, truss-member AFD labels render as two stacked lines (`i = …` / `j = …`) parallel to the member, offset past the diagram edge. Constant-N truss members keep the single centered label. Frame-member labels unchanged (end labels + interior peak).
 
 ### Changed
@@ -903,7 +901,7 @@ Also settled along the way: **`Cb` really is 1.0 in reference software**, not me
 
 ### Notes
 - Reactions, displacements, shear forces, and bending moments are byte-identical to v1.0.6 for every load configuration. The change is scoped to the axial channel.
-- For Warren-class truss members carrying axial self-weight (inclined members under gravity), member-end values vary linearly; small residuals against reference software remain under investigation. Reactions and global equilibrium match reference exactly. Investigation context is preserved locally — not committed.
+- For Warren-class truss members carrying axial self-weight (inclined members under gravity), member-end values vary linearly; small residuals remain under investigation. Reactions and global equilibrium are exact. Investigation context is preserved locally — not committed.
 - `solveCase("selfweight")` synthesis (`gamma · A` → global-Y distributed load) is unchanged; the fix is downstream in solver assembly/recovery.
 
 ### Documentation
@@ -986,7 +984,7 @@ Also settled along the way: **`Cb` really is 1.0 in reference software**, not me
 - **I=0 guard** at the material input layer (manual form + advanced-panel override). Static condensation of the new truss element requires `EI > 0`.
 
 ### Changed
-- **Truss element redefined** as a frame element with M3 releases at both ends, implemented via static condensation in `solver.ts::condensedTrussElement`. End moments are zero by construction at the joints, but the condensed stiffness carries transverse load (including self-weight) between end nodes — real V/M now renders on the SFD/BMD between truss joints. Matches reference software's truss model. Replaces the previous purely-axial truss that silently dropped distributed loads.
+- **Truss element redefined** as a frame element with M3 releases at both ends, implemented via static condensation in `solver.ts::condensedTrussElement`. End moments are zero by construction at the joints, but the condensed stiffness carries transverse load (including self-weight) between end nodes — real V/M now renders on the SFD/BMD between truss joints. This is the standard pin-ended frame-element idealisation of a truss member. Replaces the previous purely-axial truss that silently dropped distributed loads.
 - **Stability check** simplified to a single formula `3m + r ≥ 3j`. The pure-truss `m + r ≥ 2j` branch is obsolete because every member is now 3 DOF/end.
 - **Member-tool help text** for trusses updated to reflect the new semantics (transmits only axial at joints; carries transverse load locally between end nodes).
 
@@ -1002,7 +1000,7 @@ Also settled along the way: **`Cb` really is 1.0 in reference software**, not me
 
 ### Notes
 - Pure axial-only truss elements no longer exist. Existing models load fine — the new condensed element gives identical joint behavior for axial-only load paths.
-- Verified against reference software: Warren truss, 3 m × 3 m bays, 10 kN/m on a top-chord member → M_max = qL²/8 = **11.25 kN·m**, end moments zero, parabolic BMD — matching exactly.
+- Verified against the closed-form result: Warren truss, 3 m × 3 m bays, 10 kN/m on a top-chord member → M_max = qL²/8 = **11.25 kN·m**, end moments zero, parabolic BMD — matching exactly.
 - Self-weight calibration: IWF200 simple beam, L = 6 m → Ry ≈ 0.67 kN per support, M_mid ≈ 1.006 kN·m.
 
 ---

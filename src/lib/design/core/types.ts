@@ -432,7 +432,7 @@ export interface DesignRunResult {
   joints?: JointCheckResult[]
 }
 
-// ── Canvas report selection (reference software/reference software-style overlay dropdown) ────────────
+// ── Canvas report selection (per-member overlay dropdown) ────────────────────
 
 /**
  * Which per-member quantity the Design-tab canvas overlays. Reports are mode-

@@ -79,7 +79,7 @@ export interface AxialCapacities {
   phiPnt: number
 }
 
-/** Key identifying a control-point-style interaction control point. */
+/** Key identifying a P–M interaction control point. */
 export type ColumnPointKey =
   | "maxComp"
   | "allowComp"
@@ -90,7 +90,7 @@ export type ColumnPointKey =
   | "pureBending"
   | "maxTension"
 
-/** A named control point on the curve (the vertices control-point tabulates). */
+/** A named control point on the curve (the standard named points of the interaction diagram). */
 export interface NamedColumnPoint {
   key: ColumnPointKey
   /** Short chart tag (e.g. "fs=0"). */
@@ -101,7 +101,7 @@ export interface NamedColumnPoint {
 }
 
 export interface ColumnInteractionCurve {
-  /** Ordered control-point-style control points, +M side, compression → tension. */
+  /** Ordered P–M interaction control points, +M side, compression → tension. */
   controlPoints: NamedColumnPoint[]
   /** Closed φ-space polygon (M, P) used for the radial D/C check + the chart. */
   phiPolygon: { M: number; P: number }[]
@@ -331,7 +331,7 @@ function pureMomentC(bars: ColumnBar[], geom: ColumnGeom, fc: number, cr: RcCrit
 }
 
 /**
- * P–M interaction curve for an explicit bar layout, built control-point-style as a
+ * P–M interaction curve for an explicit bar layout, built as a
  * piecewise-linear polygon through named control points rather than a dense
  * sweep. The +M side measures compression from the top fibre; the −M side
  * mirrors to the bottom. For a symmetric layout the two sides are mirror images;
@@ -374,7 +374,7 @@ export function buildInteractionCurve(
     phi: crc.phiTension, epsT: Infinity, c: 0,
   }
 
-  // control-point control points (+M side), compression → tension.
+  // P–M interaction control points (+M side), compression → tension.
   const controlPoints: NamedColumnPoint[] = [
     { key: "maxComp", label: "Pₒ", note: "pure compression", pt: maxComp },
     { key: "allowComp", label: "Pₙ,ₘₐₓ", note: "design compression (φPn,max)", pt: pos.allowComp },

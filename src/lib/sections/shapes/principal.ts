@@ -205,9 +205,8 @@ export function betaW(m: AreaMoments, alpha: number, Iw: number, z0: number): nu
  *     J_strip = ⅓·b·t³·(1 − 0.63·t/b)
  *
  * The uncorrected ⅓bt³ overestimates J — by 3.7 % on a 400x200x13x8 I-shape —
- * which flows into Lr and Fcr and inflates the LTB moment capacity. reference software's
- * section-property calculator uses the corrected form even though the reference manual's own
- * hand-calc PDFs quote the uncorrected version; the software is right.
+ * which flows into Lr and Fcr and inflates the LTB moment capacity, so the
+ * corrected form is used throughout.
  *
  * The correction is clamped at 0 so a stubby strip (t ≳ 1.6·b) can never
  * produce a negative contribution.

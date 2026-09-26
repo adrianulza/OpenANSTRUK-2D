@@ -38,8 +38,8 @@ const EXPECTED_HTML = new Set([
 ])
 
 // ⚠ There is deliberately NO validation.html. A public validation report is
-// wanted eventually, but the validation corpus is private and includes reference software
-// and reference software output owned by the reference manual, so what it may say has to be decided before it
+// wanted eventually, but the validation corpus is private and includes
+// third-party output, so what it may say has to be decided before it
 // is written, not after it is live. Adding the page is a content decision.
 //
 // ⚠ No page may ship a link that goes nowhere. A support card that looks live
