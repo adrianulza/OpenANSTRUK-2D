@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 
-import { Group, Hint, NumInline, ReadRow } from "@/components/dialog-fields"
+import { Group, NumInline, ReadRow } from "@/components/dialog-fields"
 import { Checkbox } from "@/components/flyout-shared"
 import type { StructureModel } from "@/lib/model"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
@@ -36,7 +36,14 @@ export interface ModalDialogProps {
 /** One track string for the header and every row, so the columns cannot drift. */
 const MASS_ROW = "grid grid-cols-[16px_minmax(0,1fr)_72px_60px_72px] items-center gap-2"
 
-export function ModalDialog({ model, loadCases, value, modal, onCommit, onCancel }: ModalDialogProps) {
+export function ModalDialog({
+  model,
+  loadCases,
+  value,
+  modal,
+  onCommit,
+  onCancel,
+}: ModalDialogProps) {
   const [draft, setDraft] = useState<MassSource>(value)
 
   useEffect(() => {
@@ -57,8 +64,8 @@ export function ModalDialog({ model, loadCases, value, modal, onCommit, onCancel
   const last = modalOk?.modes[modalOk.modes.length - 1]
 
   const body = (
-    <div className="flex max-h-[94dvh] w-[min(560px,94vw)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3">
+    <div className="flex max-h-[calc(100dvh-1rem)] w-[min(640px,96vw)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-2">
         <span className="truncate text-sm font-medium text-[#1e293b]">
           Vibration analysis — Modal settings
         </span>
@@ -71,110 +78,103 @@ export function ModalDialog({ model, loadCases, value, modal, onCommit, onCancel
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-4">
-        <Group title="Mass source">
-          <Hint>
-            Mass is taken from the downward loads of the cases below, times their factor, lumped
-            at the nodes (m = W/g, acting in X and Y). Only dead and live cases are eligible.
-          </Hint>
-
-          <div className="space-y-1 pt-1">
-            <div
-              className={`${MASS_ROW} px-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400`}
-            >
-              <span />
-              <span>Load case</span>
-              <span>Type</span>
-              <span className="text-right">Factor</span>
-              <span className="text-right">
-                W <span className="normal-case">(kN)</span>
-              </span>
+      {/* Side by side from `sm` up, so a landscape phone fits without scrolling. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-3 sm:flex-row">
+        <div className="min-w-0 flex-1">
+          <Group title="Mass source">
+            <div className="space-y-0.5">
+              <div
+                className={`${MASS_ROW} px-1 text-[9px] font-semibold uppercase tracking-wide text-gray-400`}
+              >
+                <span />
+                <span>Load case</span>
+                <span>Type</span>
+                <span className="text-right">Factor</span>
+                <span className="text-right">
+                  W <span className="normal-case">(kN)</span>
+                </span>
+              </div>
+              {eligible.length === 0 && (
+                <p className="px-1 text-[11px] text-gray-400">
+                  No dead or live cases to take mass from.
+                </p>
+              )}
+              {eligible.map((c) => {
+                const t = draft.terms[c.id] ?? { factor: 0, include: false }
+                const w = report.byCase[c.id]
+                return (
+                  <div
+                    key={c.id}
+                    className={`${MASS_ROW} rounded-md px-1 py-0.5 ${t.include ? "" : "opacity-50"}`}
+                  >
+                    <Checkbox
+                      checked={t.include}
+                      onChange={(include) => setTerm(c.id, { include })}
+                      title="Include this case in the mass"
+                    />
+                    <span className="truncate text-[11px] text-[#1e293b]">{c.name}</span>
+                    <span className="truncate text-[11px] text-gray-500">
+                      {c.id === "selfweight" ? "Dead (γ·A)" : c.kind}
+                    </span>
+                    <NumInline
+                      value={t.factor}
+                      disabled={!t.include}
+                      invalid={!Number.isFinite(t.factor) || t.factor < 0}
+                      ariaLabel={`${c.name} mass factor`}
+                      width="w-full"
+                      pad={false}
+                      onChange={(factor) =>
+                        setTerm(c.id, { factor: Number.isFinite(factor) ? Math.max(factor, 0) : 0 })
+                      }
+                    />
+                    <span className="text-right font-mono text-[11px] text-gray-500">
+                      {t.include && w !== undefined ? w.toFixed(1) : "—"}
+                    </span>
+                  </div>
+                )
+              })}
+              <div
+                className={`${MASS_ROW} border-t border-gray-100 px-1 pt-1.5 text-[11px] font-medium text-[#1e293b]`}
+              >
+                <span />
+                <span>Total</span>
+                <span className="font-mono text-gray-500">{(report.W / GRAVITY).toFixed(2)} t</span>
+                <span />
+                <span className="text-right font-mono">{report.W.toFixed(1)}</span>
+              </div>
             </div>
-            {eligible.length === 0 && (
-              <p className="px-1 text-[11px] text-gray-400">No dead or live cases to take mass from.</p>
+
+            {report.clamped.length > 0 && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
+                {report.clamped.length} node{report.clamped.length === 1 ? "" : "s"} carry a net
+                upward load and are given zero mass.
+              </p>
             )}
-            {eligible.map((c) => {
-              const t = draft.terms[c.id] ?? { factor: 0, include: false }
-              const w = report.byCase[c.id]
-              return (
-                <div
-                  key={c.id}
-                  className={`${MASS_ROW} rounded-md px-1 py-0.5 ${t.include ? "" : "opacity-50"}`}
-                >
-                  <Checkbox
-                    checked={t.include}
-                    onChange={(include) => setTerm(c.id, { include })}
-                    title="Include this case in the mass"
-                  />
-                  <span className="truncate text-[11px] text-[#1e293b]">{c.name}</span>
-                  <span className="truncate text-[11px] text-gray-500">
-                    {c.id === "selfweight" ? "Dead (γ·A)" : c.kind}
-                  </span>
-                  <NumInline
-                    value={t.factor}
-                    disabled={!t.include}
-                    invalid={!Number.isFinite(t.factor) || t.factor < 0}
-                    ariaLabel={`${c.name} mass factor`}
-                    width="w-full"
-                    pad={false}
-                    onChange={(factor) =>
-                      setTerm(c.id, { factor: Number.isFinite(factor) ? Math.max(factor, 0) : 0 })
-                    }
-                  />
-                  <span className="text-right font-mono text-[11px] text-gray-500">
-                    {t.include && w !== undefined ? w.toFixed(1) : "—"}
-                  </span>
-                </div>
-              )
-            })}
-            <div
-              className={`${MASS_ROW} border-t border-gray-100 px-1 pt-1.5 text-[11px] font-medium text-[#1e293b]`}
-            >
-              <span />
-              <span>Total</span>
-              <span className="font-mono text-gray-500">{(report.W / GRAVITY).toFixed(2)} t</span>
-              <span />
-              <span className="text-right font-mono">{report.W.toFixed(1)}</span>
+          </Group>
+        </div>
+
+        <div className="shrink-0 sm:w-[170px]">
+          <Group title="Modes">
+            <div className="space-y-1">
+              <ReadRow label="Method">Eigen</ReadRow>
+              <ReadRow label="Modes">{modalOk ? modalOk.modes.length : "Auto"}</ReadRow>
+              {last && (
+                <>
+                  <ReadRow label="Σ mass, X">{(last.cumX * 100).toFixed(1)} %</ReadRow>
+                  <ReadRow label="Σ mass, Y">{(last.cumY * 100).toFixed(1)} %</ReadRow>
+                </>
+              )}
             </div>
-          </div>
-
-          <Hint>
-            Defaults: dead and superimposed dead 1.0, live 0.25. Mass inclusion is independent of the
-            case's own checkbox in the Load Case table.
-          </Hint>
-          {report.clamped.length > 0 && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
-              {report.clamped.length} node{report.clamped.length === 1 ? "" : "s"} carry a net
-              upward load and are given zero mass.
-            </p>
-          )}
-        </Group>
-
-        <Group title="Modes">
-          <div className="max-w-[260px] space-y-1.5">
-            <ReadRow label="Method">Eigen</ReadRow>
-            <ReadRow label="Number of modes">{modalOk ? modalOk.modes.length : "Auto"}</ReadRow>
-            {last && (
-              <>
-                <ReadRow label="Σ mass, X">{(last.cumX * 100).toFixed(1)} %</ReadRow>
-                <ReadRow label="Σ mass, Y">{(last.cumY * 100).toFixed(1)} %</ReadRow>
-              </>
+            {modal && !modal.ok && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
+                {modal.reason}
+              </p>
             )}
-          </div>
-          <Hint>
-            Automatic: every mode of the structure is extracted (one per free, massed degree of
-            freedom), so the cumulative mass participation reaches 100 % in X and Y. Tick the
-            Vibration analysis case to see periods and mode shapes on the Analyze tab.
-          </Hint>
-          {modal && !modal.ok && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
-              {modal.reason}
-            </p>
-          )}
-        </Group>
+          </Group>
+        </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-100 px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-100 px-4 py-2">
         <button
           onClick={onCancel}
           className="h-8 rounded-md border border-gray-200 px-4 text-xs font-medium text-gray-600 hover:bg-gray-50"
@@ -194,7 +194,7 @@ export function ModalDialog({ model, loadCases, value, modal, onCommit, onCancel
   return createPortal(
     <div
       style={{ zIndex: Z_DIALOG }}
-      className="fixed inset-0 flex items-center justify-center bg-black/25 p-4"
+      className="fixed inset-0 flex items-center justify-center bg-black/25 p-2 sm:p-4"
     >
       {body}
     </div>,
