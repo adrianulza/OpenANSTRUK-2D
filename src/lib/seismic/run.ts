@@ -28,7 +28,15 @@
 
 import type { NodeId, PointLoad, StructureModel } from "../model"
 import type { LoadCaseId } from "../load-cases"
-import { recoverResults, type AnalysisResult, type MemberEndForces } from "../solver"
+import {
+  memberInternalForces,
+  recoverResults,
+  STATION_COUNT,
+  stationCorrection,
+  stationX,
+  type AnalysisResult,
+  type MemberEndForces,
+} from "../solver"
 import type { SeismicDefinition } from "./definition"
 import { siteCoefficients, siteSpecificNote } from "./site"
 import { designAccelerations, spectrumCorners, spectralAcceleration } from "./spectrum"
@@ -227,6 +235,13 @@ export function elfLoads(run: ElfRun, caseId: LoadCaseId): PointLoad[] {
     }))
 }
 
+export function memberLength(model: StructureModel, memberId: string): number {
+  const m = model.members[memberId]
+  const a = m && model.nodes[m.a]
+  const b = m && model.nodes[m.b]
+  return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0
+}
+
 // ── CQC ──────────────────────────────────────────────────────────────────────
 
 /** Der Kiureghian's CQC correlation coefficients for equal modal damping ζ. */
@@ -348,11 +363,26 @@ export function runMrs(
       theta: combine((r) => r.nodeDisplacements[id].theta, sd),
     }
   }
-  const keys: (keyof MemberEndForces)[] = ["N1", "V1", "M1", "N2", "V2", "M2"]
+  const keys = ["N1", "V1", "M1", "N2", "V2", "M2"] as const
   const memberEndForces: AnalysisResult["memberEndForces"] = {}
   for (const id of Object.keys(first.memberEndForces)) {
     const ef: MemberEndForces = { N1: 0, V1: 0, M1: 0, N2: 0, V2: 0, M2: 0, q1: 0, q2: 0, qx1: 0, qx2: 0 }
     for (const k of keys) ef[k] = combine((r) => r.memberEndForces[id][k], scaleFactor)
+    // CQC at every station, not only at the ends: a CQC is never negative, so
+    // interpolating between two end values of opposite sign would cross a
+    // zero that is not there and understate the moment near inflection points.
+    const L = memberLength(model, id)
+    if (L > 0) {
+      const totals = { N: [] as number[], V: [] as number[], M: [] as number[] }
+      for (let k = 0; k < STATION_COUNT; k++) {
+        const x = stationX(L, k)
+        const per = results.map((r) => memberInternalForces(r.memberEndForces[id], x, L))
+        totals.N.push(signedCqc(per.map((f) => f.N), rho) * scaleFactor)
+        totals.V.push(signedCqc(per.map((f) => f.V), rho) * scaleFactor)
+        totals.M.push(signedCqc(per.map((f) => f.M), rho) * scaleFactor)
+      }
+      ef.stations = stationCorrection(ef, L, totals)
+    }
     memberEndForces[id] = ef
   }
   const reactions: AnalysisResult["reactions"] = {}

@@ -12,7 +12,14 @@
  * case slice and never persisted in `model.loads`.
  */
 
-import { analyze, type AnalysisResult, type AnalyzeOptions, type SolverResult } from "./solver"
+import {
+  analyze,
+  stationCorrection,
+  stationTotals,
+  type AnalysisResult,
+  type AnalyzeOptions,
+  type SolverResult,
+} from "./solver"
 import type { StructureModel } from "./model"
 import type {
   LoadCase,
@@ -220,6 +227,21 @@ export function combineResults(
       out.memberEndForces[id].q2 += k * f.q2
       out.memberEndForces[id].qx1 += k * f.qx1
       out.memberEndForces[id].qx2 += k * f.qx2
+      // A station correction is linear in the result, so it combines like
+      // everything else. Static terms carry none and add nothing to it.
+      if (f.stations) {
+        const o = out.memberEndForces[id]
+        const st = f.stations
+        if (!o.stations) {
+          const z = () => new Array<number>(st.M.length).fill(0)
+          o.stations = { L: st.L, N: z(), V: z(), M: z() }
+        }
+        for (let i = 0; i < st.M.length; i++) {
+          o.stations.N[i] += k * st.N[i]
+          o.stations.V[i] += k * st.V[i]
+          o.stations.M[i] += k * st.M[i]
+        }
+      }
     }
     for (const id of Object.keys(out.reactions)) {
       const re = r.reactions[id]
@@ -308,6 +330,16 @@ export function envelopeResults(
     }
   }
 
+  // Members any included combination combines station-wise: their envelope is
+  // taken station by station on the totals, then stored back as a correction
+  // to the enveloped end forces. Static-only envelopes are untouched.
+  const stationMembers = new Map<string, number>()
+  for (const [, r] of included) {
+    for (const [id, ef] of Object.entries(r.memberEndForces)) {
+      if (ef.stations) stationMembers.set(id, ef.stations.L)
+    }
+  }
+
   for (let i = 1; i < included.length; i++) {
     const [cid, r] = included[i]
     for (const id of Object.keys(out.nodeDisplacements)) {
@@ -340,6 +372,29 @@ export function envelopeResults(
         cid,
       )
     }
+  }
+
+  for (const [id, L] of stationMembers) {
+    const ef = out.memberEndForces[id]
+    if (!ef) continue
+    let env: { N: number[]; V: number[]; M: number[] } | null = null
+    for (const [, r] of included) {
+      const c = r.memberEndForces[id]
+      if (!c) continue
+      const t = stationTotals(c, L)
+      if (!env) {
+        env = t
+        continue
+      }
+      for (let k = 0; k < t.M.length; k++) {
+        if (Math.abs(t.N[k]) > Math.abs(env.N[k])) env.N[k] = t.N[k]
+        if (Math.abs(t.V[k]) > Math.abs(env.V[k])) env.V[k] = t.V[k]
+        if (Math.abs(t.M[k]) > Math.abs(env.M[k])) env.M[k] = t.M[k]
+      }
+    }
+    // The seed copied the first combo's correction by reference; replace it.
+    const plain = { ...ef, stations: undefined }
+    if (env) out.memberEndForces[id] = { ...ef, stations: stationCorrection(plain, L, env) }
   }
 
   return out

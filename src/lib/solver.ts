@@ -6,6 +6,36 @@ export interface MemberEndForces {
   N2: number; V2: number; M2: number   // at node-B end
   q1: number; q2: number               // local-2 (transverse) distributed load kN/m
   qx1: number; qx2: number             // local-1 (axial) distributed load kN/m
+  /**
+   * Station correction for results that are not linear superpositions — a
+   * response-spectrum CQC or a time-history envelope, combined at each station
+   * rather than at the ends. Absent for every static result.
+   */
+  stations?: StationCorrection
+}
+
+/** Number of equally spaced stations along a member, ends included. */
+export const STATION_COUNT = 21
+
+/**
+ * What must be ADDED to the closed-form interior forces (from the end forces
+ * and q) to obtain the station-wise combined values, at `STATION_COUNT`
+ * stations. Zero at x = 0; at x = L it closes the diagram onto the combined
+ * far-end value, which a CQC of end forces does not reach through the closed
+ * form (CQC does not preserve M2 = M1 − V1·L).
+ *
+ * ⚠ A CORRECTION, NOT THE TOTALS. Storing totals would put every combination
+ * containing an earthquake term on 20-segment linear interpolation, gravity
+ * parabolas included. As a correction it combines linearly (k × correction),
+ * the static part of any combination keeps its exact closed form, and only the
+ * dynamic part is interpolated.
+ */
+export interface StationCorrection {
+  /** Member length the stations were taken on, m. */
+  L: number
+  N: number[]
+  V: number[]
+  M: number[]
 }
 
 export interface NodeDisplacement { u: number; v: number; theta: number }
@@ -526,6 +556,52 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
  * M positive=sagging (CCW on left face).
  */
 export function memberInternalForces(
+  ef: MemberEndForces,
+  x: number,
+  L: number
+): { N: number; V: number; M: number } {
+  const base = closedFormForces(ef, x, L)
+  const st = ef.stations
+  if (!st) return base
+  // Linear interpolation of the correction between stations.
+  const n = st.M.length - 1
+  const t = Math.min(Math.max(L > 0 ? x / L : 0, 0), 1) * n
+  const i = Math.min(Math.floor(t), n - 1)
+  const f = t - i
+  const lerp = (a: number[]) => a[i] + (a[i + 1] - a[i]) * f
+  return { N: base.N + lerp(st.N), V: base.V + lerp(st.V), M: base.M + lerp(st.M) }
+}
+
+/** Station positions x_k = k·L/(STATION_COUNT − 1). */
+export function stationX(L: number, k: number): number {
+  return (k * L) / (STATION_COUNT - 1)
+}
+
+/** Total internal forces at every station (closed form plus any correction). */
+export function stationTotals(ef: MemberEndForces, L: number): { N: number[]; V: number[]; M: number[] } {
+  const N: number[] = [], V: number[] = [], M: number[] = []
+  for (let k = 0; k < STATION_COUNT; k++) {
+    const f = memberInternalForces(ef, stationX(L, k), L)
+    N.push(f.N); V.push(f.V); M.push(f.M)
+  }
+  return { N, V, M }
+}
+
+/** The correction that makes `ef`'s interior equal `totals` at the stations. */
+export function stationCorrection(
+  ef: MemberEndForces,
+  L: number,
+  totals: { N: number[]; V: number[]; M: number[] },
+): StationCorrection {
+  const N: number[] = [], V: number[] = [], M: number[] = []
+  for (let k = 0; k < STATION_COUNT; k++) {
+    const f = closedFormForces(ef, stationX(L, k), L)
+    N.push(totals.N[k] - f.N); V.push(totals.V[k] - f.V); M.push(totals.M[k] - f.M)
+  }
+  return { L, N, V, M }
+}
+
+function closedFormForces(
   ef: MemberEndForces,
   x: number,
   L: number

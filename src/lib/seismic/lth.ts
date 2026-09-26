@@ -26,7 +26,15 @@
  */
 
 import type { NodeId, StructureModel } from "../model"
-import { recoverResults, type AnalysisResult, type MemberEndForces } from "../solver"
+import {
+  memberInternalForces,
+  recoverResults,
+  STATION_COUNT,
+  stationCorrection,
+  stationX,
+  type AnalysisResult,
+} from "../solver"
+import { memberLength } from "./run"
 import { lthSettingsOf, type SeismicDefinition } from "./definition"
 import { recordAccelerations, resampleUniform, type GroundMotionRecord } from "./ground-motion"
 import type { ModalSolution } from "./modal"
@@ -97,7 +105,7 @@ export function lthFrameResult(
   return recoverResults(model, modal.system, expand(modal, frame.um))
 }
 
-const EF_KEYS: (keyof MemberEndForces)[] = ["N1", "V1", "M1", "N2", "V2", "M2"]
+const EF_KEYS = ["N1", "V1", "M1", "N2", "V2", "M2"] as const
 
 /**
  * The two modes the Rayleigh damping is fitted at: mode 1 (the longest
@@ -197,6 +205,16 @@ export function runLth(
   // Envelope: the signed value at the instant of largest magnitude.
   let env: AnalysisResult | null = null
   const pick = (cur: number, v: number) => (Math.abs(v) > Math.abs(cur) ? v : cur)
+  // Interior envelope, station by station: the peak of M at mid-span is not
+  // the interpolation of the two end peaks, which occur at other instants.
+  const stationEnv: Record<string, { L: number; N: number[]; V: number[]; M: number[] }> = {}
+  for (const id of Object.keys(modal.system.members)) {
+    const L = memberLength(model, id)
+    if (L > 0) {
+      const z = () => new Array<number>(STATION_COUNT).fill(0)
+      stationEnv[id] = { L, N: z(), V: z(), M: z() }
+    }
+  }
 
   for (let s = 0; s < steps; s++) {
     const um = out.u[s]
@@ -207,6 +225,16 @@ export function runLth(
     for (const rc of Object.values(r.reactions)) sumRx += rc.Rx
     baseShear[s] = -sumRx
     if (s % every === 0 || s === steps - 1) frames.push({ t: s * dt, um })
+    for (const [id, st] of Object.entries(stationEnv)) {
+      const ef = r.memberEndForces[id]
+      if (!ef) continue
+      for (let k = 0; k < STATION_COUNT; k++) {
+        const f = memberInternalForces(ef, stationX(st.L, k), st.L)
+        st.N[k] = pick(st.N[k], f.N)
+        st.V[k] = pick(st.V[k], f.V)
+        st.M[k] = pick(st.M[k], f.M)
+      }
+    }
 
     if (!env) {
       env = r
@@ -228,6 +256,11 @@ export function runLth(
       e.Ry = pick(e.Ry, rc.Ry)
       e.Mz = pick(e.Mz, rc.Mz)
     }
+  }
+
+  for (const [id, st] of Object.entries(stationEnv)) {
+    const ef = env!.memberEndForces[id]
+    if (ef) ef.stations = stationCorrection(ef, st.L, st)
   }
 
   const peak = (h: Float64Array) => {
