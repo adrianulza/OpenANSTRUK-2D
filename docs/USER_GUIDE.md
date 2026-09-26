@@ -144,14 +144,15 @@ Live mode turns your model into something you can hold. Press on a node and drag
 
 | Layer | Meaning |
 |---|---|
-| Faint grey structure | The original, undeformed geometry (diagrams are drawn on it) |
-| Purple structure | The deformed shape; truss members turn blue in tension, red in compression |
-| Orange arrow and label | The rope and its force, e.g. `63.1 kN ∠ −90°`. The arrow's tail is a point at the node and it widens toward its head, which sits on your cursor or finger. It gets thicker as the force grows (up to 100 kN), chevrons flow from the node toward the head while you drag (faster for a harder pull), and it glows once the force is capped. |
-| Blue/red arrows at supports | Reactions, sized by magnitude, flipping when they change sign |
-| Axial N / Shear V / Moment M (buttons at the top) | Which internal-force diagram grows with the pull; one is always shown |
-| Green `ΣFx = ΣFy = ΣM = 0` chip (below the buttons, while pulling) | The rope force plus all reactions balance, as they must for a structure at rest |
+| Dashed navy outline | The original, undeformed geometry (diagrams are drawn on it) |
+| Navy structure | Your model itself, bending. It wobbles back like a stiff spring when you let go |
+| Soft blue/red glow on the members | Where the selected internal force is large (blue positive, red negative) |
+| Amber spring and label | The rope and its force, e.g. `63 kN`. The spring stretches from the node to your hand; at 100 kN it quivers and glows |
+| Slate arrows at supports | Reactions, sized by magnitude. The arrow direction shows the sign; a reaction that flips flashes amber |
+| Axial N / Shear V / Moment M (buttons at the top) | Which internal-force diagram grows with the pull. Switching morphs one diagram into the next |
+| Green `ΣFx = ΣFy = ΣM = 0` chip | The rope force plus all reactions balance, as they must for a structure at rest |
 
-Live mode has no side panel: everything is on the canvas. The controls sit top-centre on a computer and bottom-centre on a phone.
+Live mode has no side panel: everything is on the canvas. The controls sit top-centre on a computer and bottom-centre on a phone, and a single hint, "Pick a node and drag", shows until your first pull.
 
 **Which nodes can be pulled.** Any node free to translate, rollers included (pulling a roller along its restrained direction sends the force straight into its reaction). Pinned and fixed supports show a "not allowed" cursor. The rope attaches to **nodes only**, so to pull a beam at midspan, add a node there in the Model tab first.
 

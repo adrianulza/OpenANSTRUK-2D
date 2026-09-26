@@ -31,13 +31,18 @@ import {
 import { local2World, splitByZeroCrossings } from "@/lib/diagram-utils"
 import type { LiveSystem } from "@/lib/live-solver"
 import type { LiveReadout } from "@/lib/live-physics"
-import { useLivePull, type LiveDiagram } from "@/canvas/use-live-pull"
+import { useLivePull, prefersReducedMotion, type LiveDiagram } from "@/canvas/use-live-pull"
 import {
-  drawLiveDeformed,
-  drawLiveReactions,
-  drawLoadArrow,
-  drawGrabRings,
   deformedNodeScreen,
+  entryDrop,
+  drawLiveGhost,
+  drawLiveDiagram,
+  drawLiveTint,
+  drawLiveStructure,
+  drawLiveReactions,
+  drawRipples,
+  drawGrabRings,
+  drawSpringArrow,
 } from "@/canvas/live-layer"
 import {
   SCALE,
@@ -154,14 +159,6 @@ function clampPan(
                     Math.min((WORLD_PX - c.sy) * z, py))
 
   return { px: clampedPx, py: clampedPy }
-}
-
-/** Live mode: draw a diagram from this result at a fixed reference peak. */
-type DiagramOverride = {
-  result: AnalysisResult
-  /** Value drawn at the full reference height (kN or kN·m) */
-  peak: number
-  format?: (v: number) => string
 }
 
 /** Rope grab radius around a node, in screen pixels (mouse / finger). */
@@ -362,6 +359,7 @@ export function StructuralCanvas({
   })
   const liveRef = useRef(live)
   useEffect(() => { liveRef.current = live }, [live])
+  useEffect(() => { live.setDiagram(liveDiagram) }, [live, liveDiagram])
   const activeTabRef = useRef(activeTab)
   useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
   const liveSystemRef = useRef(liveSystem)
@@ -1774,19 +1772,15 @@ export function StructuralCanvas({
   )
 
   const drawAxialDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
-      // Live mode passes its own result and a frozen peak (so the diagram grows
-      // with the pull instead of re-fitting); Analyze uses the props as before.
-      const res = ov?.result ?? analysisResult
-      if (!res) return
-      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |N| sampled across all members at TARGET_PX (1 grid cell) at scale 1.0×.
       const TARGET_PX = 80
       let peakN = 0
       for (const m of Object.values(model.members)) {
-        const ef = res.memberEndForces[m.id]
+        const ef = analysisResult.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -1797,11 +1791,10 @@ export function StructuralCanvas({
         }
       }
       // Use HALF of the conventional BASE so the mirrored (±) band reaches TARGET_PX overall.
-      const peakRef = ov ? ov.peak : peakN
-      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) * 0.5 : 0
+      const BASE = peakN > 1e-9 ? (TARGET_PX / peakN) * diagramScale * 0.5 : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = res.memberEndForces[member.id]
+        const ef = analysisResult.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -1907,7 +1900,7 @@ export function StructuralCanvas({
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
           const prefix = val >= 0 ? "+" : ""
-          ctx.fillText(`${prefix}${fmtV(val)} ${forceLabel}`, lx, ly)
+          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
         }
 
         const p0 = pts[0], pN = pts[pts.length - 1]
@@ -1942,7 +1935,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             const fmt = (v: number) =>
-              `${v >= 0 ? "+" : ""}${fmtV(v)} ${forceLabel}`
+              `${v >= 0 ? "+" : ""}${formatValue(v * forceScale)} ${forceLabel}`
             // Stack perpendicular to the (now-rotated) member axis. After
             // ctx.rotate(angle), the member runs along local +x; "above" the
             // diagram is local −y, so first line goes slightly more negative
@@ -1965,7 +1958,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = "middle"
             const prefix = n1 >= 0 ? "+" : ""
-            ctx.fillText(`${prefix}${fmtV(n1)} ${forceLabel}`, 0, 0)
+            ctx.fillText(`${prefix}${formatValue(n1 * forceScale)} ${forceLabel}`, 0, 0)
             ctx.restore()
           }
         } else {
@@ -1985,19 +1978,15 @@ export function StructuralCanvas({
   )
 
   const drawShearDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
-      // Live mode passes its own result and a frozen peak (so the diagram grows
-      // with the pull instead of re-fitting); Analyze uses the props as before.
-      const res = ov?.result ?? analysisResult
-      if (!res) return
-      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |V| sampled across all members renders at TARGET_PX at scale 1.0×
       const TARGET_PX = 80
       let peakV = 0
       for (const m of Object.values(model.members)) {
-        const ef = res.memberEndForces[m.id]
+        const ef = analysisResult.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -2007,11 +1996,10 @@ export function StructuralCanvas({
           if (Math.abs(V) > peakV) peakV = Math.abs(V)
         }
       }
-      const peakRef = ov ? ov.peak : peakV
-      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) : 0
+      const BASE = peakV > 1e-9 ? (TARGET_PX / peakV) * diagramScale : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = res.memberEndForces[member.id]
+        const ef = analysisResult.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -2103,7 +2091,7 @@ export function StructuralCanvas({
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
           const prefix = val >= 0 ? "+" : ""
-          ctx.fillText(`${prefix}${fmtV(val)} ${forceLabel}`, lx, ly)
+          ctx.fillText(`${prefix}${formatValue(val * forceScale)} ${forceLabel}`, lx, ly)
         }
 
         // Label end points (with invert sign adjustment)
@@ -2126,19 +2114,15 @@ export function StructuralCanvas({
   )
 
   const drawMomentDiagram = useCallback(
-    (ctx: CanvasRenderingContext2D, rect: Rect, ov?: DiagramOverride) => {
-      // Live mode passes its own result and a frozen peak (so the diagram grows
-      // with the pull instead of re-fitting); Analyze uses the props as before.
-      const res = ov?.result ?? analysisResult
-      if (!res) return
-      const fmtV = ov?.format ?? ((v: number) => formatValue(v * forceScale))
+    (ctx: CanvasRenderingContext2D, rect: Rect) => {
+      if (!analysisResult) return
       const s = adaptiveView ? 1 / zoom : 1
       const N_PTS = 60
       // Auto-fit: peak |M| sampled across all members renders at TARGET_PX at scale 1.0×
       const TARGET_PX = 80
       let peakM_all = 0
       for (const m of Object.values(model.members)) {
-        const ef = res.memberEndForces[m.id]
+        const ef = analysisResult.memberEndForces[m.id]
         const nA = model.nodes[m.a], nB = model.nodes[m.b]
         if (!ef || !nA || !nB) continue
         const L = Math.hypot(nB.x - nA.x, nB.y - nA.y)
@@ -2148,11 +2132,10 @@ export function StructuralCanvas({
           if (Math.abs(M) > peakM_all) peakM_all = Math.abs(M)
         }
       }
-      const peakRef = ov ? ov.peak : peakM_all
-      const BASE = peakRef > 1e-9 ? (TARGET_PX / peakRef) * (ov ? 1 : diagramScale) : 0
+      const BASE = peakM_all > 1e-9 ? (TARGET_PX / peakM_all) * diagramScale : 0
 
       for (const member of Object.values(model.members)) {
-        const ef = res.memberEndForces[member.id]
+        const ef = analysisResult.memberEndForces[member.id]
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
         if (!ef || !nA || !nB) continue
@@ -2236,7 +2219,7 @@ export function StructuralCanvas({
             ctx.textAlign = "center"
             ctx.textBaseline = oy > 0 ? "top" : "bottom"
           }
-          ctx.fillText(`${fmtV(val)} ${momentLabel}`, lx, ly)
+          ctx.fillText(`${formatValue(val * forceScale)} ${momentLabel}`, lx, ly)
         }
 
         const bmdSign = invertBMD ? -1 : 1
@@ -2567,47 +2550,49 @@ export function StructuralCanvas({
       if (!sys) return
       const s = adaptiveView ? 1 / zoom : 1
       const frame = live.stateRef.current.frame
+      const now = frame?.now ?? performance.now()
       // At scale 1 the largest possible displacement (P_max, worst direction)
       // draws at half the rope cap, so the rope always looks taut.
       const k = sys.refs.disp > 1e-12 ? ((0.5 * sys.ropeCap) / sys.refs.disp) * liveDeformScale : 0
-      const fmt1 = (v: number) => (v * forceScale).toFixed(1)
+      const shape = frame?.shape ?? null
+      const dy = frame ? entryDrop(frame.entryAt, now, s) : 0
+      const fmt = (v: number, unit: string) => `${Math.round(v * forceScale)} ${unit}`
 
-      if (frame?.exact) {
-        const ov = (peak: number) => ({ result: frame.exact!, peak, format: fmt1 })
-        if (liveDiagram === "AXIAL") drawAxialDiagram(ctx, rect, ov(sys.refs.N))
-        if (liveDiagram === "SHEAR") drawShearDiagram(ctx, rect, ov(sys.refs.V))
-        if (liveDiagram === "MOMENT") drawMomentDiagram(ctx, rect, ov(sys.refs.M))
+      drawLiveGhost(ctx, rect, model, sys, dy, s)
+      if (frame?.exact && liveDiagram) {
+        drawLiveDiagram(ctx, rect, model, sys, frame.exact, liveDiagram, frame.morph, frame.grow, s, {
+          invertSFD,
+          invertBMD,
+          format: (v, kind) => fmt(v, kind === "MOMENT" ? momentLabel : forceLabel),
+        })
+        drawLiveTint(ctx, rect, model, sys, frame.exact, shape, liveDiagram, k, frame.grow, s)
       }
-
-      drawLiveDeformed(ctx, rect, model, sys, frame?.shape ?? null, k, s, frame?.exact ?? null)
-
-      if (frame?.exact) {
-        drawLiveReactions(
-          ctx, rect, model, frame.exact, sys.refs.R, s,
-          (v) => `${fmt1(v)} ${forceLabel}`,
-          (v) => `${fmt1(v)} ${momentLabel}`,
-        )
+      drawLiveStructure(ctx, rect, model, sys, shape, k, dy, s, {
+        node: frame?.grabbed ?? null,
+        at: frame?.grabAt ?? -1e9,
+        now,
+      })
+      if (frame) {
+        drawLiveReactions(ctx, rect, model, sys, frame.reactions, frame.flashAt, now, s,
+          (v, moment) => fmt(v, moment ? momentLabel : forceLabel))
+        drawRipples(ctx, rect, model, frame.ripples, now, s)
       }
 
       if (frame?.grabbed && frame.force && frame.cursor) {
-        const nodePt = deformedNodeScreen(model, frame.shape, frame.grabbed, k, rect)
+        const nodePt = deformedNodeScreen(model, shape, frame.grabbed, k, rect)
         if (nodePt) {
-          const f = frame.force
-          const label = `${fmt1(f.P)} ${forceLabel} ∠ ${`${Math.round(f.angleDeg)}°`.replace("-", "\u2212")}`
-          const animate = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-          // The arrow is the rope: tail at the node, head on the cursor. Drawn
-          // last so it sits on top of everything.
-          drawLoadArrow(
-            ctx, nodePt, worldToScreen(frame.cursor, rect), f, frame.arrowScale,
-            live.stateRef.current.shift, label, s, performance.now(), animate,
+          // The rope is an amber spring from the node to the hand, drawn last so it sits on top.
+          drawSpringArrow(
+            ctx, nodePt, worldToScreen(frame.cursor, rect), frame.force, frame.arrowScale,
+            live.stateRef.current.shift, fmt(frame.shownP, forceLabel), s, now, !prefersReducedMotion(),
           )
         }
       } else {
-        drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, s)
+        drawGrabRings(ctx, rect, model, sys.grabbable, liveHover?.grabbable ? liveHover.id : null, frame?.entryAt ?? -1e9, now, s)
       }
     },
     [liveSystem, adaptiveView, zoom, live.stateRef, liveDeformScale, forceScale, liveDiagram,
-      drawAxialDiagram, drawShearDiagram, drawMomentDiagram, model, forceLabel, momentLabel, liveHover],
+      invertSFD, invertBMD, model, forceLabel, momentLabel, liveHover],
   )
 
   const drawIdPills = useCallback(
@@ -2767,21 +2752,21 @@ export function StructuralCanvas({
     ctx.translate(panX, panY)
     ctx.scale(zoom, zoom)
 
+    // Live keeps only a softened grid and the supports from the drafting layer;
+    // it draws the model itself (bending) in drawLive.
+    const liveOn = activeTab === "Live" && !!liveSystem
+    ctx.globalAlpha = liveOn ? 0.6 : 1
     drawGrid(ctx, rect.width, rect.height)
-    // Live: the undeformed structure is a faint ghost; the live one is drawn on top.
-    const liveGhost = activeTab === "Live" && liveSystem ? 0.25 : 1
-    ctx.globalAlpha = liveGhost
-    drawMembers(ctx, rect)
     ctx.globalAlpha = 1
+    if (!liveOn) drawMembers(ctx, rect)
     drawSupports(ctx, rect)
-    ctx.globalAlpha = liveGhost
-    drawNodes(ctx, rect)
-    ctx.globalAlpha = 1
-    drawGizmo(ctx, rect)
-
-    if (showDimensions) drawDimensions(ctx, rect)
-    drawIdPills(ctx, rect)
-    drawLocalAxes(ctx, rect)
+    if (!liveOn) {
+      drawNodes(ctx, rect)
+      drawGizmo(ctx, rect)
+      if (showDimensions) drawDimensions(ctx, rect)
+      drawIdPills(ctx, rect)
+      drawLocalAxes(ctx, rect)
+    }
     if (activeTab === "Model") drawPreview(ctx, rect)
     if (activeTab === "Load") drawLoads(ctx, rect)
     if (activeTab === "Analyze" && analysisResult) {

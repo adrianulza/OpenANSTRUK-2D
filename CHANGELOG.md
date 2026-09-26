@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `localStiffness`, `condensedTrussElement` and `transformMatrix` are exported from `solver.ts`, and the per-section shear rigidity moved into an exported `sectionShearRigidity()`. `analyze()` behaves exactly as before.
 - Live tab controls are built for learning: the tool sidebar steps aside, and three large Axial N / Shear V / Moment M buttons sit centered above the canvas (bottom-center on phones). The rope is drawn as a tapered orange arrow: a point at the node, widening to its head on the cursor or finger, thicker for a larger force and animated while you drag.
+- Live tab redesigned inside the OpenANSTRUK palette: the navy model itself bends (the purple copy is gone), the dimensions and ID tags step aside, diagrams keep the Analyze blue and red with one label per sign, reactions are one slate color, and amber marks the student's hand. The rope is an amber spring. Motion is playful and tuned: the frame drops in, grab rings pop, diagrams grow on grab and snap back on release, switching diagrams morphs, flipping reactions flash, and the members glow where the selected force is large. All motion constants live in `LIVE_MOTION` / `LIVE_SPRING` (`src/lib/live-physics.ts`).
 - Nav tabs use tighter padding below 640 px so every tab, Live included, fits on a phone screen.
 
 ---

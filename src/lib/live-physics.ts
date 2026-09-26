@@ -145,3 +145,50 @@ export interface LiveReadout {
   /** Global equilibrium residual: rope force plus all reactions (≈ 0) */
   eq: { Fx: number; Fy: number; M: number }
 }
+
+// ── Tuned motion (chosen in the Live Mode Studies wobble tuner) ──────────────
+
+/** The frame's wobble: a stiff, quick spring that still rings a little. */
+export const LIVE_SPRING: SpringParams = { freq: 3, zeta: 0.4 }
+
+/** Every other motion constant, in one place so the feel can be retuned. */
+export const LIVE_MOTION = {
+  /** While a node is held the spring runs this much faster, so the frame sticks to the hand. */
+  followWhileHeld: 1.25,
+  /** Overshoot (kN) added when the rope reaches the cap, so the limit feels like a stop. */
+  capBump: 15,
+  /** Extra speed on release, as a multiple of the spring's natural speed: throws the frame past rest. */
+  releaseFling: 2,
+  /** Grabbed-node pop: peak extra radius as a multiple of the node radius. */
+  nodePop: 2,
+  /** Ripple ring radius (px) spreading from the node on grab and release. */
+  ripplePx: 30,
+  rippleMs: 650,
+  /** Diagram grows out of the member on grab (ease-out, no overshoot)... */
+  growMs: 100,
+  /** ...and snaps back into it on release (ease-in with a small wind-up). */
+  retractMs: 200,
+  /** Time constants (s) for exponential easing. */
+  reactionTau: 0.05,
+  countTau: 0.25,
+  arrowTau: 0.15,
+  /** Diagram morph when switching Axial / Shear / Moment. */
+  morphMs: 420,
+  /** Entrance: the frame drops onto its supports, then the grab rings pop in. */
+  entryDropPx: 120,
+  entryMs: 700,
+} as const
+
+export const easeOutCubic = (x: number) => 1 - (1 - x) ** 3
+export const easeInOutCubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2)
+export const easeOutBack = (x: number, k = 1.7) => 1 + (k + 1) * (x - 1) ** 3 + k * (x - 1) ** 2
+export const easeInBack = (x: number, k = 1.7) => (k + 1) * x ** 3 - k * x * x
+export function easeOutBounce(x: number): number {
+  const n = 7.5625, d = 2.75
+  if (x < 1 / d) return n * x * x
+  if (x < 2 / d) { x -= 1.5 / d; return n * x * x + 0.75 }
+  if (x < 2.5 / d) { x -= 2.25 / d; return n * x * x + 0.9375 }
+  x -= 2.625 / d
+  return n * x * x + 0.984375
+}
+export const clamp01 = (x: number) => Math.max(0, Math.min(1, x))

@@ -40,6 +40,8 @@ import {
 import { AnalysisIssuesDialog } from "@/components/analysis-issues-dialog"
 import { AnalyzeViewSelector } from "@/components/analyze-view-selector"
 import { LiveControls } from "@/tabs/live/tools/live-controls"
+import { Hand } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { LoadViewSelector, LOAD_VIEW_ALL, type LoadViewSelection } from "@/components/load-view-selector"
 import { BeamTemplateModal } from "@/templates/beam-template-modal"
 import { FrameTemplateModal } from "@/templates/frame-template-modal"
@@ -138,6 +140,12 @@ export default function App() {
   // gone when the tab closes (Live mode keeps no memory of what was pulled).
   const [liveDeformScale, setLiveDeformScale] = useState(1)
   const [liveReadout, setLiveReadout] = useState<LiveReadout | null>(null)
+  // The one-line hint stays until the first pull of each visit to the tab.
+  const [livePulled, setLivePulled] = useState(false)
+  const handleLiveReadout = useCallback((r: LiveReadout | null) => {
+    setLiveReadout(r)
+    if (r) setLivePulled(true)
+  }, [])
   const [templateModal, setTemplateModal] = useState<"beam" | "frame" | "truss" | null>(null)
   const [showExamplesModal, setShowExamplesModal] = useState(false)
 
@@ -632,6 +640,7 @@ export default function App() {
         : null,
     )
     setLiveReadout(null)
+    setLivePulled(false)
     // Entering Design lands on step 1: the code rules come before the section
     // they govern. Switching material mid-session keeps whichever pane you are
     // on — that reset lives here, on tab entry, not on tool change.
@@ -1453,6 +1462,20 @@ export default function App() {
               />
             </div>
           )}
+          {activeTab === "Live" && liveSystem?.ok && (
+            <div
+              aria-hidden={livePulled}
+              className={cn(
+                "absolute z-20 left-1/2 -translate-x-1/2 bottom-5 max-sm:bottom-auto max-sm:top-3 pointer-events-none",
+                "flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#1a2f5e] text-white text-[13px] font-semibold",
+                "shadow-[0_8px_22px_rgba(26,47,94,0.3)] transition-all duration-300 motion-reduce:transition-none",
+                livePulled ? "opacity-0 translate-y-2" : "opacity-100",
+              )}
+            >
+              <Hand size={16} aria-hidden />
+              Pick a node and drag
+            </div>
+          )}
           <FlyoutPanel
             activeTab={activeTab}
             activeTool={activeTool}
@@ -1609,7 +1632,7 @@ export default function App() {
             designMaterialsPresent={designMaterialsPresent}
             liveSystem={liveSystem && liveSystem.ok ? liveSystem : null}
             liveDeformScale={liveDeformScale}
-            onLiveReadout={setLiveReadout}
+            onLiveReadout={handleLiveReadout}
           />
         </main>
       </div>
