@@ -363,7 +363,7 @@ It returns a typed `DiagnosticsReport { status, issues[] }` with three statuses 
 | `definition.ts` | `SeismicDefinition` on `LoadCase.seismic` (2D subset: no direction, eccentricity or time history) |
 | `run.ts` | `seismicLadder`, ELF per node (h from the lowest support), MRS with signed CQC and ELF scaling |
 | `ground-motion.ts`, `records/elcentro.ts` | Records (uniform Δt, g or m/s²), resampling, El Centro 1940 NS |
-| `newmark.ts`, `lth.ts` | Linear time history along X: Newmark-β on the condensed system, Rayleigh damping, signed peak envelope, roof and base-shear histories, kept frames |
+| `newmark.ts`, `lth.ts` | Linear time history along X: Newmark-β on the condensed system, Rayleigh damping (exact at T₁ and the 90 % X-mass mode), signed peak envelope, roof and base-shear histories, kept frames |
 | `solve.ts` | `prepareSeismic`: mass → modes (only when something needs them) → a run per enabled generated seismic case |
 
 `analysis-pipeline.ts::solveCase` takes the prepared context: an ELF case solves its own loads plus the generated nodal forces, an MRS case returns its combined result, and the Modal case never enters the static map. App memoises the context under the same Analyze/Design lazy gate as `caseResults`.

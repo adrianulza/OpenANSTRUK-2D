@@ -49,7 +49,7 @@ export interface SeismicLthSettings {
   scale: number
   /** What the record's numbers ARE. Absent = the record's own unit. */
   unit?: GroundMotionUnit
-  /** ζ for the Rayleigh fit at the longest and shortest periods. */
+  /** ζ for the Rayleigh fit at mode 1 and the 90 % X-mass mode (`rayleighFitModes`). */
   dampingRatio: number
   /** Integration step, s. Absent = the record's own Δt. */
   dt?: number

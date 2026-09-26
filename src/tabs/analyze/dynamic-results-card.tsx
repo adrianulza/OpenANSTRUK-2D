@@ -146,7 +146,10 @@ function LthSection({
     <div className="space-y-1.5">
       <Line k="Record" v={lth.record.name} />
       <Line k="PGA · Δt · steps" v={`${(lth.pga / 9.80665).toFixed(3)} g · ${lth.dt} s · ${lth.steps}`} />
-      <Line k="ζ at T₁ and Tₙ" v={`${(lth.zeta * 100).toFixed(1)} % (${lth.T1.toFixed(3)} / ${lth.Tn.toFixed(4)} s)`} />
+      <Line
+        k={`ζ exact at modes ${lth.fitModes[0]}, ${lth.fitModes[1]}`}
+        v={`${(lth.zeta * 100).toFixed(1)} % (${lth.T1.toFixed(3)} / ${lth.T2.toFixed(3)} s)`}
+      />
       <Line k="Peak roof u" v={`${(lth.peakRoof.value * 1000).toFixed(2)} mm @ ${lth.peakRoof.t.toFixed(2)} s`} />
       <Line k="Peak base shear" v={`${lth.peakBase.value.toFixed(2)} kN @ ${lth.peakBase.t.toFixed(2)} s`} />
       <div className="flex items-center gap-2 pt-0.5">

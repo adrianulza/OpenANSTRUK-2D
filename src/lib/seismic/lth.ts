@@ -6,8 +6,8 @@
  *   1. Retained system: the massed free DOFs, exactly the modal pass's
  *      condensed problem (K̂, lumped M). Condensation is exact because every
  *      DOF with mass is retained; the massless ones follow statically.
- *   2. Rayleigh damping C = αM + βK, ζ fitted exactly at the longest and the
- *      shortest period of the structure.
+ *   2. Rayleigh damping C = αM + βK, ζ fitted exactly at T₁ and at the mode
+ *      where the cumulative X mass first reaches 90 % (`rayleighFitModes`).
  *   3. Newmark-β (average acceleration by default) at the record step, or at
  *      a user Δt with the record resampled. p(t) = −M·ι·ag(t), ι = 1 on u.
  *   4. Recovery per step: u_m(t) → full d(t) = [u_m, −X·u_m] → member end
@@ -54,9 +54,11 @@ export interface LthRun {
   zeta: number
   alpha: number
   betaR: number
-  /** Periods the Rayleigh fit is exact at, s. */
+  /** Periods the Rayleigh fit is exact at, s (see `rayleighFitModes`). */
   T1: number
-  Tn: number
+  T2: number
+  /** Mode numbers of those two periods. */
+  fitModes: [number, number]
   /** Roof node: the highest node (the first one found on a tie). */
   roofNodeId: NodeId
   /** Roof displacement u(t), m, every integration step. */
@@ -97,6 +99,36 @@ export function lthFrameResult(
 
 const EF_KEYS: (keyof MemberEndForces)[] = ["N1", "V1", "M1", "N2", "V2", "M2"]
 
+/**
+ * The two modes the Rayleigh damping is fitted at: mode 1 (the longest
+ * period) and the first mode at which the cumulative X participation reaches
+ * 90 %, the usual reference software / reference software practice. With C = αM + βK the damping is
+ * exactly ζ at both, a little below ζ between them and above it outside, so
+ * the modes that carry the response are damped close to the target.
+ *
+ * ⚠ NOT THE SHORTEST PERIOD. Without a diaphragm a plane frame keeps its
+ * axial column modes, at periods two orders below T₁; fitting there leaves the
+ * intermediate lateral modes at a fraction of ζ (2.4 % instead of 5 % at mode 2
+ * of the default portal).
+ *
+ * When mode 1 alone reaches 90 %, the second point is the next mode that
+ * moves any X mass, else simply mode 2. A single-mode system gets mass-
+ * proportional damping only (`second` undefined).
+ */
+export function rayleighFitModes(modal: ModalOk): {
+  first: ModalOk["modes"][number]
+  second?: ModalOk["modes"][number]
+} {
+  const modes = modal.modes
+  const first = modes[0]
+  if (modes.length < 2) return { first }
+  let second = modes.find((m) => m.cumX >= 0.9 - 1e-9)
+  if (!second || second === first) {
+    second = modes.slice(1).find((m) => m.ratioX > 1e-4) ?? modes[1]
+  }
+  return { first, second }
+}
+
 export function runLth(
   model: StructureModel,
   def: SeismicDefinition,
@@ -121,14 +153,15 @@ export function runLth(
   let pga = 0
   for (let i = 0; i < steps; i++) pga = Math.max(pga, Math.abs(ag[i]))
 
-  // Rayleigh fit at the longest and the shortest period.
-  const omegas = modal.modes.map((md) => md.omega)
-  const w1 = Math.min(...omegas)
-  const wn = Math.max(...omegas)
+  const fit = rayleighFitModes(modal)
+  const w1 = fit.first.omega
+  const w2 = fit.second?.omega
   const { alpha, beta: betaR } =
-    omegas.length > 1
-      ? rayleighCoefficients(set.dampingRatio, w1, wn)
+    w2 !== undefined
+      ? rayleighCoefficients(set.dampingRatio, w1, w2)
       : { alpha: 2 * set.dampingRatio * w1, beta: 0 }
+  // Stability is a question about the stiffest mode, not the fitted pair.
+  const wn = Math.max(...modal.modes.map((md) => md.omega))
 
   const gamma = set.gamma ?? 0.5
   const beta = set.beta ?? 0.25
@@ -222,7 +255,8 @@ export function runLth(
       alpha,
       betaR,
       T1: (2 * Math.PI) / w1,
-      Tn: (2 * Math.PI) / wn,
+      T2: w2 !== undefined ? (2 * Math.PI) / w2 : (2 * Math.PI) / w1,
+      fitModes: [fit.first.index, fit.second?.index ?? fit.first.index],
       roofNodeId,
       roofU,
       baseShear,
