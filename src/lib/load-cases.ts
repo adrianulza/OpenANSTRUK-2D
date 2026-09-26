@@ -164,10 +164,11 @@ export function DEFAULT_COMBINATIONS(): Record<LoadComboId, LoadCombination> {
  * the canvas, since the default view filter shows every load. Visible input,
  * silently absent from the results.
  *
- * That happens because the saved file carries `model` alone: load cases live in
- * App state and are not serialized. Within one session the case set survives a
- * file load, so the references resolve by luck; open the same file in a fresh
- * session and every custom case is gone.
+ * That happens with legacy files, which carried `model` alone (load cases were
+ * not serialized before document format v2, `document.ts`), and with a v2 file
+ * whose case list was damaged. Within one session the case set survives a
+ * legacy load, so the references resolve by luck; in a fresh session every
+ * custom case is gone.
  *
  * Two kinds of orphan, and they deserve different answers:
  *
@@ -239,6 +240,21 @@ let loadComboSeq = 0
 export function newLoadCaseId(): LoadCaseId {
   loadCaseSeq += 1
   return `lc${loadCaseSeq}`
+}
+
+/**
+ * Advance the id counters past every `lcN` / `cmbN` already present, so ids
+ * minted after a file load never collide with the loaded ones (the load-case
+ * twin of `seedIdCounter` in model.ts).
+ */
+export function seedLoadCaseCounters(cases: Record<LoadCaseId, unknown>, combos: Record<LoadComboId, unknown>): void {
+  const max = (ids: string[], prefix: string) =>
+    ids.reduce((m, id) => {
+      const n = id.startsWith(prefix) ? Number(id.slice(prefix.length)) : NaN
+      return Number.isInteger(n) && n > m ? n : m
+    }, 0)
+  loadCaseSeq = Math.max(loadCaseSeq, max(Object.keys(cases), "lc"))
+  loadComboSeq = Math.max(loadComboSeq, max(Object.keys(combos), "cmb"))
 }
 
 export function newLoadComboId(): LoadComboId {

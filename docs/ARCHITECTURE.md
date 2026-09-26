@@ -310,6 +310,10 @@ where `x` is distance from the i-end along the member.
 
 > **Note:** `solver.ts` numerical math (`transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. `localStiffness` gained an optional `GAs` parameter in v1.0.9 (Timoshenko, below) — with `GAs=0` it reduces algebraically to the original Euler matrix. Only `gaussSolve` (singular-pivot tracking + tightened tolerance, v1.0.6) and the `SolverResult` failure branch have otherwise changed. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
 
+### Document format v2 (`src/lib/document.ts`)
+
+`serializeDocument` writes `{ format: "openanstruk-2d", version: 2, model, loadCases, combinations, combinationSettings, groundMotions, design }`. `parseDocument` accepts that or a legacy bare `StructureModel`, and guards every field without throwing: load-case kinds and the two locked ids, seismic enums merged onto `defaultSeismicDefinition`, the mass source through `resolveMassSource`, records through `reconcileGroundMotions`, combination terms against the loaded cases, and design state deep-merged onto its defaults by JSON type. App then runs `reconcileLoadCases` for orphan loads and `seedLoadCaseCounters` so new `lcN` / `cmbN` ids never collide.
+
 ### File I/O — JSON Save / Load (v1.0.10)
 
 The File menu persists a model to disk and reads it back. JSON is the only format — it round-trips the full `StructureModel` (including nested section `derived` caches) losslessly; CSV was rejected because it cannot represent that nested data.

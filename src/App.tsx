@@ -69,7 +69,8 @@ import {
   splitMember,
   SCALE,
 } from "@/lib/geometry"
-import { newMemberId, resetIdCounter, seedIdCounter, isStructureModel } from "@/lib/model"
+import { newMemberId, resetIdCounter, seedIdCounter } from "@/lib/model"
+import { parseDocument, serializeDocument } from "@/lib/document"
 import { HIT_TOL_NODE, HIT_TOL_MEMBER, LOAD_PT_ARROW_LEN_PX, LOAD_DIST_MAX_ARROW_PX } from "@/lib/constants"
 import {
   type LoadCase,
@@ -82,6 +83,7 @@ import {
   newLoadCaseId,
   newLoadComboId,
   reconcileLoadCases,
+  seedLoadCaseCounters,
   isModalCase,
   MODAL_CASE_ID,
 } from "@/lib/load-cases"
@@ -768,10 +770,22 @@ export default function App() {
     setDesignSelectedSectionId(null)
   }, [resetHistory])
 
-  // Save the current model as a downloadable JSON file. JSON round-trips the
-  // full StructureModel losslessly (see CLAUDE.md File I/O brainstorm).
+  // Save the document (format v2, `lib/document.ts`): the model plus load
+  // cases (mass source and earthquake definitions included), combinations,
+  // imported ground motions and design settings.
   const handleSaveFile = useCallback(() => {
-    const json = JSON.stringify(model, null, 2)
+    const json = serializeDocument({
+      model,
+      loadCases,
+      combinations,
+      combinationSettings: {
+        enabled: combinationsEnabled,
+        mode: combinationMode,
+        preset: selectedCodePreset,
+      },
+      groundMotions,
+      design: { criteria: designCriteria, sectionInputs: sectionDesignInputs },
+    })
     const blob = new Blob([json], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const now = new Date()
@@ -784,7 +798,10 @@ export default function App() {
     a.download = `openanstruk-structure-${stamp}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }, [model])
+  }, [
+    model, loadCases, combinations, combinationsEnabled, combinationMode, selectedCodePreset,
+    groundMotions, designCriteria, sectionDesignInputs,
+  ])
 
   // Load a model from a user-selected JSON file. Untrusted contents are parsed
   // and shape-guarded before swapping. On success, the same reset pattern as
@@ -800,11 +817,52 @@ export default function App() {
       const reader = new FileReader()
       reader.onload = () => {
         try {
-          const parsed = JSON.parse(reader.result as string)
-          if (!isStructureModel(parsed)) {
-            window.alert("Could not load file: not a valid OpenAnstruk model.")
+          const doc = parseDocument(reader.result as string)
+          if (!doc.ok) {
+            window.alert(`Could not load file: ${doc.reason}`)
             return
           }
+          if (!doc.legacy) {
+            // v2 document: the file's own analysis and design setup.
+            const st = doc.state
+            const rec = reconcileLoadCases(st.model, st.loadCases)
+            seedIdCounter(rec.model)
+            seedLoadCaseCounters(rec.cases, st.combinations)
+            setModel(rec.model)
+            setLoadCases(rec.cases)
+            setCombinations(st.combinations)
+            setCombinationsEnabled(st.combinationSettings.enabled)
+            setCombinationMode(st.combinationSettings.mode)
+            setSelectedCodePreset(st.combinationSettings.preset)
+            setEnvelopeComboIds(Object.keys(st.combinations))
+            setSelectedCombinationId(null)
+            setGroundMotions(st.groundMotions)
+            setDesignCriteria(st.design.criteria)
+            setSectionDesignInputs(st.design.sectionInputs)
+            setDesignSelectedSectionId(null)
+            const firstLoadCase =
+              Object.values(rec.cases).find((c) => c.kind !== "Modal" && !c.locked)?.id ?? "dead"
+            setActiveLoadCaseId(rec.cases.dead ? "dead" : firstLoadCase)
+            setSelectedCaseId(rec.cases.dead ? "dead" : firstLoadCase)
+            setLthFrameIndex(null)
+            resetHistory()
+            setActiveSection(firstSectionId(rec.model))
+            setActiveTab("Model")
+            setActiveTool(null)
+            setPendingFrameStart(null)
+            setSelection(emptySelection())
+            setSelectedLoadId(null)
+            const notes = [...doc.warnings]
+            if (rec.recovered.length > 0) {
+              notes.push(
+                `${rec.recovered.length} load case(s) referenced by loads are not in the file: ` +
+                `${rec.recovered.join(", ")}. Each was recreated as a DISABLED "Recovered (…)" case.`,
+              )
+            }
+            if (notes.length > 0) window.alert(`Loaded, with notes:\n\n• ${notes.join("\n• ")}`)
+            return
+          }
+          const parsed = doc.model
           // The file carries `model` alone — load cases are App state and are
           // not serialized. A load whose case is missing is assembled by no
           // case at all, so it draws on the canvas and contributes nothing to
@@ -828,7 +886,7 @@ export default function App() {
             window.alert(
               `Loaded — but ${rec.recovered.length} load case(s) referenced by this ` +
               `file are not in it: ${rec.recovered.join(", ")}.\n\n` +
-              `Load cases are not saved in the file yet. Each has been recreated ` +
+              `This is an older file that did not save its load cases. Each has been recreated ` +
               `as a DISABLED case named "Recovered (…)" so its loads are not ` +
               `analysed under a guessed type. Open the Load tab, set each case's ` +
               `type, then enable it.`,

@@ -100,7 +100,7 @@ The locked **Vibration analysis** case sits at the top of the LOAD CASE table, a
 Set a case's Type to **Seismic** and the earthquake window opens. Its **E** chip reopens it at any time. The layout follows OpenANSTRUK-3D:
 
 - **Code**: SNI 1726:2019 (default) or ASCE 7-16.
-- **Analysis method**: **Static equivalent (ELF)** or **Response spectrum (MRS)**. The chip reads **EM** for a response-spectrum case.
+- **Analysis method**: **Static equivalent (ELF)** or **Response spectrum (MRS)**. The chip reads **EM** for a response-spectrum case and **ET** for a time-history case.
 - **Direction**: always global X, the frame's own plane.
 - **Period**: *Auto* (the dominant X mode of the vibration analysis, capped at Cu·Ta), *Empirical* (Ta = Ct·hₙˣ), or *User defined* (used as given, not capped).
 - **Earthquake parameters**: Ss, S1, TL and site class. **Building system**: risk category (sets Ie), building type (sets Ct and x), R, Ω0 and Cd.
@@ -256,13 +256,17 @@ Use the **NavBar file menu** to load pre-built templates or generate parametric 
 
 ## Saving and Loading
 
-**Save File** writes the model to JSON — nodes, members, supports, sections and loads, including every derived section property, so it round-trips without loss. **Load File** reads one back.
+**Save File** writes one JSON document (format `openanstruk-2d`, version 2) holding:
 
-> ⚠ **Load cases, load combinations and design settings are not in the file.** Only the model is.
+- the model: nodes, members, supports, sections (with every derived property) and loads;
+- the load cases, including the Vibration analysis mass source and every earthquake definition (static equivalent, response spectrum and time-history settings);
+- the load combinations and their settings (on/off, manual or code mode, the code preset);
+- imported ground-motion records;
+- the design settings: design criteria and each section's design inputs.
 
-That has a consequence worth knowing. Loads *are* saved, and each one records which load case it belongs to. Open a file in a fresh session and those cases are gone, so a load can end up pointing at a case that no longer exists — and a load belonging to no case contributes nothing to the analysis, while still being drawn on the canvas.
+**Load File** reads it back and restores all of it. Every part of the file is checked field by field: anything malformed is dropped with a note, and a file written by a newer version opens with whatever this version understands.
 
-The app now reconciles this on load rather than letting it pass silently:
+Files saved before version 2 hold the model only. They still open, and their load cases are reconciled against the ones in the current session:
 
 - A load with **no case at all** (a file from before load cases existed) is adopted into **Dead** and analyses immediately. There was only ever one case then, so that is what it meant.
 - A load naming a **case the file did not carry** gets that case recreated, **disabled**, named `Recovered (…)`, and an alert lists them. Its original type is unknowable, and guessing is worse than not analysing — calling a Live case Dead applies 1.2 where the code wants 1.6 and hands you a plausible wrong number. Open the Load tab, set each recovered case's type, then enable it.

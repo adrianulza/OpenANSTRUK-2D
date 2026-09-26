@@ -117,6 +117,8 @@ function CaseRow({
   const isModal = isModalCase(loadCase)
   const isSeismic = loadCase.kind === "Seismic"
   const isMrs = isSeismic && loadCase.seismic?.analysis === "mrs"
+  const isLth = isSeismic && loadCase.seismic?.analysis === "lth"
+  const methodName = isMrs ? "response spectrum" : isLth ? "time history" : "static equivalent"
   return (
     <div
       className="grid grid-cols-[20px_1fr_40px_90px_24px] md:grid-cols-[20px_1fr_44px_140px_28px] items-center gap-2 transition-opacity"
@@ -161,12 +163,12 @@ function CaseRow({
               isModal
                 ? "Vibration analysis settings — mass source and modes"
                 : loadCase.seismic
-                  ? `Define the ${loadCase.name} seismic load (${isMrs ? "response spectrum" : "static equivalent"})`
-                  : `Define the ${loadCase.name} seismic load (static equivalent or response spectrum)`
+                  ? `Define the ${loadCase.name} seismic load (${methodName})`
+                  : `Define the ${loadCase.name} seismic load (static equivalent, response spectrum or time history)`
             }
             className="inline-flex h-5 min-w-[24px] items-center justify-center gap-0.5 rounded bg-[#1a2f5e]/10 px-1 font-mono text-[10px] font-semibold text-[#1a2f5e] ring-1 ring-inset ring-[#1a2f5e] transition-colors hover:bg-[#1a2f5e]/20"
           >
-            {isMrs ? "EM" : caseShortLabel(loadCase.kind)}
+            {isMrs ? "EM" : isLth ? "ET" : caseShortLabel(loadCase.kind)}
             {isModal ? <Activity size={9} /> : <Waves size={9} />}
           </button>
         ) : (
