@@ -160,6 +160,13 @@ Displays the deformed shape. Use the scale slider to exaggerate deformations for
 
 ---
 
+
+The Deformation panel also carries three OpenANSTRUK-3D-style controls:
+
+- **Section: Wire / Solid.** Solid draws every member at its real in-plane section depth (flange and wall lines included), and the deformed shape as a band that stays normal to the deflected axis. The same switch is **Extruded Sections** in Settings, and it applies on every tab. Sections without a parametric shape use the depth of the equivalent rectangle, h = √(12·I/A).
+- **Colour: Off / Total / UX / UY.** Contours the deformed shape blue → cyan → green → yellow → red. Total maps |u| from 0 to the peak; UX and UY map the signed component from −peak to +peak. The legend under the buttons shows the range.
+- **Animate.** Play cycles the deformed shape from undeformed to full and back (2 s per cycle at 1×; 0.5× and 2× available). Mode shapes animate the same way. For a time-history case, Play runs the record in real time instead, drawn against the envelope's peak so the motion is true to scale; the card's slider and the panel stay in step.
+
 ## Design Tab
 
 The Design tab checks two materials, and a model containing both is designed in one run. Each member goes to the strategy for its own material, so you never have to separate them yourself.

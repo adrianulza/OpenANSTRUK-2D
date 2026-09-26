@@ -23,6 +23,8 @@ interface StatusBarProps {
   onAdaptiveViewChange: (v: boolean) => void
   shearDeformation: boolean
   onShearDeformationChange: (v: boolean) => void
+  extrudedSections: boolean
+  onExtrudedSectionsChange: (v: boolean) => void
   onUnitSettingsChange: (next: UnitSettings) => void
   onToggleDimensions: () => void
   showSectionLabels: boolean
@@ -58,6 +60,8 @@ export function StatusBar({
   onAdaptiveViewChange,
   shearDeformation,
   onShearDeformationChange,
+  extrudedSections,
+  onExtrudedSectionsChange,
   onUnitSettingsChange,
   onToggleDimensions,
   showSectionLabels,
@@ -149,6 +153,8 @@ export function StatusBar({
               onAdaptiveViewChange={onAdaptiveViewChange}
               shearDeformation={shearDeformation}
               onShearDeformationChange={onShearDeformationChange}
+              extrudedSections={extrudedSections}
+              onExtrudedSectionsChange={onExtrudedSectionsChange}
             />
           </PopoverContent>
         </Popover>

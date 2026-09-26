@@ -20,6 +20,19 @@ import {
 import { drawNodeIdTag, drawMemberIdTag } from "@/canvas/id-tags"
 import { drawSupportGlyph, hitTestSupportGlyph } from "@/canvas/support-glyph"
 import {
+  memberDisplacementAt,
+  peakDeformation,
+  sectionElevation,
+  type DeformationPeaks,
+  type DeformViewState,
+} from "@/lib/deformation"
+import { contourColor, magnitudeT, signedT } from "@/lib/contour-ramp"
+
+// Extruded members (OpenANSTRUK-3D's solid palette).
+const COLOR_SOLID = "#8494ae"
+const COLOR_SOLID_DIMMED = "#c3cdda"
+const COLOR_SOLID_EDGE = "#1a2f5e"
+import {
   computeBoxSelection,
   computeBoxSelectionWithNodes,
   computeBoxSelectionLoads,
@@ -175,10 +188,13 @@ interface StructuralCanvasProps {
   invertBMD?: boolean
   deformationScale?: number
   /**
-   * Draw the deformed shape against this peak instead of the result's own —
-   * so the frames of a time history share one scale and the motion is real.
+   * Draw and colour the deformed shape against these peaks instead of the
+   * result's own — so the frames of a time history share one scale and the
+   * motion is real.
    */
-  deformationPeak?: number
+  deformationPeaks?: DeformationPeaks
+  /** Deformation colour, extrusion and animation state. */
+  deformView?: DeformViewState
   showSectionLabels?: boolean
   showNodeIds?: boolean
   showMemberIds?: boolean
@@ -246,7 +262,8 @@ export function StructuralCanvas({
   invertSFD = false,
   invertBMD = false,
   deformationScale = 1,
-  deformationPeak,
+  deformationPeaks,
+  deformView,
   showSectionLabels = true,
   showNodeIds = false,
   showMemberIds = false,
@@ -282,6 +299,8 @@ export function StructuralCanvas({
   const momentLabel = `${forceUnit}·m`
   const distLoadLabel = `${forceUnit}/m`
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Deformation animation factor in [0, 1]; 1 = the full static shape.
+  const deformFactorRef = useRef(1)
   const containerRef = useRef<HTMLDivElement>(null)
   const [snapped, setSnapped] = useState<WorldPoint | null>(null)
   // Cursor position in container-local pixels. Used to position the hover
@@ -514,12 +533,57 @@ export function StructuralCanvas({
               : memberDisplayColor(r)
           }
         }
-        ctx.strokeStyle = strokeFor(kind, state, base)
-        ctx.lineWidth = (selected ? 5 : 4) * s
-        ctx.beginPath()
-        ctx.moveTo(pa.sx, pa.sy)
-        ctx.lineTo(pb.sx, pb.sy)
-        ctx.stroke()
+        const elev = deformView?.extrude && model.sections[m.section]
+          ? sectionElevation(model.sections[m.section])
+          : null
+        if (elev && elev.top > elev.bottom) {
+          // Extruded: the member at its real in-plane section depth, offset
+          // along local 2 from the centroid (OpenANSTRUK-3D's solid view).
+          const L = Math.hypot(b.x - a.x, b.y - a.y)
+          const nx = -(b.y - a.y) / L
+          const ny = (b.x - a.x) / L
+          const at = (p: { x: number; y: number }, off: number) =>
+            worldToScreen({ x: p.x + nx * off, y: p.y + ny * off }, rect)
+          const a0 = at(a, elev.bottom), a1 = at(a, elev.top)
+          const b0 = at(b, elev.bottom), b1 = at(b, elev.top)
+          const designTint = activeTab === "Design" && !!designResult
+          ctx.save()
+          ctx.beginPath()
+          ctx.moveTo(a0.sx, a0.sy)
+          ctx.lineTo(b0.sx, b0.sy)
+          ctx.lineTo(b1.sx, b1.sy)
+          ctx.lineTo(a1.sx, a1.sy)
+          ctx.closePath()
+          ctx.fillStyle =
+            state !== "normal"
+              ? strokeFor(kind, state, base)
+              : designTint
+                ? base
+                : activeTab === "Analyze"
+                  ? COLOR_SOLID_DIMMED
+                  : COLOR_SOLID
+          ctx.fill()
+          ctx.strokeStyle = COLOR_SOLID_EDGE
+          ctx.globalAlpha = activeTab === "Analyze" ? 0.35 : 0.55
+          ctx.lineWidth = 1 * s
+          ctx.stroke()
+          ctx.lineWidth = 0.6 * s
+          for (const off of elev.lines) {
+            const p0 = at(a, off), p1 = at(b, off)
+            ctx.beginPath()
+            ctx.moveTo(p0.sx, p0.sy)
+            ctx.lineTo(p1.sx, p1.sy)
+            ctx.stroke()
+          }
+          ctx.restore()
+        } else {
+          ctx.strokeStyle = strokeFor(kind, state, base)
+          ctx.lineWidth = (selected ? 5 : 4) * s
+          ctx.beginPath()
+          ctx.moveTo(pa.sx, pa.sy)
+          ctx.lineTo(pb.sx, pb.sy)
+          ctx.stroke()
+        }
 
         // Hinge indicators: small white circles inset from each end of truss members.
         // Offset inward along the member axis so they clear the node circles.
@@ -565,12 +629,14 @@ export function StructuralCanvas({
           ctx.fillStyle = COLOR_MEMBER_LABEL
           ctx.textAlign = "center"
           ctx.textBaseline = "bottom"
-          ctx.fillText(section.name, 0, -8 * s)
+          // Clear the extruded band, when there is one.
+          const bandPx = elev && elev.top > elev.bottom ? Math.max(elev.top, -elev.bottom) * SCALE : 0
+          ctx.fillText(section.name, 0, -8 * s - bandPx)
           ctx.restore()
         }
       }
     },
-    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview, designResult, designMaterialView]
+    [model, selection, activeTab, activeTool, hoveredMemberId, showSectionLabels, adaptiveView, zoom, boxPreview, designResult, designMaterialView, deformView?.extrude]
   )
 
   // Design tab: two pill labels per member — the verdict on the +local-2 side,
@@ -2191,13 +2257,15 @@ export function StructuralCanvas({
       // the cubic-Hermite spline captures mid-span sag — critical for simply-
       // supported beams where end nodes have ~0 transverse displacement.
       const TARGET_M = 1
+      const colorMode = deformView?.color ?? "off"
+      const extrude = !!deformView?.extrude
 
-      type RawPt = { xi: number; dispX: number; dispY: number; nA: { x: number; y: number }; dx: number; dy: number }
-      type MemberRaw = { memberId: string; pts: RawPt[] }
+      type Station = { bx: number; by: number; dispX: number; dispY: number }
+      type MemberRaw = { memberId: string; section: string; pts: Station[] }
 
-      // Pass 1: compute raw displacements along each member's spline (no k applied yet)
+      // Pass 1: raw displacements along each member's spline (no k applied yet)
       const memberRaws: MemberRaw[] = []
-      let peakDisp = 0
+      const own = { total: 0, ux: 0, uy: 0 }
       for (const member of Object.values(model.members)) {
         const nA = model.nodes[member.a]
         const nB = model.nodes[member.b]
@@ -2206,75 +2274,131 @@ export function StructuralCanvas({
         const dB = analysisResult.nodeDisplacements[member.b]
         if (!dA || !dB) continue
         const dx = nB.x - nA.x, dy = nB.y - nA.y
-        const L = Math.hypot(dx, dy)
-        if (L < 1e-9) continue
-        const c = dx / L, s = dy / L
-        const u1 =  c * dA.u + s * dA.v, v1 = -s * dA.u + c * dA.v, th1 = dA.theta
-        const u2 =  c * dB.u + s * dB.v, v2 = -s * dB.u + c * dB.v, th2 = dB.theta
-
-        const pts: RawPt[] = []
+        if (Math.hypot(dx, dy) < 1e-9) continue
+        const pts: Station[] = []
         for (let i = 0; i <= N_PTS; i++) {
           const xi = i / N_PTS
-          const uLoc = (1 - xi) * u1 + xi * u2
-          const H1 = 1 - 3*xi*xi + 2*xi*xi*xi
-          const H2 = L * xi * (1 - xi) * (1 - xi)
-          const H3 = 3*xi*xi - 2*xi*xi*xi
-          const H4 = L * xi*xi * (xi - 1)
-          const vLoc = H1*v1 + H2*th1 + H3*v2 + H4*th2
-          const dispX = c * uLoc - s * vLoc
-          const dispY = s * uLoc + c * vLoc
-          const mag = Math.hypot(dispX, dispY)
-          if (mag > peakDisp) peakDisp = mag
-          pts.push({ xi, dispX, dispY, nA, dx, dy })
+          const d = memberDisplacementAt(nA, nB, dA, dB, xi)
+          own.total = Math.max(own.total, Math.hypot(d.dx, d.dy))
+          own.ux = Math.max(own.ux, Math.abs(d.dx))
+          own.uy = Math.max(own.uy, Math.abs(d.dy))
+          pts.push({ bx: nA.x + xi * dx, by: nA.y + xi * dy, dispX: d.dx, dispY: d.dy })
         }
-        memberRaws.push({ memberId: member.id, pts })
+        memberRaws.push({ memberId: member.id, section: member.section, pts })
       }
 
-      const peakRef = deformationPeak ?? peakDisp
-      const k = peakRef > 1e-12 ? (TARGET_M / peakRef) * deformationScale : 0
+      // A fixed reference (the envelope of a time history) keeps every frame
+      // on one scale; otherwise the result is fitted to its own peak.
+      const peaks = deformationPeaks ?? own
+      const k0 = peaks.total > 1e-12 ? (TARGET_M / peaks.total) * deformationScale : 0
+      // Animation rides a factor in [0, 1]; paused, the full shape is drawn.
+      const k = k0 * deformFactorRef.current
 
-      type MemberSpline = {
-        memberId: string
-        pts: { sx: number; sy: number; dispX: number; dispY: number; mag: number }[]
+      // Colour: from the unamplified field against the model-wide peak, so it
+      // does not change while the shape animates (the 3D rule).
+      const colorOf = (p: Station): string => {
+        if (colorMode === "total") return contourColor(magnitudeT(Math.hypot(p.dispX, p.dispY), peaks.total))
+        if (colorMode === "ux") return contourColor(signedT(p.dispX, peaks.ux))
+        if (colorMode === "uy") return contourColor(signedT(p.dispY, peaks.uy))
+        return COLOR
       }
+      const toScreen = (x: number, y: number) => worldToScreen({ x, y }, rect)
 
-      // Pass 2: apply k and project to screen coords
-      const memberSplines: MemberSpline[] = memberRaws.map(({ memberId, pts }) => ({
-        memberId,
-        pts: pts.map(p => {
-          const wx = p.nA.x + p.xi * p.dx + k * p.dispX
-          const wy = p.nA.y + p.xi * p.dy + k * p.dispY
-          const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-          return { sx, sy, dispX: p.dispX, dispY: p.dispY, mag: Math.hypot(p.dispX, p.dispY) }
-        }),
-      }))
+      for (const { section, pts } of memberRaws) {
+        // Deformed stations in world coordinates.
+        const W = pts.map((p) => ({ x: p.bx + k * p.dispX, y: p.by + k * p.dispY }))
+        const colors = pts.map(colorOf)
+        const sec = model.sections[section]
+        const elev = extrude && sec ? sectionElevation(sec) : null
 
-      // Pass 2: draw splines
-      for (const { pts } of memberSplines) {
+        if (elev && elev.top - elev.bottom > 0) {
+          // Normal of the deformed axis at each station (plane sections stay
+          // normal to it — Euler–Bernoulli), from neighbouring stations.
+          const normals = W.map((_, i) => {
+            const p0 = W[Math.max(i - 1, 0)]
+            const p1 = W[Math.min(i + 1, W.length - 1)]
+            const tx = p1.x - p0.x, ty = p1.y - p0.y
+            const l = Math.hypot(tx, ty) || 1
+            return { x: -ty / l, y: tx / l }
+          })
+          const at = (i: number, off: number) =>
+            toScreen(W[i].x + normals[i].x * off, W[i].y + normals[i].y * off)
+          ctx.save()
+          for (let i = 0; i < W.length - 1; i++) {
+            const a0 = at(i, elev.bottom), a1 = at(i, elev.top)
+            const b0 = at(i + 1, elev.bottom), b1 = at(i + 1, elev.top)
+            ctx.beginPath()
+            ctx.moveTo(a0.sx, a0.sy)
+            ctx.lineTo(b0.sx, b0.sy)
+            ctx.lineTo(b1.sx, b1.sy)
+            ctx.lineTo(a1.sx, a1.sy)
+            ctx.closePath()
+            ctx.fillStyle = colorMode === "off" ? COLOR_SOLID : colors[i]
+            ctx.fill()
+            // A hairline of the same fill closes the anti-aliasing seams.
+            ctx.strokeStyle = ctx.fillStyle
+            ctx.lineWidth = 0.6 * s
+            ctx.stroke()
+          }
+          // Faces and inner lines.
+          ctx.strokeStyle = COLOR_SOLID_EDGE
+          ctx.globalAlpha = 0.7
+          for (const off of [elev.bottom, elev.top, ...elev.lines]) {
+            ctx.lineWidth = (off === elev.bottom || off === elev.top ? 1 : 0.6) * s
+            ctx.beginPath()
+            for (let i = 0; i < W.length; i++) {
+              const p = at(i, off)
+              if (i === 0) ctx.moveTo(p.sx, p.sy)
+              else ctx.lineTo(p.sx, p.sy)
+            }
+            ctx.stroke()
+          }
+          // End caps.
+          for (const i of [0, W.length - 1]) {
+            const p0 = at(i, elev.bottom), p1 = at(i, elev.top)
+            ctx.beginPath()
+            ctx.moveTo(p0.sx, p0.sy)
+            ctx.lineTo(p1.sx, p1.sy)
+            ctx.stroke()
+          }
+          ctx.restore()
+          continue
+        }
+
+        // Wire: one segment per station pair, coloured by its start station.
         ctx.save()
-        ctx.strokeStyle = COLOR
-        ctx.lineWidth = 2 * s
+        ctx.lineWidth = (colorMode === "off" ? 2 : 3) * s
+        ctx.lineCap = "round"
         ctx.setLineDash([])
-        ctx.beginPath()
-        pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.sx, p.sy) : ctx.lineTo(p.sx, p.sy))
-        ctx.stroke()
+        const P = W.map((w) => toScreen(w.x, w.y))
+        if (colorMode === "off") {
+          ctx.strokeStyle = COLOR
+          ctx.beginPath()
+          P.forEach((p, i) => (i === 0 ? ctx.moveTo(p.sx, p.sy) : ctx.lineTo(p.sx, p.sy)))
+          ctx.stroke()
+        } else {
+          for (let i = 0; i < P.length - 1; i++) {
+            ctx.strokeStyle = colors[i]
+            ctx.beginPath()
+            ctx.moveTo(P[i].sx, P[i].sy)
+            ctx.lineTo(P[i + 1].sx, P[i + 1].sy)
+            ctx.stroke()
+          }
+        }
         ctx.restore()
       }
 
-      // Pass 2b: roller supports drawn at their deformed node positions
+      // Roller supports drawn at their deformed node positions
       for (const sup of Object.values(model.supports)) {
         if (sup.type !== "roller") continue
         const node = model.nodes[sup.nodeId]
         const d    = analysisResult.nodeDisplacements[sup.nodeId]
         if (!node || !d) continue
-        const wx = node.x + k * d.u
-        const wy = node.y + k * d.v
-        const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
-        drawSupportGlyph(ctx, sx, sy, "roller", false, COLOR, s)
+        const { sx, sy } = toScreen(node.x + k * d.u, node.y + k * d.v)
+        drawSupportGlyph(ctx, sx, sy, "roller", false, colorMode === "off" ? COLOR : COLOR_SOLID_EDGE, s)
       }
-
     },
-    [model, analysisResult, deformationScale, deformationPeak, adaptiveView, zoom]
+    [model, analysisResult, deformationScale, deformationPeaks, deformView, adaptiveView, zoom]
   )
 
   const drawDeformHover = useCallback(
@@ -2290,37 +2414,8 @@ export function StructuralCanvas({
       const lineH = 13 * s
       // Match drawDeformedShape's auto-fit (peak along the member spline, not just nodes)
       const TARGET_M = 1
-      const N_PTS = 40
-      let peakDisp = 0
-      for (const member of Object.values(model.members)) {
-        const nA = model.nodes[member.a]
-        const nB = model.nodes[member.b]
-        if (!nA || !nB) continue
-        const dA = analysisResult.nodeDisplacements[member.a]
-        const dB = analysisResult.nodeDisplacements[member.b]
-        if (!dA || !dB) continue
-        const dx = nB.x - nA.x, dy = nB.y - nA.y
-        const L = Math.hypot(dx, dy)
-        if (L < 1e-9) continue
-        const c = dx / L, sn = dy / L
-        const u1 =  c * dA.u + sn * dA.v, v1 = -sn * dA.u + c * dA.v, th1 = dA.theta
-        const u2 =  c * dB.u + sn * dB.v, v2 = -sn * dB.u + c * dB.v, th2 = dB.theta
-        for (let i = 0; i <= N_PTS; i++) {
-          const xi = i / N_PTS
-          const uLoc = (1 - xi) * u1 + xi * u2
-          const H1 = 1 - 3*xi*xi + 2*xi*xi*xi
-          const H2 = L * xi * (1 - xi) * (1 - xi)
-          const H3 = 3*xi*xi - 2*xi*xi*xi
-          const H4 = L * xi*xi * (xi - 1)
-          const vLoc = H1*v1 + H2*th1 + H3*v2 + H4*th2
-          const dispX = c * uLoc - sn * vLoc
-          const dispY = sn * uLoc + c * vLoc
-          const mag = Math.hypot(dispX, dispY)
-          if (mag > peakDisp) peakDisp = mag
-        }
-      }
-      const peakRef = deformationPeak ?? peakDisp
-      const k = peakRef > 1e-12 ? (TARGET_M / peakRef) * deformationScale : 0
+      const peakRef = deformationPeaks?.total ?? peakDeformation(model, analysisResult)
+      const k = (peakRef > 1e-12 ? (TARGET_M / peakRef) * deformationScale : 0) * deformFactorRef.current
       const wx = node.x + k * d.u
       const wy = node.y + k * d.v
       const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
@@ -2367,7 +2462,7 @@ export function StructuralCanvas({
       ctx.fill()
       ctx.restore()
     },
-    [model, analysisResult, deformationScale, deformationPeak, deformHoverNodeId, adaptiveView, zoom]
+    [model, analysisResult, deformationScale, deformationPeaks, deformHoverNodeId, adaptiveView, zoom]
   )
 
   const drawReactions = useCallback(
@@ -2717,6 +2812,35 @@ export function StructuralCanvas({
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [draw])
+
+  // Deformation animation (OpenANSTRUK-3D's cycle): the factor runs
+  // 0 → 1 → 0 as ½ − ½·cos(2π·f·t) at f = 0.5 Hz × speed, so one cycle takes
+  // 2 s at 1×. Only the canvas redraws per frame; React is not re-rendered.
+  const drawRef = useRef(draw)
+  useEffect(() => { drawRef.current = draw }, [draw])
+  const animating =
+    activeTab === "Analyze" && activeTool === "DEFORMATION" && !!analysisResult && !!deformView?.playing
+  const animSpeed = deformView?.speed ?? 1
+  useEffect(() => {
+    if (!animating) {
+      deformFactorRef.current = 1
+      drawRef.current()
+      return
+    }
+    const CYCLE_HZ = 0.5
+    let raf = 0
+    let last = performance.now()
+    let acc = 0
+    const tick = (now: number) => {
+      acc += Math.min((now - last) / 1000, 0.1) * animSpeed
+      last = now
+      deformFactorRef.current = 0.5 - 0.5 * Math.cos(2 * Math.PI * CYCLE_HZ * acc)
+      drawRef.current()
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [animating, animSpeed])
 
 
   const toWorldCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {

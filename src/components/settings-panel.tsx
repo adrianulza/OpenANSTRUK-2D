@@ -2,7 +2,7 @@ import { useState, useEffect, startTransition } from "react"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Magnet, Crosshair, Ruler, Scaling, MoveVertical } from "lucide-react"
+import { Magnet, Crosshair, Ruler, Scaling, MoveVertical, Box } from "lucide-react"
 import {
   type UnitSettings,
   displayGridSpacing,
@@ -33,11 +33,13 @@ interface SettingsPanelProps {
   onAdaptiveViewChange: (v: boolean) => void
   shearDeformation: boolean
   onShearDeformationChange: (v: boolean) => void
+  extrudedSections: boolean
+  onExtrudedSectionsChange: (v: boolean) => void
 }
 
 const PRESET_SPACINGS_M = [0.25, 0.5, 1.0]
 
-export function SettingsPanel({ unitSettings, onUnitSettingsChange, showDimensions, onToggleDimensions, showSectionLabels, onToggleSectionLabels, showNodeIds, onToggleNodeIds, showMemberIds, onToggleMemberIds, showLocalAxes, onToggleLocalAxes, snapToGrid, onSnapToGridChange, snapToNode, onSnapToNodeChange, adaptiveView, onAdaptiveViewChange, shearDeformation, onShearDeformationChange }: SettingsPanelProps) {
+export function SettingsPanel({ unitSettings, onUnitSettingsChange, showDimensions, onToggleDimensions, showSectionLabels, onToggleSectionLabels, showNodeIds, onToggleNodeIds, showMemberIds, onToggleMemberIds, showLocalAxes, onToggleLocalAxes, snapToGrid, onSnapToGridChange, snapToNode, onSnapToNodeChange, adaptiveView, onAdaptiveViewChange, shearDeformation, onShearDeformationChange, extrudedSections, onExtrudedSectionsChange }: SettingsPanelProps) {
   const [spacingInput, setSpacingInput] = useState(
     displayGridSpacing(unitSettings.gridSpacing, unitSettings).toString()
   )
@@ -126,6 +128,7 @@ export function SettingsPanel({ unitSettings, onUnitSettingsChange, showDimensio
       {/* Toggle rows: label on left, checkbox on right */}
       {([
         { label: "Enable Shear Deformation", icon: <MoveVertical className="w-3.5 h-3.5 shrink-0" />, value: shearDeformation, onToggle: () => onShearDeformationChange(!shearDeformation) },
+        { label: "Extruded Sections", icon: <Box className="w-3.5 h-3.5 shrink-0" />, value: extrudedSections, onToggle: () => onExtrudedSectionsChange(!extrudedSections) },
         { label: "Adaptive View",   icon: <Scaling className="w-3.5 h-3.5 shrink-0" />, value: adaptiveView,   onToggle: () => onAdaptiveViewChange(!adaptiveView) },
         { label: "Show Dimensions",     icon: <Ruler className="w-3.5 h-3.5 shrink-0" />, value: showDimensions,    onToggle: onToggleDimensions },
         { label: "Show Section Labels", icon: <span className="w-3.5 h-3.5 shrink-0 inline-flex items-center justify-center text-[10px] font-mono font-bold leading-none">s</span>, value: showSectionLabels, onToggle: onToggleSectionLabels },

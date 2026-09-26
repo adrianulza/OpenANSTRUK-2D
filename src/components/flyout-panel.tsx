@@ -5,6 +5,7 @@ import type { TabType, ToolType } from "./tool-sidebar"
 import type { Section, SectionId, MultiSelection, StructureModel, SupportPick, MemberType, Load, LoadId } from "@/lib/model"
 import { MaterialFlyout } from "@/tabs/model/tools/material/material-tool"
 import type { AnalysisResult } from "@/lib/solver"
+import type { DeformationPeaks, DeformViewState } from "@/lib/deformation"
 import type { UnitSettings } from "@/lib/units"
 import { X } from "lucide-react"
 import { ModifyComponentToolContent } from "@/tabs/model/tools/select-tool"
@@ -111,7 +112,10 @@ interface FlyoutPanelProps {
   invertBMD?: boolean
   onInvertBMDChange?: (v: boolean) => void
   deformationScale?: number
-  deformationPeak?: number
+  deformationPeaks?: DeformationPeaks
+  deformView?: DeformViewState
+  onDeformViewChange?: (patch: Partial<DeformViewState>) => void
+  deformPlaybackLabel?: string
   onDeformationScaleChange?: (v: number) => void
   analysisResult?: AnalysisResult | null
   onToolSelect?: (tool: ToolType) => void
@@ -221,7 +225,10 @@ export function FlyoutPanel({
   invertBMD = false,
   onInvertBMDChange,
   deformationScale = 1,
-  deformationPeak,
+  deformationPeaks,
+  deformView,
+  onDeformViewChange,
+  deformPlaybackLabel,
   onDeformationScaleChange,
   analysisResult,
   onToolSelect,
@@ -353,7 +360,10 @@ export function FlyoutPanel({
           invertBMD={invertBMD}
           onInvertBMDChange={onInvertBMDChange}
           deformationScale={deformationScale}
-          deformationPeak={deformationPeak}
+          deformationPeaks={deformationPeaks}
+          deformView={deformView}
+          onDeformViewChange={onDeformViewChange}
+          deformPlaybackLabel={deformPlaybackLabel}
           onDeformationScaleChange={onDeformationScaleChange}
           analysisResult={analysisResult}
           moveNodeMode={moveNodeMode}
@@ -541,7 +551,10 @@ function FlyoutContent({
   invertBMD = false,
   onInvertBMDChange,
   deformationScale = 1,
-  deformationPeak,
+  deformationPeaks,
+  deformView,
+  onDeformViewChange,
+  deformPlaybackLabel,
   onDeformationScaleChange,
   analysisResult,
   moveNodeMode = "coordinates",
@@ -893,7 +906,7 @@ function FlyoutContent({
       case "MOMENT":
         return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "DEFORMATION":
-        return <DeformationToolContent peakOverride={deformationPeak} scale={deformationScale} onScaleChange={onDeformationScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DeformationToolContent peakOverride={deformationPeaks?.total} peaks={deformationPeaks} view={deformView} onViewChange={onDeformViewChange} playbackLabel={deformPlaybackLabel} scale={deformationScale} onScaleChange={onDeformationScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       default:
         return null
     }

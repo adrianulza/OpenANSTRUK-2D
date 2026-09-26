@@ -90,7 +90,11 @@ import { buildMassReport } from "@/lib/seismic/mass"
 import { runModalAnalysis } from "@/lib/seismic/modal"
 import type { GroundMotionRecord } from "@/lib/seismic/ground-motion"
 import { lthFrameResult } from "@/lib/seismic/lth"
-import { peakDeformation } from "@/lib/deformation"
+import {
+  DEFAULT_DEFORM_VIEW,
+  deformationPeaks,
+  type DeformViewState,
+} from "@/lib/deformation"
 import { defaultSeismicDefinition } from "@/lib/seismic/definition"
 import { ModalDialog } from "@/tabs/load/tools/modal/modal-dialog"
 import { SeismicDialog } from "@/tabs/load/tools/seismic/seismic-dialog"
@@ -182,6 +186,12 @@ export default function App() {
   const [groundMotions, setGroundMotions] = useState<GroundMotionRecord[]>([])
   // Time history on Analyze: null = peak envelope, else a kept frame index.
   const [lthFrameIndex, setLthFrameIndex] = useState<number | null>(null)
+  // Deformation view: contour colour, extruded sections, animation.
+  const [deformView, setDeformView] = useState<DeformViewState>(DEFAULT_DEFORM_VIEW)
+  const patchDeformView = useCallback(
+    (patch: Partial<DeformViewState>) => setDeformView((v) => ({ ...v, ...patch })),
+    [],
+  )
   // Load tab: which case to show on canvas (or "all loads"). Default "all".
   const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
 
@@ -529,10 +539,42 @@ export default function App() {
 
   // Frames of a time history are drawn against the envelope's peak, so the
   // animation shows the real rise and fall of the response.
-  const deformationPeak = useMemo(
-    () => (lthFrameResultMemo && selectedLth ? peakDeformation(model, selectedLth.result) : undefined),
-    [lthFrameResultMemo, selectedLth, model],
+  // A time history is drawn and coloured against its envelope's peaks, at the
+  // peak view and at every frame alike.
+  const deformPeaks = useMemo(
+    () => (selectedLth ? deformationPeaks(model, selectedLth.result) : undefined),
+    [selectedLth, model],
   )
+
+  // Time-history playback: Play steps through the kept frames in real time
+  // (× speed); anything else animates on the canvas itself.
+  const lthPlaying = deformView.playing && !!selectedLth
+  useEffect(() => {
+    if (!lthPlaying || !selectedLth) return
+    const frames = selectedLth.frames
+    const frameDt = frames.length > 1 ? frames[1].t - frames[0].t : selectedLth.dt
+    let t = frames[Math.min(lthFrameIndex ?? 0, frames.length - 1)].t
+    let last = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      t += Math.min((now - last) / 1000, 0.1) * deformView.speed
+      last = now
+      if (t > selectedLth.duration) t = 0
+      setLthFrameIndex(Math.min(Math.floor(t / frameDt), frames.length - 1))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+    // The playhead is seeded once per play; frame updates must not restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lthPlaying, selectedLth, deformView.speed])
+  const canvasDeformView = useMemo(
+    () => ({ ...deformView, playing: deformView.playing && !selectedLth }),
+    [deformView, selectedLth],
+  )
+  const lthPlaybackLabel = selectedLth
+    ? `t = ${lthFrameIndex === null ? "peak" : `${selectedLth.frames[Math.min(lthFrameIndex, selectedLth.frames.length - 1)].t.toFixed(2)} s`} / ${selectedLth.duration.toFixed(2)} s`
+    : undefined
 
   const displayedResult = useMemo(
     () => showingModal ? modeShapeResult : lthFrameResultMemo ?? pickDisplayedResult(
@@ -1520,6 +1562,8 @@ export default function App() {
                 name={loadCases[selectedCaseId]?.name ?? selectedCaseId}
                 run={seismicCtx.runs[selectedCaseId]}
                 frameIndex={lthFrameIndex}
+                playing={lthPlaying}
+                onPlayingChange={(playing) => patchDeformView({ playing })}
                 onFrameIndexChange={setLthFrameIndex}
               />
             )}
@@ -1583,7 +1627,10 @@ export default function App() {
             invertBMD={invertBMD}
             onInvertBMDChange={setInvertBMD}
             deformationScale={deformationScale}
-            deformationPeak={deformationPeak}
+            deformationPeaks={deformPeaks}
+            deformView={deformView}
+            onDeformViewChange={patchDeformView}
+            deformPlaybackLabel={lthPlaybackLabel}
             onDeformationScaleChange={setDeformationScale}
             analysisResult={displayedResult}
             moveNodeMode={moveNodeMode}
@@ -1653,7 +1700,8 @@ export default function App() {
             invertSFD={invertSFD}
             invertBMD={invertBMD}
             deformationScale={deformationScale}
-            deformationPeak={deformationPeak}
+            deformationPeaks={deformPeaks}
+            deformView={canvasDeformView}
             showSectionLabels={showSectionLabels}
             showNodeIds={showNodeIds}
             showMemberIds={showMemberIds}
@@ -1731,6 +1779,8 @@ export default function App() {
         onAdaptiveViewChange={setAdaptiveView}
         shearDeformation={shearDeformation}
         onShearDeformationChange={setShearDeformation}
+        extrudedSections={deformView.extrude}
+        onExtrudedSectionsChange={(extrude) => patchDeformView({ extrude })}
         onUnitSettingsChange={setUnitSettings}
         onToggleDimensions={() => setShowDimensions(!showDimensions)}
         showSectionLabels={showSectionLabels}

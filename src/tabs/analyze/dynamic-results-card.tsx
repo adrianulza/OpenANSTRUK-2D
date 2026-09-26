@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { ChevronDown, Activity, Waves, Play, Pause } from "lucide-react"
 import type { LthRun } from "@/lib/seismic/lth"
 import type { ModalSolution } from "@/lib/seismic/modal"
@@ -128,20 +128,19 @@ function LthSection({
   lth,
   frameIndex,
   onFrameIndexChange,
+  playing,
+  onPlayingChange,
 }: {
   lth: LthRun
   frameIndex: number | null
   onFrameIndexChange: (i: number | null) => void
+  /** Playback is App's (shared with the Deformation panel's Play). */
+  playing: boolean
+  onPlayingChange: (p: boolean) => void
 }) {
-  const [playing, setPlaying] = useState(false)
   const last = lth.frames.length - 1
-  useEffect(() => {
-    if (!playing) return
-    const id = window.setInterval(() => {
-      onFrameIndexChange(frameIndex === null || frameIndex >= last ? 0 : frameIndex + 1)
-    }, 50)
-    return () => window.clearInterval(id)
-  }, [playing, frameIndex, last, onFrameIndexChange])
+  const setPlaying = (p: boolean | ((cur: boolean) => boolean)) =>
+    onPlayingChange(typeof p === "function" ? p(playing) : p)
   const t = frameIndex === null ? null : lth.frames[Math.min(frameIndex, last)].t
   return (
     <div className="space-y-1.5">
@@ -198,11 +197,15 @@ export function SeismicResultsCard({
   run,
   frameIndex = null,
   onFrameIndexChange = () => {},
+  playing = false,
+  onPlayingChange = () => {},
 }: {
   name: string
   run: SeismicCaseRun
   frameIndex?: number | null
   onFrameIndexChange?: (i: number | null) => void
+  playing?: boolean
+  onPlayingChange?: (p: boolean) => void
 }) {
   const elf = run.mrs?.elf ?? run.elf
   const l = elf?.ladder
@@ -235,7 +238,13 @@ export function SeismicResultsCard({
           </>
         )}
         {run.lth && (
-          <LthSection lth={run.lth} frameIndex={frameIndex} onFrameIndexChange={onFrameIndexChange} />
+          <LthSection
+            lth={run.lth}
+            frameIndex={frameIndex}
+            onFrameIndexChange={onFrameIndexChange}
+            playing={playing}
+            onPlayingChange={onPlayingChange}
+          />
         )}
         {run.issues.map((s) => (
           <p key={s} className="max-w-[300px] pt-1 text-[10px] leading-snug text-amber-700">
