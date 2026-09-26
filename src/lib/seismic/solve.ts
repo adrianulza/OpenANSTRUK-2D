@@ -96,6 +96,10 @@ export function prepareSeismic(
         run.error = `Response spectrum needs the modal solution: ${modal && !modal.ok ? modal.reason : "unavailable"}`
         continue
       }
+      if (!modalOk.modes.some((m) => m.ratioX > 1e-10)) {
+        run.error = "Response spectrum: no mode moves any mass along X — every massed node is restrained horizontally."
+        continue
+      }
       run.mrs = runMrs(model, def, mass, modalOk)
       if (Object.values(model.loads).some((l) => l.loadCaseId === c.id)) {
         issues.push("Loads placed in this case are ignored — a response-spectrum case is generated entirely from the spectrum.")

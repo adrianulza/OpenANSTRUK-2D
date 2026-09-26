@@ -307,10 +307,15 @@ export function runMrs(
   const { system } = modal
   const factor = (GRAVITY * def.Ie) / def.R
 
+  // A mode with no X participation (Γx ≈ 0: the vertical beam modes of a
+  // symmetric frame) has zero response to an X earthquake. Dropping it before
+  // the O(n²) CQC changes nothing but the run time.
+  const used = modal.modes.filter((m) => m.ratioX > 1e-10)
+
   const results: AnalysisResult[] = []
   const modes: MrsModeRow[] = []
   const Vs: number[] = []
-  for (const m of modal.modes) {
+  for (const m of used) {
     const Sa = spectralAcceleration(m.T, { SDS, SD1, TL: def.TL })
     const A = Sa * factor
     const q = (m.gammaX * A) / (m.omega * m.omega)
@@ -323,7 +328,7 @@ export function runMrs(
   }
 
   const rho = cqcRho(
-    modal.modes.map((m) => m.omega),
+    used.map((m) => m.omega),
     Math.min(Math.max(def.damping, 0), 0.99),
   )
   const unscaledV = Math.abs(signedCqc(Vs, rho))
