@@ -10,7 +10,8 @@
  *  - **Accidental eccentricity / torsion (§12.8.4.2–3).** Both are plan
  *    quantities — a shift of the centre of mass across a floor — and a plane
  *    frame has no plan.
- *  - **Time history.** Out of scope for this release.
+ *  - **Time-history components in Y and Z.** The ground motion shakes along
+ *    global X only.
  *
  * ⚠ ABSENT MEANS "MANUAL". A Seismic case without a `seismic` block behaves as
  * it always has: its loads are the ones the user placed. Every document and
@@ -20,13 +21,61 @@
 import type { SeismicCode, SiteClass } from "./site"
 import type { PeriodMode, StructuralSystem } from "./period"
 import type { RiskCategory } from "./sdc"
+import type { GroundMotionUnit } from "./ground-motion"
 
-/** Static equivalent (ELF, §12.8) or modal response spectrum (MRS, §12.9.1). */
-export type SeismicAnalysisKind = "elf" | "mrs"
+/**
+ * Static equivalent (ELF, §12.8), modal response spectrum (MRS, §12.9.1), or
+ * linear time history (LTH): direct integration under a ground-motion record.
+ */
+export type SeismicAnalysisKind = "elf" | "mrs" | "lth"
 
 export const SEISMIC_ANALYSIS_LABELS: Record<SeismicAnalysisKind, string> = {
   elf: "Static equivalent (ELF)",
   mrs: "Response spectrum (MRS)",
+  lth: "Linear time history (LTH)",
+}
+
+/**
+ * The time-history block, read when `analysis` is "lth".
+ *
+ * ⚠ R, Cd, Ie AND THE DESIGN SPECTRUM ARE NOT APPLIED — the record × scale is
+ * the input, as in reference software's linear direct-integration case. One component,
+ * along global X.
+ */
+export interface SeismicLthSettings {
+  /** Resolved against the built-in records, then the imported ones. */
+  recordId: string
+  /** Pure multiplier on the record. */
+  scale: number
+  /** What the record's numbers ARE. Absent = the record's own unit. */
+  unit?: GroundMotionUnit
+  /** ζ for the Rayleigh fit at the longest and shortest periods. */
+  dampingRatio: number
+  /** Integration step, s. Absent = the record's own Δt. */
+  dt?: number
+  /** Newmark γ, default 1/2. */
+  gamma?: number
+  /** Newmark β, default 1/4 (average acceleration). */
+  beta?: number
+}
+
+/** The LTH block with defaults: El Centro NS at 1.0, ζ = 5 %. */
+export function lthSettingsOf(def: { lth?: SeismicLthSettings }): SeismicLthSettings {
+  const raw = def.lth
+  if (!raw) return { recordId: "elcentro-ns", scale: 1, dampingRatio: 0.05 }
+  const positive = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v) && v > 0
+  return {
+    recordId: raw.recordId || "elcentro-ns",
+    scale: Number.isFinite(raw.scale) ? raw.scale : 1,
+    ...(raw.unit === "g" || raw.unit === "m/s2" ? { unit: raw.unit } : {}),
+    // Zero damping is a value (an undamped run), not a missing field.
+    dampingRatio:
+      Number.isFinite(raw.dampingRatio) && raw.dampingRatio >= 0 ? raw.dampingRatio : 0.05,
+    ...(positive(raw.dt) ? { dt: raw.dt } : {}),
+    ...(positive(raw.gamma) ? { gamma: raw.gamma } : {}),
+    ...(positive(raw.beta) ? { beta: raw.beta } : {}),
+  }
 }
 
 export interface SeismicDefinition {
@@ -62,6 +111,8 @@ export interface SeismicDefinition {
    */
   FaOverride?: number
   FvOverride?: number
+  /** Time-history settings; absent reads as `lthSettingsOf`'s defaults. */
+  lth?: SeismicLthSettings
 }
 
 export function defaultSeismicDefinition(): SeismicDefinition {

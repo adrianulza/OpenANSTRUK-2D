@@ -68,6 +68,13 @@ export type ModalSolution =
       mass: number[]
       /** The assembled (load-free) system, reused by the response-spectrum pass. */
       system: AssembledSystem
+      /**
+       * The condensed problem, reused by the time-history pass: massed DOFs
+       * `mDofs`, massless `oDofs`, K̂ on the massed set (row-major, nm × nm)
+       * and the recovery map X = Koo⁻¹·Kom (row-major, no × nm), so that
+       * φo = −X·φm for any massed-DOF vector.
+       */
+      condensed: { mDofs: number[]; oDofs: number[]; K: Float64Array; X: Float64Array }
       issues: string[]
     }
   | { ok: false; reason: string }
@@ -453,6 +460,12 @@ export function runModalAnalysis(
     restrainedMassY,
     mass: M,
     system: sys,
+    condensed: {
+      mDofs,
+      oDofs,
+      K: Float64Array.from(Kc.flat()),
+      X: Float64Array.from(X.flat()),
+    },
     issues,
   }
 }

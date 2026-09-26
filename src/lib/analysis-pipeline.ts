@@ -66,6 +66,7 @@ export function solveCase(
   if (run) {
     if (run.error) return { ok: false, reason: run.error }
     if (run.mrs) return run.mrs.result
+    if (run.lth) return run.lth.result
     if (run.elf) {
       // ELF forces join whatever the user placed in the case, like the
       // Selfweight synthesis: scoped to the slice, never persisted.

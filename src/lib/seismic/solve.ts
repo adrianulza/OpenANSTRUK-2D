@@ -20,13 +20,16 @@ import { resolveMassSource, type MassSource } from "./mass-source"
 import { buildMassReport, type MassReport } from "./mass"
 import { dominantModeX, runModalAnalysis, type ModalSolution } from "./modal"
 import { runElf, runMrs, type ElfRun, type MrsRun } from "./run"
-import type { SeismicDefinition } from "./definition"
+import { lthSettingsOf, type SeismicDefinition } from "./definition"
+import { runLth, type LthRun } from "./lth"
+import { resolveRecord, type GroundMotionRecord } from "./ground-motion"
 
 export interface SeismicCaseRun {
   caseId: LoadCaseId
   def: SeismicDefinition
   elf?: ElfRun
   mrs?: MrsRun
+  lth?: LthRun
   /** Why the case could not be solved; the static pipeline reports it as a failure. */
   error?: string
   /** Warnings worth showing next to the result. */
@@ -55,6 +58,8 @@ export function prepareSeismic(
   model: StructureModel,
   loadCases: Record<LoadCaseId, LoadCase>,
   opts?: AnalyzeOptions,
+  /** Imported ground-motion records (the built-ins are always available). */
+  groundMotions: readonly GroundMotionRecord[] = [],
 ): SeismicContext {
   const massSource = massSourceOf(loadCases)
   const modalCase = loadCases[MODAL_CASE_ID]
@@ -63,7 +68,12 @@ export function prepareSeismic(
   )
   const needModal =
     !!modalCase?.enabled ||
-    seismicCases.some((c) => c.seismic!.analysis === "mrs" || c.seismic!.periodMode === "computed")
+    seismicCases.some(
+      (c) =>
+        c.seismic!.analysis === "mrs" ||
+        c.seismic!.analysis === "lth" ||
+        c.seismic!.periodMode === "computed",
+    )
 
   if (!needModal && seismicCases.length === 0) {
     return { massSource, mass: null, modal: null, runs: {} }
@@ -89,6 +99,29 @@ export function prepareSeismic(
 
     if (mass.W <= 0) {
       run.error = "Seismic weight W = 0 — no mass-source case carries load. Check the Vibration analysis mass source."
+      continue
+    }
+    if (def.analysis === "lth") {
+      if (!modalOk) {
+        run.error = `Time history needs the modal solution: ${modal && !modal.ok ? modal.reason : "unavailable"}`
+        continue
+      }
+      const recordId = lthSettingsOf(def).recordId
+      const record = resolveRecord(recordId, groundMotions)
+      if (!record) {
+        run.error = `Ground-motion record "${recordId}" is not available. Import it again or pick another record.`
+        continue
+      }
+      const out = runLth(model, def, modalOk, record)
+      if (!out.ok) {
+        run.error = out.reason
+        continue
+      }
+      run.lth = out.run
+      issues.push(...out.run.issues)
+      if (Object.values(model.loads).some((l) => l.loadCaseId === c.id)) {
+        issues.push("Loads placed in this case are ignored — a time-history case is driven by the ground motion alone.")
+      }
       continue
     }
     if (def.analysis === "mrs") {

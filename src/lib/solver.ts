@@ -443,13 +443,26 @@ export function recoverResults(
   // Member end forces. Uses the SAME stiffness used in assembly (condensed for
   // trusses, full for frames). Pairing K and FEF consistently is critical:
   // f_raw = K · d_loc, then f = f_raw − FEF.
+  // Plain loops in the same summation order as `matVec`, so the result is
+  // bit-identical while staying cheap enough to run once per time step.
   const memberEndForces: Record<string, MemberEndForces> = {}
+  const d_elem = new Array<number>(6)
+  const d_loc  = new Array<number>(6)
+  const f      = new Array<number>(6)
   for (const [id, ms] of Object.entries(sys.members)) {
     const { ia, ib, k, T, FEF, q1, q2, qx1, qx2 } = ms
-    const d_elem = [d[3*ia], d[3*ia+1], d[3*ia+2], d[3*ib], d[3*ib+1], d[3*ib+2]]
-    const d_loc  = matVec(T, d_elem)
-    const f_raw  = matVec(k, d_loc)
-    const f      = f_raw.map((v, i) => v - FEF[i])   // element end forces (local)
+    d_elem[0] = d[3*ia]; d_elem[1] = d[3*ia+1]; d_elem[2] = d[3*ia+2]
+    d_elem[3] = d[3*ib]; d_elem[4] = d[3*ib+1]; d_elem[5] = d[3*ib+2]
+    for (let i = 0; i < 6; i++) {
+      let acc = 0
+      for (let j = 0; j < 6; j++) acc = acc + T[i][j] * d_elem[j]
+      d_loc[i] = acc
+    }
+    for (let i = 0; i < 6; i++) {
+      let acc = 0
+      for (let j = 0; j < 6; j++) acc = acc + k[i][j] * d_loc[j]
+      f[i] = acc - FEF[i]   // element end forces (local)
+    }
 
     memberEndForces[id] = {
       N1: -f[0],   // tension positive
@@ -465,12 +478,17 @@ export function recoverResults(
 
   // Reactions: R = K_orig · d − F_orig at constrained DOFs
   const reactions: Record<string, { Rx: number; Ry: number; Mz: number }> = {}
+  const rowDot = (row: number[]) => {
+    let acc = 0
+    for (let j = 0; j < row.length; j++) acc = acc + row[j] * d[j]
+    return acc
+  }
   for (const sup of Object.values(model.supports)) {
     const i = nodeIdx[sup.nodeId]
     if (i === undefined) continue
-    const Rx  = K[3*i].reduce((s, k, j) => s + k * d[j], 0) - F[3*i]
-    const Ry  = K[3*i+1].reduce((s, k, j) => s + k * d[j], 0) - F[3*i+1]
-    const Mz  = K[3*i+2].reduce((s, k, j) => s + k * d[j], 0) - F[3*i+2]
+    const Rx  = rowDot(K[3*i]) - F[3*i]
+    const Ry  = rowDot(K[3*i+1]) - F[3*i+1]
+    const Mz  = rowDot(K[3*i+2]) - F[3*i+2]
     reactions[sup.nodeId] = { Rx, Ry, Mz }
   }
 
