@@ -276,72 +276,73 @@
        the same time. Doing one without the others half-launches it. */
     .chooser {
       display: flex;
-      gap: 16px;
+      gap: 12px;
       justify-content: center;
       flex-wrap: wrap;
-      max-width: 720px;
-      margin: 0 auto;
     }
     .choice {
-      flex: 1 1 300px;
-      max-width: 340px;
-      display: block;
-      padding: 24px 26px;
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 230px;
+      padding: 12px 18px;
       text-align: left;
       /* ⚠ Opaque enough to sit on the hero wireframe. At rgba(180,210,255,0.07)
-         these were translucent over a moving WebGL truss and the card text read
-         through the grid lines. A card on this hero needs its own ground. */
+         these were translucent over a moving WebGL truss and the text read
+         through the grid lines. A button on this hero needs its own ground. */
       background: rgba(14,45,96,0.82);
-      border: 1px solid rgba(180,210,255,0.28);
-      border-radius: 3px;
+      border: 1px solid rgba(180,210,255,0.35);
+      border-radius: 2px;
       text-decoration: none;
       color: inherit;
       transition: background 0.2s, border-color 0.2s, transform 0.2s;
     }
     a.choice:hover {
       background: rgba(180,210,255,0.15);
-      border-color: rgba(180,210,255,0.55);
+      border-color: rgba(180,210,255,0.6);
       transform: translateY(-2px);
+    }
+    .choice-dim {
+      font-family: var(--ff-mono);
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1;
+      color: var(--blueprint-text);
+      padding-right: 14px;
+      border-right: 1px solid rgba(180,210,255,0.25);
+    }
+    .choice-text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
     .choice-name {
       font-family: var(--ff-mono);
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--blueprint-text);
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-    .choice-state {
-      font-size: 9.5px;
-      letter-spacing: 0.14em;
-      color: rgba(180,210,255,0.45);
     }
     .choice-desc {
       font-family: var(--ff-sans);
-      font-size: 13.5px;
-      line-height: 1.6;
-      color: rgba(212,232,255,0.65);
-      text-transform: none;
-      letter-spacing: 0;
+      font-size: 12px;
+      color: rgba(212,232,255,0.6);
     }
-    /* ⚠ Dim the CONTENT, never the card. `opacity: 0.5` on the whole element
+    /* ⚠ Dim the CONTENT, never the button. `opacity: 0.5` on the whole element
        faded its background too, putting the text back on the wireframe and
        making the secondary option the least readable thing in the hero. The
-       card keeps its ground; only the ink steps back. */
+       button keeps its ground; only the ink steps back. */
     .choice-pending {
       border-style: dashed;
-      border-color: rgba(180,210,255,0.2);
+      border-color: rgba(180,210,255,0.22);
       cursor: default;
     }
-    .choice-pending .choice-name { color: rgba(212,232,255,0.62); }
-    .choice-pending .choice-desc { color: rgba(212,232,255,0.48); }
+    .choice-pending .choice-dim,
+    .choice-pending .choice-name { color: rgba(212,232,255,0.6); }
+    .choice-pending .choice-desc { color: rgba(212,232,255,0.45); }
     @media (max-width: 768px) {
-      .choice { flex: 1 1 100%; padding: 20px; }
+      .choice { flex: 1 1 100%; }
     }
 
     .section-inner {
@@ -979,25 +980,19 @@
     <div class="hero-cta">
       <div class="chooser">
         <a href="/app" class="choice">
-          <div class="choice-name">
-            OpenAnstruk-2D
-            <span class="choice-state">Open now</span>
-          </div>
-          <div class="choice-desc">
-            Frames, trusses and continuous beams in the plane. Model, load, analyse
-            and design in the browser. Free, no account, open source under MIT.
-          </div>
+          <span class="choice-dim">2D</span>
+          <span class="choice-text">
+            <span class="choice-name">Launch app →</span>
+            <span class="choice-desc">Free, in your browser</span>
+          </span>
         </a>
 
         <div class="choice choice-pending">
-          <div class="choice-name">
-            OpenAnstruk-3D
-            <span class="choice-state">In development</span>
-          </div>
-          <div class="choice-desc">
-            Six degrees of freedom per node, checked against reference software. Modelling,
-            loading and analysis are built; design is not. Not open to the public yet.
-          </div>
+          <span class="choice-dim">3D</span>
+          <span class="choice-text">
+            <span class="choice-name">Coming soon</span>
+            <span class="choice-desc">Space frames, in development</span>
+          </span>
         </div>
       </div>
     </div>
