@@ -2,6 +2,8 @@
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
+/* Screens with room for a settings window's inputs and results at once. */
+@custom-variant roomy (@media (min-width: 1024px) and (min-height: 720px));
 
 :root {
   --background: oklch(1 0 0);

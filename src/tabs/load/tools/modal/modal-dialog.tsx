@@ -9,11 +9,11 @@
  * portal card, draft-and-commit, Escape cancels.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 
-import { NumInline, ReadRow } from "@/components/dialog-fields"
+import { NumInline, Panel, ReadRow } from "@/components/dialog-fields"
 import { Checkbox } from "@/components/flyout-shared"
 import type { StructureModel } from "@/lib/model"
 import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
@@ -37,26 +37,6 @@ export interface ModalDialogProps {
 // Content-sized tracks: the name column stops at 112px instead of stretching
 // across the window, so the table reads as one tight block.
 const MASS_ROW = "grid grid-cols-[16px_minmax(0,112px)_64px_56px_52px] items-center gap-2"
-
-/** A titled, bordered box, so each setting visibly belongs to its group. */
-function Panel({
-  title,
-  className = "",
-  children,
-}: {
-  title: string
-  className?: string
-  children: ReactNode
-}) {
-  return (
-    <section className={`overflow-hidden rounded-lg border border-gray-200 ${className}`}>
-      <h3 className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#1a2f5e]">
-        {title}
-      </h3>
-      <div className="space-y-1.5 p-2.5">{children}</div>
-    </section>
-  )
-}
 
 export function ModalDialog({
   model,

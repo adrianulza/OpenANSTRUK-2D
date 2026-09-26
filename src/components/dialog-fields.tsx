@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react"
+import { Info } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Z_MENU } from "@/lib/z-layers"
@@ -157,6 +158,16 @@ export function NumInline({
   onChange: (v: number) => void
 }) {
   const [raw, setRaw] = useState(String(value))
+  // Re-sync when the value changes from outside (another method's panel
+  // reusing this field, a reset). Typing "1." keeps its raw text because
+  // parseFloat("1.") already equals the value.
+  const [seen, setSeen] = useState(value)
+  if (!Object.is(seen, value)) {
+    setSeen(value)
+    if (!(parseFloat(raw) === value || (Number.isNaN(value) && Number.isNaN(parseFloat(raw))))) {
+      setRaw(String(value))
+    }
+  }
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Input
@@ -334,5 +345,35 @@ export function ValueRow({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A titled, bordered box, so each setting visibly belongs to its group. `note`
+ * puts one sentence behind an info mark on the title instead of a caption.
+ */
+export function Panel({
+  title,
+  note,
+  className = "",
+  children,
+}: {
+  title: string
+  note?: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <section className={`overflow-hidden rounded-lg border border-gray-200 ${className}`}>
+      <h3 className="flex items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#1a2f5e]">
+        {title}
+        {note && (
+          <span title={note} aria-label={note} className="cursor-help text-gray-400 hover:text-[#2563eb]">
+            <Info size={10} strokeWidth={2.25} className="block" />
+          </span>
+        )}
+      </h3>
+      <div className="space-y-1.5 p-2">{children}</div>
+    </section>
   )
 }
