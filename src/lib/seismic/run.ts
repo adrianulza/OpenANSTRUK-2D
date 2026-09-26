@@ -5,6 +5,11 @@
  *
  * The earthquake always acts along global X — the frame's own plane.
  *
+ * ⚠ WHICH PROCEDURE IS THE ENGINEER'S DECISION. Table 12.6-1 (SNI Tabel 16)
+ * limits ELF by SDC, period and irregularity, but irregularity is a judgement
+ * the model cannot make, so the tool does not rule on it either way: both
+ * procedures always run as chosen, and nothing here says "not permitted".
+ *
  * ELF, per node rather than per storey:
  *   F_i = V · w_i·h_i^k / Σ w·h^k,   V = Cs·W
  * where h is measured from the base (the lowest support). When the nodes of a
@@ -29,7 +34,7 @@ import { siteCoefficients, siteSpecificNote } from "./site"
 import { designAccelerations, spectrumCorners, spectralAcceleration } from "./spectrum"
 import { approximatePeriod, cuFactor, governingPeriod, type PeriodSource } from "./period"
 import { kExponent, seismicCoefficient, type CsGoverning } from "./elf"
-import { elfPermitted, seismicDesignCategory, type SDC } from "./sdc"
+import { seismicDesignCategory, type SDC } from "./sdc"
 import { GRAVITY, type MassReport } from "./mass"
 import { dominantModeX, type ModalSolution } from "./modal"
 
@@ -63,8 +68,6 @@ export interface SeismicLadder {
   CsMax: number
   CsMin: number
   k: number
-  elfPermitted: boolean
-  elfReason: string
   siteNote: string | null
 }
 
@@ -124,7 +127,6 @@ export function seismicLadder(
     R: def.R,
     Ie: def.Ie,
   })
-  const permitted = elfPermitted({ sdc: sdc.sdc, T: per.T, Ts, irregular: !!def.irregular })
   return {
     Fa: site.Fa,
     Fv: site.Fv,
@@ -149,8 +151,6 @@ export function seismicLadder(
     CsMax: cs.CsEq2,
     CsMin: cs.CsMin,
     k: kExponent(per.T),
-    elfPermitted: permitted.permitted,
-    elfReason: permitted.reason,
     siteNote: siteSpecificNote(site, def.siteClass, def.code),
   }
 }

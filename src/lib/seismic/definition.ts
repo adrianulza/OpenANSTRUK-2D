@@ -51,11 +51,6 @@ export interface SeismicDefinition {
   /** Used when `periodMode` is "user". */
   userT?: number
   /**
-   * Whether the frame has an irregularity Table 12.6-1 cares about (a soft or
-   * weak storey, say). Not derivable from the model — a judgement, so asked.
-   */
-  irregular?: boolean
-  /**
    * Modal damping ratio ζ for the CQC correlation coefficients. MRS only.
    * At ζ = 0 CQC reduces exactly to SRSS.
    */

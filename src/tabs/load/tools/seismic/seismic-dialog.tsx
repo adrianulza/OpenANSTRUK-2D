@@ -260,16 +260,6 @@ export function SeismicDialog({
                 }
               />
             )}
-
-            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-gray-600">
-              <input
-                type="checkbox"
-                checked={!!draft.irregular}
-                onChange={(e) => edit({ irregular: e.target.checked })}
-                className="h-3 w-3 accent-[#1a2f5e]"
-              />
-              Irregular structure (Table 12.6-1)
-            </label>
           </div>
 
           <div className="w-full min-w-0 shrink-0 space-y-3 sm:w-[252px]">
@@ -460,11 +450,6 @@ export function SeismicDialog({
               </div>
 
               <div className="space-y-1">
-                {!ladder.elfPermitted && !isMrs && (
-                  <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
-                    {ladder.elfReason}
-                  </p>
-                )}
                 {ladder.siteNote && (
                   <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
                     {ladder.siteNote}

@@ -118,7 +118,6 @@ export function prepareSeismic(
     run.elf = runElf(model, def, mass, computedT)
     const ladder = run.elf.ladder
     if (ladder.siteNote) issues.push(ladder.siteNote)
-    if (!ladder.elfPermitted) issues.push(ladder.elfReason)
   }
 
   return { massSource, mass, modal, runs }
