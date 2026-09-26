@@ -6,11 +6,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type {
-  LoadCase,
-  LoadCaseId,
-  LoadCombination,
-  LoadComboId,
+import {
+  isModalCase,
+  type LoadCase,
+  type LoadCaseId,
+  type LoadCombination,
+  type LoadComboId,
 } from "@/lib/load-cases"
 
 export type AnalyzeViewMode = "case" | "combination" | "envelope"
@@ -27,6 +28,10 @@ interface AnalyzeViewSelectorProps {
   onSelectedCombinationIdChange: (id: LoadComboId | null) => void
   envelopeComboIds: LoadComboId[]
   onEnvelopeComboIdsChange: (ids: LoadComboId[]) => void
+  /** Modes of the vibration analysis, offered when the Modal case is selected. */
+  modes?: { index: number; T: number }[]
+  selectedModeIndex?: number
+  onSelectedModeIndexChange?: (i: number) => void
 }
 
 export function AnalyzeViewSelector({
@@ -41,6 +46,9 @@ export function AnalyzeViewSelector({
   onSelectedCombinationIdChange,
   envelopeComboIds,
   onEnvelopeComboIdsChange,
+  modes = [],
+  selectedModeIndex = 1,
+  onSelectedModeIndexChange,
 }: AnalyzeViewSelectorProps) {
   const cases = Object.values(loadCases)
   const combos = Object.values(combinations)
@@ -92,6 +100,24 @@ export function AnalyzeViewSelector({
             {visibleCases.map((c) => (
               <SelectItem key={c.id} value={c.id} className="text-xs">
                 {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {analyzeViewMode === "case" && isModalCase(loadCases[selectedCaseId]) && modes.length > 0 && (
+        <Select
+          value={String(selectedModeIndex)}
+          onValueChange={(v) => onSelectedModeIndexChange?.(Number(v))}
+        >
+          <SelectTrigger className="h-7 text-xs min-w-[80px] w-auto font-mono" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-[50vh]">
+            {modes.map((m) => (
+              <SelectItem key={m.index} value={String(m.index)} className="text-xs font-mono">
+                Mode {m.index} — T = {m.T.toFixed(3)} s
               </SelectItem>
             ))}
           </SelectContent>

@@ -5,7 +5,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
+import { isLoadCarryingCase, type LoadCase, type LoadCaseId } from "@/lib/load-cases"
 import type { Load } from "@/lib/model"
 
 export const LOAD_VIEW_ALL = "__all__" as const
@@ -20,7 +20,7 @@ interface LoadViewSelectorProps {
 }
 
 export function LoadViewSelector({ loadCases, loads, value, onChange, disabled }: LoadViewSelectorProps) {
-  const visibleCases = Object.values(loadCases).filter((c) => c.enabled)
+  const visibleCases = Object.values(loadCases).filter((c) => c.enabled && isLoadCarryingCase(c))
 
   // Count loads per case (one linear pass — cheap even for hundreds of loads).
   // Empty cases stay selectable so users can verify "yes, this case has nothing

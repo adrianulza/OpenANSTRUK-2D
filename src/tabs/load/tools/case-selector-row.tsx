@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
-import type { LoadCase, LoadCaseId } from "@/lib/load-cases"
+import { isLoadCarryingCase, type LoadCase, type LoadCaseId } from "@/lib/load-cases"
 
 /**
  * Compact "Case" dropdown shown above each load tool's primary content.
@@ -32,7 +32,9 @@ export function CaseSelectorRow({
    *  body-force case. */
   excludeLocked?: boolean
 }) {
-  const cases = Object.values(loadCases).filter((c) => !excludeLocked || !c.locked)
+  const cases = Object.values(loadCases).filter(
+    (c) => isLoadCarryingCase(c) && (!excludeLocked || !c.locked),
+  )
   return (
     <div
       className="space-y-1.5 pb-3 border-b"

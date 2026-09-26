@@ -21,6 +21,7 @@ import {
   type CodePreset,
   CODE_PRESETS,
   formatComboExpression,
+  isLoadCarryingCase,
 } from "@/lib/load-cases"
 import {
   requiredKindsForPreset,
@@ -460,7 +461,8 @@ function ComboEditor({
   cases: Record<LoadCaseId, LoadCase>
   onPatch: (patch: Partial<LoadCombination>) => void
 }) {
-  const caseList = Object.values(cases)
+  // The Modal case has no static result to combine.
+  const caseList = Object.values(cases).filter(isLoadCarryingCase)
   // Default to "dead" if present; otherwise prefer any non-locked case; else first.
   const defaultCaseId =
     cases["dead"]?.id ??

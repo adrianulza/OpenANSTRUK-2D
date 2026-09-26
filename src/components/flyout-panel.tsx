@@ -123,6 +123,8 @@ interface FlyoutPanelProps {
   onAddLoadCase?: () => void
   onDeleteLoadCase?: (id: LoadCaseId) => void
   onPatchLoadCase?: (id: LoadCaseId, patch: Partial<LoadCase>) => void
+  onEditModal?: () => void
+  onEditSeismic?: (id: LoadCaseId) => void
   combinations?: Record<LoadComboId, LoadCombination>
   combinationsEnabled?: boolean
   onCombinationsEnabledChange?: (v: boolean) => void
@@ -236,6 +238,8 @@ export function FlyoutPanel({
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
+  onEditModal,
+  onEditSeismic,
   combinations,
   combinationsEnabled,
   onCombinationsEnabledChange,
@@ -364,6 +368,8 @@ export function FlyoutPanel({
           onAddLoadCase={onAddLoadCase}
           onDeleteLoadCase={onDeleteLoadCase}
           onPatchLoadCase={onPatchLoadCase}
+          onEditModal={onEditModal}
+          onEditSeismic={onEditSeismic}
           combinations={combinations}
           combinationsEnabled={combinationsEnabled}
           onCombinationsEnabledChange={onCombinationsEnabledChange}
@@ -548,6 +554,8 @@ function FlyoutContent({
   onAddLoadCase,
   onDeleteLoadCase,
   onPatchLoadCase,
+  onEditModal,
+  onEditSeismic,
   combinations,
   combinationsEnabled,
   onCombinationsEnabledChange,
@@ -770,6 +778,8 @@ function FlyoutContent({
             onAddLoadCase={onAddLoadCase ?? (() => {})}
             onDeleteLoadCase={onDeleteLoadCase ?? (() => {})}
             onPatchLoadCase={onPatchLoadCase ?? (() => {})}
+            onEditModal={onEditModal ?? (() => {})}
+            onEditSeismic={onEditSeismic ?? (() => {})}
             zeroGammaSectionIds={zeroGammaSectionIds ?? []}
           />
         )

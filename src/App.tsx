@@ -82,7 +82,16 @@ import {
   newLoadCaseId,
   newLoadComboId,
   reconcileLoadCases,
+  isModalCase,
+  MODAL_CASE_ID,
 } from "@/lib/load-cases"
+import { massSourceOf, prepareSeismic, needsSeismicContext } from "@/lib/seismic/solve"
+import { buildMassReport } from "@/lib/seismic/mass"
+import { runModalAnalysis } from "@/lib/seismic/modal"
+import { defaultSeismicDefinition } from "@/lib/seismic/definition"
+import { ModalDialog } from "@/tabs/load/tools/modal/modal-dialog"
+import { SeismicDialog } from "@/tabs/load/tools/seismic/seismic-dialog"
+import { ModalResultsCard, SeismicResultsCard } from "@/tabs/analyze/dynamic-results-card"
 import { generateCodeCombinations, requiredKindsForPreset } from "@/lib/combinations-presets"
 import type { DesignMaterial, DesignReport, DesignRunResult } from "@/lib/design/core/types"
 import { availableDesignReports } from "@/lib/design/core/types"
@@ -162,6 +171,10 @@ export default function App() {
   const [analyzeViewMode, setAnalyzeViewMode] = useState<AnalyzeViewMode>("case")
   const [selectedCaseId, setSelectedCaseId] = useState<LoadCaseId>("dead")
   const [selectedCombinationId, setSelectedCombinationId] = useState<LoadComboId | null>(null)
+  // Dynamic cases: which settings window is open, and which mode is drawn.
+  const [modalDialogOpen, setModalDialogOpen] = useState(false)
+  const [seismicCaseId, setSeismicCaseId] = useState<LoadCaseId | null>(null)
+  const [selectedModeIndex, setSelectedModeIndex] = useState(1)
   // Load tab: which case to show on canvas (or "all loads"). Default "all".
   const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
 
@@ -299,9 +312,11 @@ export default function App() {
         if (!existing) return prev
         // Locked cases can only patch `enabled`. For Selfweight, `enabled` gates
         // the synthetic γ·A body force computed in solveCase("selfweight").
+        // The Modal case may also take its mass source.
         if (existing.locked) {
           const safePatch: Partial<LoadCase> = {}
           if ("enabled" in patch) safePatch.enabled = patch.enabled
+          if ("modal" in patch && isModalCase(existing)) safePatch.modal = patch.modal
           return { ...prev, [id]: { ...existing, ...safePatch } }
         }
         return { ...prev, [id]: { ...existing, ...patch } }
@@ -431,12 +446,53 @@ export default function App() {
   // Design shares this memo (v1.2.0): it needs exactly the same solve, so
   // gating both tabs here means switching Analyze ↔ Design reuses the
   // factorization instead of repeating it.
-  const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
-    () => activeTab === "Analyze" || activeTab === "Design"
-      ? solveAllCases(model, loadCases, { shearDeformation })
-      : {},
+  // The dynamic side (mass → modes → earthquake cases), under the same lazy
+  // gate. Null when no case needs it, so a static-only model pays nothing.
+  const seismicCtx = useMemo(
+    () => (activeTab === "Analyze" || activeTab === "Design") && needsSeismicContext(loadCases)
+      ? prepareSeismic(model, loadCases, { shearDeformation })
+      : null,
     [activeTab, model, loadCases, shearDeformation],
   )
+
+  const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
+    () => activeTab === "Analyze" || activeTab === "Design"
+      ? solveAllCases(model, loadCases, { shearDeformation }, seismicCtx)
+      : {},
+    [activeTab, model, loadCases, shearDeformation, seismicCtx],
+  )
+
+  // The settings windows need the mass and the modes on any tab (the Load
+  // tab is where they open). A plane frame's eigen solve is milliseconds.
+  const dialogDynamics = useMemo(() => {
+    if (!modalDialogOpen && seismicCaseId === null) return null
+    const mass = buildMassReport(model, loadCases, massSourceOf(loadCases))
+    return { mass, modal: runModalAnalysis(model, mass, { shearDeformation }) }
+  }, [modalDialogOpen, seismicCaseId, model, loadCases, shearDeformation])
+
+  const modalSolution = seismicCtx?.modal ?? null
+  const showingModal = analyzeViewMode === "case" && isModalCase(loadCases[selectedCaseId])
+
+  // A mode shape drawn through the ordinary deformation path: φ as the nodal
+  // displacements (the canvas auto-scales to its peak). Forces and reactions
+  // are zero — a mode shape has an arbitrary amplitude, so any kN it printed
+  // would be a number with no meaning.
+  const modeShapeResult = useMemo<AnalysisResult | null>(() => {
+    if (!showingModal || !modalSolution?.ok) return null
+    const mode = modalSolution.modes.find((m) => m.index === selectedModeIndex) ?? modalSolution.modes[0]
+    const { nodeList } = modalSolution.system
+    const nodeDisplacements: AnalysisResult["nodeDisplacements"] = {}
+    nodeList.forEach((id, i) => {
+      nodeDisplacements[id] = { u: mode.phi[3 * i], v: mode.phi[3 * i + 1], theta: mode.phi[3 * i + 2] }
+    })
+    const memberEndForces: AnalysisResult["memberEndForces"] = {}
+    for (const id of Object.keys(model.members)) {
+      memberEndForces[id] = { N1: 0, V1: 0, M1: 0, N2: 0, V2: 0, M2: 0, q1: 0, q2: 0, qx1: 0, qx2: 0 }
+    }
+    const reactions: AnalysisResult["reactions"] = {}
+    for (const id of Object.keys(model.supports)) reactions[id] = { Rx: 0, Ry: 0, Mz: 0 }
+    return { ok: true, nodeDisplacements, memberEndForces, reactions }
+  }, [showingModal, modalSolution, selectedModeIndex, model.members, model.supports])
 
   // Analyze-only: the Design tab shares `caseResults` above but combines the
   // cases itself, per enabled combination, inside the design run. Without this
@@ -457,7 +513,7 @@ export default function App() {
   )
 
   const displayedResult = useMemo(
-    () => pickDisplayedResult(
+    () => showingModal ? modeShapeResult : pickDisplayedResult(
       analyzeViewMode,
       caseResults,
       comboResults,
@@ -465,7 +521,7 @@ export default function App() {
       selectedCaseId,
       selectedCombinationId,
     ),
-    [analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
+    [showingModal, modeShapeResult, analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
   )
 
   // ── Design run (automatic) ─────────────────────────────────────────────────
@@ -1410,13 +1466,38 @@ export default function App() {
               analyzeViewMode={analyzeViewMode}
               onAnalyzeViewModeChange={setAnalyzeViewMode}
               selectedCaseId={selectedCaseId}
-              onSelectedCaseIdChange={setSelectedCaseId}
+              onSelectedCaseIdChange={(id) => {
+                setSelectedCaseId(id)
+                // A mode is a shape: open the deformation view with it.
+                if (isModalCase(loadCases[id])) handleToolSelect("DEFORMATION")
+              }}
               selectedCombinationId={selectedCombinationId}
               onSelectedCombinationIdChange={setSelectedCombinationId}
               envelopeComboIds={envelopeComboIds}
               onEnvelopeComboIdsChange={setEnvelopeComboIds}
+              modes={modalSolution?.ok ? modalSolution.modes : []}
+              selectedModeIndex={selectedModeIndex}
+              onSelectedModeIndexChange={setSelectedModeIndex}
             />
           )}
+          {activeTab === "Analyze" && showingModal && (
+            <ModalResultsCard
+              modal={modalSolution}
+              selectedModeIndex={selectedModeIndex}
+              onSelectMode={(i) => {
+                setSelectedModeIndex(i)
+                if (activeTool !== "DEFORMATION") handleToolSelect("DEFORMATION")
+              }}
+            />
+          )}
+          {activeTab === "Analyze" &&
+            analyzeViewMode === "case" &&
+            seismicCtx?.runs[selectedCaseId] && (
+              <SeismicResultsCard
+                name={loadCases[selectedCaseId]?.name ?? selectedCaseId}
+                run={seismicCtx.runs[selectedCaseId]}
+              />
+            )}
           <FlyoutPanel
             activeTab={activeTab}
             activeTool={activeTool}
@@ -1493,6 +1574,8 @@ export default function App() {
             onAddLoadCase={handleAddLoadCase}
             onDeleteLoadCase={handleDeleteLoadCase}
             onPatchLoadCase={handlePatchLoadCase}
+            onEditModal={() => setModalDialogOpen(true)}
+            onEditSeismic={setSeismicCaseId}
             combinations={combinations}
             combinationsEnabled={combinationsEnabled}
             onCombinationsEnabledChange={setCombinationsEnabled}
@@ -1632,6 +1715,35 @@ export default function App() {
         showLocalAxes={showLocalAxes}
         onToggleLocalAxes={() => setShowLocalAxes(!showLocalAxes)}
       />
+
+      {modalDialogOpen && (
+        <ModalDialog
+          model={model}
+          loadCases={loadCases}
+          value={massSourceOf(loadCases)}
+          modal={dialogDynamics?.modal ?? null}
+          onCommit={(modal) => {
+            handlePatchLoadCase(MODAL_CASE_ID, { modal })
+            setModalDialogOpen(false)
+          }}
+          onCancel={() => setModalDialogOpen(false)}
+        />
+      )}
+      {seismicCaseId !== null && loadCases[seismicCaseId] && (
+        <SeismicDialog
+          key={seismicCaseId}
+          model={model}
+          caseName={loadCases[seismicCaseId].name}
+          value={loadCases[seismicCaseId].seismic ?? defaultSeismicDefinition()}
+          mass={dialogDynamics?.mass ?? null}
+          modal={dialogDynamics?.modal ?? null}
+          onCommit={(seismic) => {
+            handlePatchLoadCase(seismicCaseId, { seismic })
+            setSeismicCaseId(null)
+          }}
+          onCancel={() => setSeismicCaseId(null)}
+        />
+      )}
 
       <AnalysisIssuesDialog
         open={issuesDialogOpen}
