@@ -123,75 +123,7 @@ function Line({ k, v }: { k: ReactNode; v: string }) {
 
 const METHOD_TITLE = { elf: "static equivalent", mrs: "response spectrum", lth: "time history" }
 
-/**
- * A response history as a small SVG trace, with the instant being drawn on
- * the canvas marked. Min/max per pixel column, so no peak can alias away.
- */
-function HistoryTrace({
-  label,
-  unit,
-  values,
-  dt,
-  cursorT,
-  scale = 1,
-}: {
-  label: string
-  unit: string
-  values: Float64Array
-  dt: number
-  cursorT: number | null
-  scale?: number
-}) {
-  const W = 260
-  const H = 54
-  const cols = W
-  const n = values.length
-  const per = Math.max(1, Math.ceil(n / cols))
-  let amp = 0
-  for (let i = 0; i < n; i++) amp = Math.max(amp, Math.abs(values[i] * scale))
-  const y = (v: number) => H / 2 - (amp > 0 ? (v * scale) / amp : 0) * (H / 2 - 2)
-  const x = (i: number) => (i / Math.max(n - 1, 1)) * W
-  let d = ""
-  const lows: string[] = []
-  for (let s = 0; s < n; s += per) {
-    let lo = Infinity
-    let hi = -Infinity
-    for (let i = s; i < Math.min(n, s + per); i++) {
-      lo = Math.min(lo, values[i])
-      hi = Math.max(hi, values[i])
-    }
-    d += `${d ? "L" : "M"}${x(s).toFixed(1)},${y(hi).toFixed(1)}`
-    lows.unshift(`L${x(s).toFixed(1)},${y(lo).toFixed(1)}`)
-  }
-  d += lows.join("") + "Z"
-  const duration = (n - 1) * dt
-  return (
-    <div>
-      <div className="flex items-baseline justify-between text-[10px] text-gray-500">
-        <span>{label}</span>
-        <span className="font-mono">
-          ±{amp.toPrecision(3)} {unit}
-        </span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-[54px] w-[260px] max-w-full" preserveAspectRatio="none">
-        <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="#e2e8f0" strokeWidth={1} />
-        <path d={d} fill="#1a2f5e" fillOpacity={0.85} stroke="#1a2f5e" strokeWidth={0.5} />
-        {cursorT !== null && duration > 0 && (
-          <line
-            x1={(cursorT / duration) * W}
-            y1={0}
-            x2={(cursorT / duration) * W}
-            y2={H}
-            stroke="#2563eb"
-            strokeWidth={1.5}
-          />
-        )}
-      </svg>
-    </div>
-  )
-}
-
-/** Peak summary, the two histories and a scrubber over the kept frames. */
+/** Peak summary and a scrubber over the kept frames. */
 function LthSection({
   lth,
   frameIndex,
@@ -218,8 +150,6 @@ function LthSection({
       <Line k="ζ at T₁ and Tₙ" v={`${(lth.zeta * 100).toFixed(1)} % (${lth.T1.toFixed(3)} / ${lth.Tn.toFixed(4)} s)`} />
       <Line k="Peak roof u" v={`${(lth.peakRoof.value * 1000).toFixed(2)} mm @ ${lth.peakRoof.t.toFixed(2)} s`} />
       <Line k="Peak base shear" v={`${lth.peakBase.value.toFixed(2)} kN @ ${lth.peakBase.t.toFixed(2)} s`} />
-      <HistoryTrace label="Roof displacement u(t)" unit="mm" values={lth.roofU} dt={lth.dt} cursorT={t} scale={1000} />
-      <HistoryTrace label="Base shear V(t)" unit="kN" values={lth.baseShear} dt={lth.dt} cursorT={t} />
       <div className="flex items-center gap-2 pt-0.5">
         <button
           type="button"

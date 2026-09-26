@@ -114,7 +114,7 @@ How the loads are generated:
 
 - **LTH (linear time history)**: the frame is integrated through a ground-motion record along global X (Newmark-β, average acceleration by default, at the record's Δt or one you set). Damping is Rayleigh, with ζ exact at the longest and the shortest period. El Centro 1940 NS is built in; **Import record…** takes one acceleration per line (pasted or from a text file), with its Δt and unit. R, Ie and the design spectrum are not applied: the record × scale factor is the input. The case result is the peak response over the whole record (each quantity at its instant of largest magnitude), so it combines like any other case.
 
-On the Analyze tab, a generated seismic case shows a summary card with W, T, Cs, k, V_ELF and, for MRS, V_MRS, the scale factor and the design base shear. For LTH, the card shows the peak roof displacement and base shear with their times, both histories, and a time slider with a play button: the canvas then draws the frame at that instant, on the same scale as the peak so the motion is real. **Peak** returns to the envelope.
+On the Analyze tab, a generated seismic case shows a summary card with W, T, Cs, k, V_ELF and, for MRS, V_MRS, the scale factor and the design base shear. For LTH, the card shows the peak roof displacement and base shear with their times, and a time slider with a play button: the canvas then draws the frame at that instant, on the same scale as the peak so the motion is real. **Peak** returns to the envelope.
 
 A Seismic case you never define (Cancel on the first open) stays a manual case: its loads are the ones you placed, as before.
 
