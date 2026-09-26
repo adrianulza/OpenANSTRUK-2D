@@ -88,6 +88,9 @@ import {
 import { massSourceOf, prepareSeismic, needsSeismicContext } from "@/lib/seismic/solve"
 import { buildMassReport } from "@/lib/seismic/mass"
 import { runModalAnalysis } from "@/lib/seismic/modal"
+import type { GroundMotionRecord } from "@/lib/seismic/ground-motion"
+import { lthFrameResult } from "@/lib/seismic/lth"
+import { peakDeformation } from "@/lib/deformation"
 import { defaultSeismicDefinition } from "@/lib/seismic/definition"
 import { ModalDialog } from "@/tabs/load/tools/modal/modal-dialog"
 import { SeismicDialog } from "@/tabs/load/tools/seismic/seismic-dialog"
@@ -175,6 +178,10 @@ export default function App() {
   const [modalDialogOpen, setModalDialogOpen] = useState(false)
   const [seismicCaseId, setSeismicCaseId] = useState<LoadCaseId | null>(null)
   const [selectedModeIndex, setSelectedModeIndex] = useState(1)
+  // Imported ground-motion records (App state, like the load cases).
+  const [groundMotions, setGroundMotions] = useState<GroundMotionRecord[]>([])
+  // Time history on Analyze: null = peak envelope, else a kept frame index.
+  const [lthFrameIndex, setLthFrameIndex] = useState<number | null>(null)
   // Load tab: which case to show on canvas (or "all loads"). Default "all".
   const [loadViewFilter, setLoadViewFilter] = useState<LoadViewSelection>(LOAD_VIEW_ALL)
 
@@ -450,9 +457,9 @@ export default function App() {
   // gate. Null when no case needs it, so a static-only model pays nothing.
   const seismicCtx = useMemo(
     () => (activeTab === "Analyze" || activeTab === "Design") && needsSeismicContext(loadCases)
-      ? prepareSeismic(model, loadCases, { shearDeformation })
+      ? prepareSeismic(model, loadCases, { shearDeformation }, groundMotions)
       : null,
-    [activeTab, model, loadCases, shearDeformation],
+    [activeTab, model, loadCases, shearDeformation, groundMotions],
   )
 
   const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
@@ -512,8 +519,23 @@ export default function App() {
     [comboResults, envelopeComboIds, combinations],
   )
 
+  // One instant of a time-history case, drawn in place of its peak envelope.
+  const selectedLth = analyzeViewMode === "case" ? seismicCtx?.runs[selectedCaseId]?.lth : undefined
+  const lthFrameResultMemo = useMemo<AnalysisResult | null>(() => {
+    if (!selectedLth || lthFrameIndex === null || !modalSolution?.ok) return null
+    const frame = selectedLth.frames[Math.min(lthFrameIndex, selectedLth.frames.length - 1)]
+    return frame ? lthFrameResult(model, modalSolution, frame) : null
+  }, [selectedLth, lthFrameIndex, modalSolution, model])
+
+  // Frames of a time history are drawn against the envelope's peak, so the
+  // animation shows the real rise and fall of the response.
+  const deformationPeak = useMemo(
+    () => (lthFrameResultMemo && selectedLth ? peakDeformation(model, selectedLth.result) : undefined),
+    [lthFrameResultMemo, selectedLth, model],
+  )
+
   const displayedResult = useMemo(
-    () => showingModal ? modeShapeResult : pickDisplayedResult(
+    () => showingModal ? modeShapeResult : lthFrameResultMemo ?? pickDisplayedResult(
       analyzeViewMode,
       caseResults,
       comboResults,
@@ -521,7 +543,7 @@ export default function App() {
       selectedCaseId,
       selectedCombinationId,
     ),
-    [showingModal, modeShapeResult, analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
+    [showingModal, modeShapeResult, lthFrameResultMemo, analyzeViewMode, caseResults, comboResults, envelopeResult, selectedCaseId, selectedCombinationId],
   )
 
   // ── Design run (automatic) ─────────────────────────────────────────────────
@@ -1468,6 +1490,7 @@ export default function App() {
               selectedCaseId={selectedCaseId}
               onSelectedCaseIdChange={(id) => {
                 setSelectedCaseId(id)
+                setLthFrameIndex(null)
                 // A mode is a shape: open the deformation view with it.
                 if (isModalCase(loadCases[id])) handleToolSelect("DEFORMATION")
               }}
@@ -1496,6 +1519,8 @@ export default function App() {
               <SeismicResultsCard
                 name={loadCases[selectedCaseId]?.name ?? selectedCaseId}
                 run={seismicCtx.runs[selectedCaseId]}
+                frameIndex={lthFrameIndex}
+                onFrameIndexChange={setLthFrameIndex}
               />
             )}
           <FlyoutPanel
@@ -1558,6 +1583,7 @@ export default function App() {
             invertBMD={invertBMD}
             onInvertBMDChange={setInvertBMD}
             deformationScale={deformationScale}
+            deformationPeak={deformationPeak}
             onDeformationScaleChange={setDeformationScale}
             analysisResult={displayedResult}
             moveNodeMode={moveNodeMode}
@@ -1627,6 +1653,7 @@ export default function App() {
             invertSFD={invertSFD}
             invertBMD={invertBMD}
             deformationScale={deformationScale}
+            deformationPeak={deformationPeak}
             showSectionLabels={showSectionLabels}
             showNodeIds={showNodeIds}
             showMemberIds={showMemberIds}
@@ -1737,6 +1764,8 @@ export default function App() {
           value={loadCases[seismicCaseId].seismic ?? defaultSeismicDefinition()}
           mass={dialogDynamics?.mass ?? null}
           modal={dialogDynamics?.modal ?? null}
+          groundMotions={groundMotions}
+          onImportRecord={(rec) => setGroundMotions((prev) => [...prev, rec])}
           onCommit={(seismic) => {
             handlePatchLoadCase(seismicCaseId, { seismic })
             setSeismicCaseId(null)

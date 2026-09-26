@@ -33,7 +33,19 @@ import {
 import type { StructureModel } from "@/lib/model"
 import { Z_DIALOG } from "@/lib/z-layers"
 import { spectralAcceleration } from "@/lib/seismic/spectrum"
-import type { SeismicDefinition } from "@/lib/seismic/definition"
+import {
+  lthSettingsOf,
+  type SeismicDefinition,
+  type SeismicLthSettings,
+} from "@/lib/seismic/definition"
+import {
+  BUILT_IN_RECORDS,
+  recordDuration,
+  recordPeak,
+  resolveRecord,
+  type GroundMotionRecord,
+  type GroundMotionUnit,
+} from "@/lib/seismic/ground-motion"
 import {
   SEISMIC_CODES,
   SEISMIC_CODE_LABELS,
@@ -50,6 +62,8 @@ import type { MassReport } from "@/lib/seismic/mass"
 import { dominantModeX, type ModalSolution } from "@/lib/seismic/modal"
 import { SpectrumChart } from "./spectrum-chart"
 import { SiteTablePopover } from "./site-table-popover"
+import { AccelerogramChart } from "./accelerogram-chart"
+import { GmImportDialog } from "./gm-import-dialog"
 
 export interface SeismicDialogProps {
   model: StructureModel
@@ -59,6 +73,9 @@ export interface SeismicDialogProps {
   mass: MassReport | null
   /** The modal solution, for the Auto period and the mode markers. */
   modal: ModalSolution | null
+  /** Imported ground-motion records, and the write that adds one (through, not drafted). */
+  groundMotions: readonly GroundMotionRecord[]
+  onImportRecord: (record: GroundMotionRecord) => void
   onCommit: (next: SeismicDefinition) => void
   onCancel: () => void
 }
@@ -90,11 +107,14 @@ export function SeismicDialog({
   value,
   mass,
   modal,
+  groundMotions,
+  onImportRecord,
   onCommit,
   onCancel,
 }: SeismicDialogProps) {
   const [draft, setDraft] = useState<SeismicDefinition>(value)
   const [openTable, setOpenTable] = useState<SiteSpecificFlag | null>(null)
+  const [openImport, setOpenImport] = useState(false)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -103,12 +123,13 @@ export function SeismicDialog({
       // unmounted it by the time a bubble handler asks), then the popover,
       // then the window — so one Escape never throws away what was typed.
       if (document.querySelector('[data-radix-popper-content-wrapper], [role="listbox"]')) return
+      if (openImport) return setOpenImport(false)
       if (openTable !== null) return setOpenTable(null)
       onCancel()
     }
     window.addEventListener("keydown", onKey, true)
     return () => window.removeEventListener("keydown", onKey, true)
-  }, [onCancel, openTable])
+  }, [onCancel, openTable, openImport])
 
   const modalOk = modal && modal.ok ? modal : null
   const computedT = modalOk ? dominantModeX(modalOk).T : undefined
@@ -133,6 +154,19 @@ export function SeismicDialog({
   const edit = (patch: Partial<SeismicDefinition>) => setDraft((d) => ({ ...d, ...patch }))
   const code = draft.code
   const isMrs = draft.analysis === "mrs"
+  const isLth = draft.analysis === "lth"
+
+  // Time history: the record, its unit and the integration settings.
+  const lth = lthSettingsOf(draft)
+  const editLth = (patch: Partial<SeismicLthSettings>) => edit({ lth: { ...lth, ...patch } })
+  const allRecords: readonly GroundMotionRecord[] = [...BUILT_IN_RECORDS, ...groundMotions]
+  const record = resolveRecord(lth.recordId, groundMotions)
+  const lthUnit: GroundMotionUnit = lth.unit ?? record?.unit ?? "g"
+  const lthDt = lth.dt ?? record?.dt ?? 0.02
+  const lthDuration = record ? recordDuration(record) : 0
+  const lthPoints = record ? Math.max(2, Math.round(lthDuration / lthDt) + 1) : 0
+  const lthPeak = record ? recordPeak(record) : { value: 0, at: 0 }
+  const lthOk = !!record && lthDt > 0 && Number.isFinite(lth.scale)
   const refused = ladder?.siteSpecific ?? []
 
   const periodOptions: RadioOption<PeriodMode>[] = [
@@ -206,12 +240,14 @@ export function SeismicDialog({
         {/* ── what you set ─────────────────────────────────────────────── */}
         <div className="flex shrink-0 flex-col gap-4 sm:flex-row">
           <div className="w-full min-w-0 shrink-0 space-y-3 sm:w-[236px]">
-            <Drop
-              label="Code"
-              value={code}
-              options={SEISMIC_CODES.map((c) => [c, SEISMIC_CODE_LABELS[c]] as const)}
-              onChange={(c) => edit({ code: c })}
-            />
+            {!isLth && (
+              <Drop
+                label="Code"
+                value={code}
+                options={SEISMIC_CODES.map((c) => [c, SEISMIC_CODE_LABELS[c]] as const)}
+                onChange={(c) => edit({ code: c })}
+              />
+            )}
 
             <Radio
               label="Analysis method"
@@ -219,6 +255,7 @@ export function SeismicDialog({
               options={[
                 { value: "elf", label: "Static equivalent (ELF)" },
                 { value: "mrs", label: "Response spectrum (MRS)" },
+                { value: "lth", label: "Linear time history (LTH)" },
               ]}
               onChange={(analysis) => edit({ analysis })}
             />
@@ -228,20 +265,22 @@ export function SeismicDialog({
               <Hint>A plane frame shakes in its own plane, along global X.</Hint>
             </Group>
 
-            <Radio
-              label="Period"
-              value={draft.periodMode}
-              options={periodOptions}
-              onChange={(periodMode) => edit({ periodMode })}
-            />
-            {draft.periodMode === "computed" && (
+            {!isLth && (
+              <Radio
+                label="Period"
+                value={draft.periodMode}
+                options={periodOptions}
+                onChange={(periodMode) => edit({ periodMode })}
+              />
+            )}
+            {!isLth && draft.periodMode === "computed" && (
               <Hint>
                 {computedT !== undefined
                   ? `T₁ = ${computedT.toFixed(3)} s from the dominant X mode, capped at Cu·Ta.`
                   : "Taken from the dominant X mode, capped at Cu·Ta. No modal solution yet — Ta is shown."}
               </Hint>
             )}
-            {draft.periodMode === "user" && (
+            {!isLth && draft.periodMode === "user" && (
               <Hint>Used as given. The Cu·Ta cap is not applied to a period you state yourself.</Hint>
             )}
 
@@ -262,6 +301,84 @@ export function SeismicDialog({
             )}
           </div>
 
+          {isLth && (
+            <div className="w-full min-w-0 shrink-0 space-y-3 sm:w-[252px]">
+              <Group title="Ground motion (X)">
+                <select
+                  value={lth.recordId}
+                  aria-label="Ground-motion record"
+                  onChange={(e) => editLth({ recordId: e.target.value, dt: undefined, unit: undefined })}
+                  className="h-7 w-full rounded-md border border-gray-200 bg-white px-2 font-mono text-[11px] text-gray-700 focus:border-[#2563eb] focus:outline-none"
+                >
+                  {allRecords.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                  {!record && <option value={lth.recordId}>{lth.recordId} (missing)</option>}
+                </select>
+                <PickRow
+                  label="Record unit"
+                  name="Record unit"
+                  value={lthUnit}
+                  options={[
+                    { value: "g", label: "g — gravitational acceleration", short: "g" },
+                    { value: "m/s2", label: "m/s² — metres per second squared", short: "m/s²" },
+                  ]}
+                  onChange={(unit) => editLth({ unit })}
+                />
+                <NumRow
+                  label="Scale factor"
+                  name="Record scale factor"
+                  value={lth.scale}
+                  invalid={!Number.isFinite(lth.scale)}
+                  onChange={(scale) => editLth({ scale })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setOpenImport(true)}
+                  className="h-7 w-full rounded-md border border-gray-200 font-mono text-[11px] text-gray-600 hover:border-[#2563eb] hover:text-[#2563eb]"
+                >
+                  Import record…
+                </button>
+              </Group>
+
+              <Group title="Integration">
+                <NumRow
+                  label="Time step, Δt"
+                  name="Time step seconds"
+                  unit="s"
+                  value={lthDt}
+                  invalid={!(lthDt > 0)}
+                  onChange={(v) => editLth({ dt: v > 0 ? v : undefined })}
+                />
+                <ReadRow label="Steps">{record ? lthPoints : "—"}</ReadRow>
+                <ReadRow label="Duration">{record ? `${lthDuration.toFixed(2)} s` : "—"}</ReadRow>
+                <NumRow
+                  label="Damping, ζ (Rayleigh)"
+                  name="Damping ratio"
+                  value={lth.dampingRatio}
+                  onChange={(v) =>
+                    editLth({ dampingRatio: Number.isFinite(v) && v >= 0 && v < 1 ? v : lth.dampingRatio })
+                  }
+                />
+                <NumRow
+                  label="Newmark γ"
+                  name="Newmark gamma"
+                  value={lth.gamma ?? 0.5}
+                  onChange={(v) => editLth({ gamma: v > 0 ? v : undefined })}
+                />
+                <NumRow
+                  label="Newmark β"
+                  name="Newmark beta"
+                  value={lth.beta ?? 0.25}
+                  onChange={(v) => editLth({ beta: v > 0 ? v : undefined })}
+                />
+              </Group>
+            </div>
+          )}
+
+          {!isLth && (
           <div className="w-full min-w-0 shrink-0 space-y-3 sm:w-[252px]">
             <Group title="Earthquake parameters">
               <NumRow
@@ -374,11 +491,45 @@ export function SeismicDialog({
               />
             </Group>
           </div>
+          )}
         </div>
 
         {/* ── what it produces ─────────────────────────────────────────── */}
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          {!ladder ? (
+          {isLth ? (
+            <>
+              <div className="h-[340px] shrink-0 rounded-lg border border-gray-200 bg-[#F0F2F5] p-2">
+                <AccelerogramChart
+                  strips={
+                    record
+                      ? [
+                          {
+                            key: record.id,
+                            label: `X — ${record.name}${lth.scale !== 1 ? ` (×${lth.scale})` : ""}`,
+                            record,
+                            scale: lth.scale,
+                            unit: lthUnit,
+                          },
+                        ]
+                      : []
+                  }
+                />
+              </div>
+              <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-2 border-t border-gray-100 pt-2.5 sm:grid-cols-3">
+                <ValueRow
+                  label="PGA"
+                  name="Peak ground acceleration"
+                  value={`${fmt(Math.abs(lthPeak.value * lth.scale))} ${lthUnit === "g" ? "g" : "m/s²"}`}
+                />
+                <ValueRow label="at" name="Time of peak" value={`${fmt(lthPeak.at, 2)} s`} />
+                <ValueRow label="Δt" name="Record step" value={`${record?.dt ?? "—"} s`} />
+              </div>
+              <Hint>
+                R, I<sub>e</sub> and the design spectrum are not applied: the record × scale is the
+                input. Results are the peak response over the whole record.
+              </Hint>
+            </>
+          ) : !ladder ? (
             <p className="text-[11px] text-gray-500">
               The model cannot be resolved yet. Add members and supports first.
             </p>
@@ -481,10 +632,18 @@ export function SeismicDialog({
         </button>
         <button
           onClick={() => onCommit(draft)}
-          disabled={!(draft.R > 0)}
-          title={!(draft.R > 0) ? "R must be greater than zero." : undefined}
+          disabled={isLth ? !lthOk : !(draft.R > 0)}
+          title={
+            isLth
+              ? !lthOk
+                ? "Pick an available record and a positive time step."
+                : undefined
+              : !(draft.R > 0)
+                ? "R must be greater than zero."
+                : undefined
+          }
           className={`h-8 rounded-md px-6 text-xs font-medium ${
-            draft.R > 0
+            (isLth ? lthOk : draft.R > 0)
               ? "bg-[#1a2f5e] text-white transition-transform hover:scale-[1.02] active:scale-95"
               : "bg-gray-200 text-gray-400"
           }`}
@@ -501,6 +660,17 @@ export function SeismicDialog({
       className="fixed inset-0 flex items-center justify-center bg-black/25 p-4"
     >
       {body}
+      {openImport && (
+        <GmImportDialog
+          existing={groundMotions}
+          onCommit={(rec) => {
+            onImportRecord(rec)
+            editLth({ recordId: rec.id, dt: undefined, unit: undefined })
+            setOpenImport(false)
+          }}
+          onCancel={() => setOpenImport(false)}
+        />
+      )}
     </div>,
     document.body,
   )

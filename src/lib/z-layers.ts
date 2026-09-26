@@ -13,3 +13,6 @@ export const Z_DIALOG = 9998
 
 /** A menu opened from inside a dialog. */
 export const Z_MENU = 10000
+
+/** A window opened from inside a dialog — the ground-motion import. */
+export const Z_NESTED = 9999

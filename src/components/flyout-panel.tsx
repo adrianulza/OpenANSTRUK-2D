@@ -111,6 +111,7 @@ interface FlyoutPanelProps {
   invertBMD?: boolean
   onInvertBMDChange?: (v: boolean) => void
   deformationScale?: number
+  deformationPeak?: number
   onDeformationScaleChange?: (v: number) => void
   analysisResult?: AnalysisResult | null
   onToolSelect?: (tool: ToolType) => void
@@ -220,6 +221,7 @@ export function FlyoutPanel({
   invertBMD = false,
   onInvertBMDChange,
   deformationScale = 1,
+  deformationPeak,
   onDeformationScaleChange,
   analysisResult,
   onToolSelect,
@@ -351,6 +353,7 @@ export function FlyoutPanel({
           invertBMD={invertBMD}
           onInvertBMDChange={onInvertBMDChange}
           deformationScale={deformationScale}
+          deformationPeak={deformationPeak}
           onDeformationScaleChange={onDeformationScaleChange}
           analysisResult={analysisResult}
           moveNodeMode={moveNodeMode}
@@ -538,6 +541,7 @@ function FlyoutContent({
   invertBMD = false,
   onInvertBMDChange,
   deformationScale = 1,
+  deformationPeak,
   onDeformationScaleChange,
   analysisResult,
   moveNodeMode = "coordinates",
@@ -889,7 +893,7 @@ function FlyoutContent({
       case "MOMENT":
         return <DiagramToolContent label={activeTool} scale={diagramScale} onScaleChange={onDiagramScaleChange} invert={invertBMD} onInvertChange={onInvertBMDChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       case "DEFORMATION":
-        return <DeformationToolContent scale={deformationScale} onScaleChange={onDeformationScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
+        return <DeformationToolContent peakOverride={deformationPeak} scale={deformationScale} onScaleChange={onDeformationScaleChange} analysisResult={analysisResult} model={model} unitSettings={unitSettings} />
       default:
         return null
     }

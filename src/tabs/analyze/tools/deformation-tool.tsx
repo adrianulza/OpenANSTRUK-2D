@@ -3,6 +3,7 @@ import { FLYOUT_PANEL_COLORS } from "@/lib/flyout-panel-colors"
 import { ToggleButton } from "@/components/flyout-shared"
 import type { AnalysisResult, NodeDisplacement } from "@/lib/solver"
 import type { StructureModel } from "@/lib/model"
+import { peakDeformation } from "@/lib/deformation"
 import { Label } from "@/components/ui/label"
 import {
   type UnitSettings,
@@ -17,12 +18,15 @@ export function DeformationToolContent({
   analysisResult,
   model,
   unitSettings = DEFAULT_UNIT_SETTINGS,
+  peakOverride,
 }: {
   scale?: number
   onScaleChange?: (v: number) => void
   analysisResult?: AnalysisResult | null
   model?: StructureModel
   unitSettings?: UnitSettings
+  /** The peak the canvas scales against, when it is not this result's own. */
+  peakOverride?: number
 }) {
   const dispUnit = labelDisplacement(unitSettings)
   const rotUnit  = labelRotation(unitSettings)
@@ -45,39 +49,11 @@ export function DeformationToolContent({
   // True amplification factor: matches canvas k = (TARGET_M / peakDisp) * scale, TARGET_M = 1.
   // Peak is sampled along each member's cubic-Hermite spline (not just at nodes) so it
   // captures mid-span sag — same algorithm as drawDeformedShape in the canvas.
-  const peakDisp = React.useMemo(() => {
-    if (!analysisResult || !model) return 0
-    const N_PTS = 40
-    let p = 0
-    for (const member of Object.values(model.members)) {
-      const nA = model.nodes[member.a]
-      const nB = model.nodes[member.b]
-      if (!nA || !nB) continue
-      const dA = analysisResult.nodeDisplacements[member.a]
-      const dB = analysisResult.nodeDisplacements[member.b]
-      if (!dA || !dB) continue
-      const dx = nB.x - nA.x, dy = nB.y - nA.y
-      const L = Math.hypot(dx, dy)
-      if (L < 1e-9) continue
-      const c = dx / L, sn = dy / L
-      const u1 =  c * dA.u + sn * dA.v, v1 = -sn * dA.u + c * dA.v, th1 = dA.theta
-      const u2 =  c * dB.u + sn * dB.v, v2 = -sn * dB.u + c * dB.v, th2 = dB.theta
-      for (let i = 0; i <= N_PTS; i++) {
-        const xi = i / N_PTS
-        const uLoc = (1 - xi) * u1 + xi * u2
-        const H1 = 1 - 3*xi*xi + 2*xi*xi*xi
-        const H2 = L * xi * (1 - xi) * (1 - xi)
-        const H3 = 3*xi*xi - 2*xi*xi*xi
-        const H4 = L * xi*xi * (xi - 1)
-        const vLoc = H1*v1 + H2*th1 + H3*v2 + H4*th2
-        const dispX = c * uLoc - sn * vLoc
-        const dispY = sn * uLoc + c * vLoc
-        const mag = Math.hypot(dispX, dispY)
-        if (mag > p) p = mag
-      }
-    }
-    return p
-  }, [analysisResult, model])
+  const ownPeak = React.useMemo(
+    () => (model ? peakDeformation(model, analysisResult ?? null) : 0),
+    [analysisResult, model],
+  )
+  const peakDisp = peakOverride ?? ownPeak
   const trueFactor = peakDisp > 1e-12 ? (1 / peakDisp) * m : 0
   const factorLabel = trueFactor === 0
     ? "—"

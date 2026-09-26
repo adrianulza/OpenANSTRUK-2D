@@ -174,6 +174,11 @@ interface StructuralCanvasProps {
   invertSFD?: boolean
   invertBMD?: boolean
   deformationScale?: number
+  /**
+   * Draw the deformed shape against this peak instead of the result's own —
+   * so the frames of a time history share one scale and the motion is real.
+   */
+  deformationPeak?: number
   showSectionLabels?: boolean
   showNodeIds?: boolean
   showMemberIds?: boolean
@@ -241,6 +246,7 @@ export function StructuralCanvas({
   invertSFD = false,
   invertBMD = false,
   deformationScale = 1,
+  deformationPeak,
   showSectionLabels = true,
   showNodeIds = false,
   showMemberIds = false,
@@ -2224,7 +2230,8 @@ export function StructuralCanvas({
         memberRaws.push({ memberId: member.id, pts })
       }
 
-      const k = peakDisp > 1e-12 ? (TARGET_M / peakDisp) * deformationScale : 0
+      const peakRef = deformationPeak ?? peakDisp
+      const k = peakRef > 1e-12 ? (TARGET_M / peakRef) * deformationScale : 0
 
       type MemberSpline = {
         memberId: string
@@ -2267,7 +2274,7 @@ export function StructuralCanvas({
       }
 
     },
-    [model, analysisResult, deformationScale, adaptiveView, zoom]
+    [model, analysisResult, deformationScale, deformationPeak, adaptiveView, zoom]
   )
 
   const drawDeformHover = useCallback(
@@ -2312,7 +2319,8 @@ export function StructuralCanvas({
           if (mag > peakDisp) peakDisp = mag
         }
       }
-      const k = peakDisp > 1e-12 ? (TARGET_M / peakDisp) * deformationScale : 0
+      const peakRef = deformationPeak ?? peakDisp
+      const k = peakRef > 1e-12 ? (TARGET_M / peakRef) * deformationScale : 0
       const wx = node.x + k * d.u
       const wy = node.y + k * d.v
       const { sx, sy } = worldToScreen({ x: wx, y: wy }, rect)
@@ -2359,7 +2367,7 @@ export function StructuralCanvas({
       ctx.fill()
       ctx.restore()
     },
-    [model, analysisResult, deformationScale, deformHoverNodeId, adaptiveView, zoom]
+    [model, analysisResult, deformationScale, deformationPeak, deformHoverNodeId, adaptiveView, zoom]
   )
 
   const drawReactions = useCallback(
