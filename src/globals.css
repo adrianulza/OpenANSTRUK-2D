@@ -133,3 +133,10 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* The status bar's ANALYSING chip appears only after a 150 ms delay. */
+@keyframes analysing-in {
+  to {
+    opacity: 1;
+  }
+}

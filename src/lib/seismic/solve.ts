@@ -18,7 +18,8 @@ import type { AnalyzeOptions } from "../solver"
 import { MODAL_CASE_ID, type LoadCase, type LoadCaseId } from "../load-cases"
 import { resolveMassSource, type MassSource } from "./mass-source"
 import { buildMassReport, type MassReport } from "./mass"
-import { dominantModeX, runModalAnalysis, type ModalSolution } from "./modal"
+import { dominantModeX, type ModalSolution } from "./modal"
+import { cachedModal, cachedRun, modalKey } from "./cache"
 import { runElf, runMrs, type ElfRun, type MrsRun } from "./run"
 import { lthSettingsOf, type SeismicDefinition } from "./definition"
 import { runLth, type LthRun } from "./lth"
@@ -80,7 +81,11 @@ export function prepareSeismic(
   }
 
   const mass = buildMassReport(model, loadCases, massSource)
-  const modal = needModal ? runModalAnalysis(model, mass, opts) : null
+  // Cached on geometry + mass: edits that change neither reuse the eigen
+  // solution and every per-case run below (`cache.ts`).
+  const cachedM = needModal ? cachedModal(model, mass, opts) : null
+  const modal = cachedM?.value ?? null
+  const baseKey = cachedM?.key ?? modalKey(model, mass, opts)
   const modalOk = modal && modal.ok ? modal : null
 
   const common: string[] = []
@@ -112,7 +117,9 @@ export function prepareSeismic(
         run.error = `Ground-motion record "${recordId}" is not available. Import it again or pick another record.`
         continue
       }
-      const out = runLth(model, def, modalOk, record)
+      const out = cachedRun(`lth|${baseKey}|${JSON.stringify(def)}|${record.id}|${record.dt}|${record.values.length}`, () =>
+        runLth(model, def, modalOk, record),
+      )
       if (!out.ok) {
         run.error = out.reason
         continue
@@ -133,7 +140,7 @@ export function prepareSeismic(
         run.error = "Response spectrum: no mode moves any mass along X — every massed node is restrained horizontally."
         continue
       }
-      run.mrs = runMrs(model, def, mass, modalOk)
+      run.mrs = cachedRun(`mrs|${baseKey}|${JSON.stringify(def)}`, () => runMrs(model, def, mass, modalOk))
       if (Object.values(model.loads).some((l) => l.loadCaseId === c.id)) {
         issues.push("Loads placed in this case are ignored — a response-spectrum case is generated entirely from the spectrum.")
       }
@@ -148,7 +155,9 @@ export function prepareSeismic(
         `Auto period unavailable (${modal && !modal.ok ? modal.reason : "no modal solution"}) — the empirical Ta is used instead.`,
       )
     }
-    run.elf = runElf(model, def, mass, computedT)
+    run.elf = cachedRun(`elf|${baseKey}|${JSON.stringify(def)}|${computedT}`, () =>
+      runElf(model, def, mass, computedT),
+    )
     const ladder = run.elf.ladder
     if (ladder.siteNote) issues.push(ladder.siteNote)
   }

@@ -310,6 +310,12 @@ where `x` is distance from the i-end along the member.
 
 > **Note:** `solver.ts` numerical math (`transformMatrix`, FEF formula, end-force extraction `N1=-f[0], V1=-f[1], M1=-f[2]`) is byte-stable. `localStiffness` gained an optional `GAs` parameter in v1.0.9 (Timoshenko, below) — with `GAs=0` it reduces algebraically to the original Euler matrix. Only `gaussSolve` (singular-pivot tracking + tightened tolerance, v1.0.6) and the `SolverResult` failure branch have otherwise changed. If a diagram looks wrong, suspect the display layer (local-2 direction in the drawer, invert toggle) before the solver.
 
+### Analysis worker and caches
+
+The whole analysis (`runAnalysis` in `src/lib/analysis-run.ts`: dynamic context, then every static case) is a pure function run in a Web Worker (`src/lib/analysis.worker.ts`) through `useAnalysis` (`src/hooks/use-analysis.ts`). The hook posts only while a results tab is open and only when the input object changed, so Analyze ↔ Design switches and returning with nothing edited reuse the last result. It never returns a result for an older input, so nothing looks up a deleted member. It falls back to the main thread if a Worker cannot be created. The status bar shows ANALYSING… when a run lasts more than 150 ms.
+
+`src/lib/seismic/cache.ts` keys the modal solution on geometry, sections, supports, nodal mass and the shear switch, and keys each ELF / MRS / LTH run on that key plus the case definition (and record). Renaming a case, toggling a non-mass case or editing a combination therefore reuses the eigen solution and the time-history integration. Each realm (worker, main thread) has its own cache; the settings windows reuse the worker's current solution when there is one.
+
 ### Document format v2 (`src/lib/document.ts`)
 
 `serializeDocument` writes `{ format: "openanstruk-2d", version: 2, model, loadCases, combinations, combinationSettings, groundMotions, design }`. `parseDocument` accepts that or a legacy bare `StructureModel`, and guards every field without throwing: load-case kinds and the two locked ids, seismic enums merged onto `defaultSeismicDefinition`, the mass source through `resolveMassSource`, records through `reconcileGroundMotions`, combination terms against the loaded cases, and design state deep-merged onto its defaults by JSON type. App then runs `reconcileLoadCases` for orphan loads and `seedLoadCaseCounters` so new `lcN` / `cmbN` ids never collide.

@@ -21,7 +21,6 @@ import type {
   LoadId,
 } from "@/lib/model"
 import {
-  solveAllCases,
   combineResults,
   envelopeResults,
   pickDisplayedResult,
@@ -87,9 +86,11 @@ import {
   isModalCase,
   MODAL_CASE_ID,
 } from "@/lib/load-cases"
-import { massSourceOf, prepareSeismic, needsSeismicContext } from "@/lib/seismic/solve"
+import { massSourceOf } from "@/lib/seismic/solve"
+import type { AnalysisInput } from "@/lib/analysis-run"
+import { useAnalysis } from "@/hooks/use-analysis"
 import { buildMassReport } from "@/lib/seismic/mass"
-import { runModalAnalysis } from "@/lib/seismic/modal"
+import { cachedModal } from "@/lib/seismic/cache"
 import type { GroundMotionRecord } from "@/lib/seismic/ground-motion"
 import { lthFrameResult } from "@/lib/seismic/lth"
 import {
@@ -118,6 +119,8 @@ import { useModelHistory } from "@/hooks/use-model-history"
 // Built once so `model` and `activeSection` initialise from the same section
 // catalogue (avoids activeSection pointing at a key absent from the model).
 const initialModel = template3Portal()
+
+const NO_RESULTS: Record<LoadCaseId, SolverResult> = {}
 
 export default function App() {
   const isMobile = useIsMobile()
@@ -467,27 +470,28 @@ export default function App() {
   // factorization instead of repeating it.
   // The dynamic side (mass → modes → earthquake cases), under the same lazy
   // gate. Null when no case needs it, so a static-only model pays nothing.
-  const seismicCtx = useMemo(
-    () => (activeTab === "Analyze" || activeTab === "Design") && needsSeismicContext(loadCases)
-      ? prepareSeismic(model, loadCases, { shearDeformation }, groundMotions)
-      : null,
-    [activeTab, model, loadCases, shearDeformation, groundMotions],
+  // The whole analysis runs in a Web Worker (`hooks/use-analysis.ts`), so a
+  // large model never freezes the page. It runs while a results tab is open,
+  // and only when an input changed: switching Analyze ↔ Design, or leaving and
+  // returning with nothing edited, reuses the last result.
+  const resultsTab = activeTab === "Analyze" || activeTab === "Design"
+  const analysisInput = useMemo<AnalysisInput>(
+    () => ({ model, loadCases, opts: { shearDeformation }, groundMotions }),
+    [model, loadCases, shearDeformation, groundMotions],
   )
-
-  const caseResults = useMemo<Record<LoadCaseId, SolverResult>>(
-    () => activeTab === "Analyze" || activeTab === "Design"
-      ? solveAllCases(model, loadCases, { shearDeformation }, seismicCtx)
-      : {},
-    [activeTab, model, loadCases, shearDeformation, seismicCtx],
-  )
+  const { output: analysisOutput, pending: analysing } = useAnalysis(analysisInput, resultsTab)
+  const seismicCtx = analysisOutput?.seismicCtx ?? null
+  const caseResults = analysisOutput?.caseResults ?? NO_RESULTS
 
   // The settings windows need the mass and the modes on any tab (the Load
   // tab is where they open). A plane frame's eigen solve is milliseconds.
   const dialogDynamics = useMemo(() => {
     if (!modalDialogOpen && seismicCaseId === null) return null
+    // The worker's solution is reused when it is current for this model.
+    if (seismicCtx?.mass && seismicCtx.modal) return { mass: seismicCtx.mass, modal: seismicCtx.modal }
     const mass = buildMassReport(model, loadCases, massSourceOf(loadCases))
-    return { mass, modal: runModalAnalysis(model, mass, { shearDeformation }) }
-  }, [modalDialogOpen, seismicCaseId, model, loadCases, shearDeformation])
+    return { mass, modal: cachedModal(model, mass, { shearDeformation }).value }
+  }, [modalDialogOpen, seismicCaseId, model, loadCases, shearDeformation, seismicCtx])
 
   const modalSolution = seismicCtx?.modal ?? null
   const showingModal = analyzeViewMode === "case" && isModalCase(loadCases[selectedCaseId])
@@ -1825,6 +1829,7 @@ export default function App() {
         members={memberCount}
         status={mergedReport.status}
         onStatusClick={() => setIssuesDialogOpen(true)}
+        analysing={analysing && resultsTab}
         unitSettings={unitSettings}
         showDimensions={showDimensions}
         cursorX={cursorX}
