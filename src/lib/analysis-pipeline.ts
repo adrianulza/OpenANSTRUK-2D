@@ -21,6 +21,8 @@ import type {
   LoadComboId,
 } from "./load-cases"
 import type { AnalyzeViewMode } from "@/components/analyze-view-selector"
+import { needsSeismicContext, prepareSeismic, type SeismicContext } from "./seismic/solve"
+import { elfLoads } from "./seismic/run"
 
 export type { AnalysisResult } from "./solver"
 
@@ -56,7 +58,26 @@ export function solveCase(
   model: StructureModel,
   caseId: LoadCaseId,
   opts?: AnalyzeOptions,
+  seismic?: SeismicContext | null,
 ): SolverResult {
+  // Generated earthquake cases (`LoadCase.seismic` set). Manual seismic cases
+  // have no run and fall through to the ordinary slice below.
+  const run = seismic?.runs[caseId]
+  if (run) {
+    if (run.error) return { ok: false, reason: run.error }
+    if (run.mrs) return run.mrs.result
+    if (run.elf) {
+      // ELF forces join whatever the user placed in the case, like the
+      // Selfweight synthesis: scoped to the slice, never persisted.
+      const loads: StructureModel["loads"] = {}
+      for (const [id, load] of Object.entries(model.loads)) {
+        if (load.loadCaseId === caseId) loads[id] = load
+      }
+      for (const l of elfLoads(run.elf, caseId)) loads[l.id] = l
+      return analyze({ ...model, loads }, opts)
+    }
+  }
+
   if (caseId === "selfweight") {
     // Synthesize a global-Y distributed load on every member from its section's
     // unit weight γ (kN/m³) and cross-sectional area A (mm²). Gravity acts in −Y.
@@ -99,16 +120,27 @@ export function solveCase(
  * Solve every enabled case. Disabled cases are omitted from the result map.
  * Failed cases retain their `{ ok: false, reason, singularDof? }` envelope so
  * the diagnostics layer can report which case failed and why.
+ *
+ * The Modal case is never in the map — it has modes, not a static result (see
+ * `SeismicContext.modal`). `seismic` may be passed in when the caller already
+ * holds it (App memoises it); otherwise it is prepared here when needed.
  */
 export function solveAllCases(
   model: StructureModel,
   loadCases: Record<LoadCaseId, LoadCase>,
   opts?: AnalyzeOptions,
+  seismic?: SeismicContext | null,
 ): Record<LoadCaseId, SolverResult> {
+  const ctx =
+    seismic !== undefined
+      ? seismic
+      : needsSeismicContext(loadCases)
+        ? prepareSeismic(model, loadCases, opts)
+        : null
   const results: Record<LoadCaseId, SolverResult> = {}
   for (const [id, c] of Object.entries(loadCases)) {
-    if (!c.enabled) continue
-    results[id] = solveCase(model, id, opts)
+    if (!c.enabled || c.kind === "Modal") continue
+    results[id] = solveCase(model, id, opts, ctx)
   }
   return results
 }

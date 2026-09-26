@@ -1,11 +1,29 @@
 // Type-only, so this stays a compile-time reference and creates no runtime
 // cycle (model.ts imports LoadCaseId from here).
 import type { StructureModel } from "./model"
+import type { SeismicDefinition } from "./seismic/definition"
+import type { MassSource } from "./seismic/mass-source"
 
 export type LoadCaseId = string
 export type LoadComboId = string
 
-export type LoadCaseKind = "Dead" | "Live" | "Roof Live" | "Wind" | "Seismic" | "Rain" | "Snow"
+/**
+ * `"Modal"` is the vibration-analysis case. It carries no loads — it holds the
+ * mass source and asks for the eigen solution — so it is deliberately absent
+ * from `LOAD_CASE_KINDS`: a user can never turn a load case into a modal one,
+ * and the one modal case (`MODAL_CASE_ID`) can never become a load case.
+ */
+export type LoadCaseKind =
+  | "Dead"
+  | "Live"
+  | "Roof Live"
+  | "Wind"
+  | "Seismic"
+  | "Rain"
+  | "Snow"
+  | "Modal"
+
+export const MODAL_CASE_ID = "modal"
 
 export const LOAD_CASE_KINDS: LoadCaseKind[] = [
   "Dead",
@@ -47,6 +65,34 @@ export interface LoadCase {
    */
   enabled: boolean
   locked?: boolean
+  /**
+   * Mass source — Modal case only. Which load cases become mass, and at what
+   * factor. Absent reads as the defaults (`resolveMassSource`).
+   */
+  modal?: MassSource
+  /**
+   * Earthquake definition — Seismic cases only. Absent means a manual seismic
+   * case: its loads are whatever the user placed, exactly as before.
+   */
+  seismic?: SeismicDefinition
+}
+
+/** The vibration-analysis case: holds the mass source, carries no loads. */
+export function isModalCase(c: LoadCase | undefined): boolean {
+  return c?.kind === "Modal"
+}
+
+/**
+ * Whether the case can carry loads — and so be placed into, referenced by a
+ * combination, filtered on the canvas, or designed for. False only for Modal.
+ */
+export function isLoadCarryingCase(c: LoadCase): boolean {
+  return c.kind !== "Modal"
+}
+
+/** A Seismic case whose loads are generated from a code definition. */
+export function isGeneratedSeismicCase(c: LoadCase | undefined): boolean {
+  return c?.kind === "Seismic" && !!c.seismic
 }
 
 export interface LoadComboTerm {
@@ -65,6 +111,16 @@ export interface LoadCombination {
 
 export function DEFAULT_LOAD_CASES(): Record<LoadCaseId, LoadCase> {
   return {
+    // Listed first so it sits above the gravity cases in the Load Case table.
+    // Locked like Selfweight, but OFF by default: the eigen solve only runs
+    // when the user asks for it (or a seismic case needs a period or modes).
+    [MODAL_CASE_ID]: {
+      id: MODAL_CASE_ID,
+      name: "Vibration analysis",
+      kind: "Modal",
+      locked: true,
+      enabled: false,
+    },
     selfweight: {
       id: "selfweight",
       name: "Selfweight",
@@ -198,6 +254,7 @@ const KIND_SHORT: Record<LoadCaseKind, string> = {
   Seismic: "E",
   Rain: "R",
   Snow: "S",
+  Modal: "MOD",
 }
 
 export function caseShortLabel(kind: LoadCaseKind): string {
@@ -216,6 +273,7 @@ const KIND_PRIORITY: LoadCaseKind[] = [
   "Seismic",
   "Snow",
   "Rain",
+  "Modal",
 ]
 
 export function kindPriorityIndex(kind: LoadCaseKind): number {

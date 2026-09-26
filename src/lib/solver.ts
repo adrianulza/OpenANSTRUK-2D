@@ -222,7 +222,40 @@ export interface AnalyzeOptions {
   shearDeformation?: boolean
 }
 
-export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverResult {
+/** Per-member data kept from assembly so force recovery reuses the same k and FEF. */
+interface MemberSystem {
+  ia: number
+  ib: number
+  k: number[][]        // local stiffness (condensed for trusses)
+  T: number[][]        // local ← global transform
+  FEF: number[]        // local fixed-end forces
+  q1: number; q2: number; qx1: number; qx2: number
+}
+
+/**
+ * The assembled linear system for one model (one load slice). Exposed so the
+ * modal and response-spectrum passes (`src/lib/seismic/`) can reuse exactly
+ * the stiffness the static solver uses — same elements, same truss
+ * condensation, same boundary conditions — instead of a parallel copy that
+ * could drift.
+ */
+export interface AssembledSystem {
+  nodeList: string[]
+  nodeIdx: Record<string, number>
+  ndof: number
+  /** Unconstrained global stiffness K (kN, m). */
+  K: number[][]
+  /** Global load vector F (kN, kN·m), fixed-end forces included. */
+  F: number[]
+  /** DOFs removed by supports and by pure-truss joint rotations. */
+  constrained: Set<number>
+  members: Record<string, MemberSystem>
+}
+
+export function assembleSystem(
+  model: StructureModel,
+  opts?: AnalyzeOptions,
+): AssembledSystem | { ok: false; reason: string } {
   // Per-member shear rigidity G·A_s (kN) used to build the Timoshenko element.
   // Returns 0 — the Euler element — when shear deformation is off, or when the
   // section has no positive shear area A_s (legacy/manual sections that left it
@@ -259,8 +292,8 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
   const K: number[][] = Array.from({ length: ndof }, () => new Array(ndof).fill(0))
   const F: number[]   = new Array(ndof).fill(0)
 
-  // Per-member FEF storage (needed for element force recovery)
-  const fefStore: Record<string, number[]> = {}
+  // Per-member k, T and FEF (needed for element force recovery)
+  const memberStore: Record<string, MemberSystem> = {}
 
   // Assemble K and F from element contributions
   for (const member of members) {
@@ -334,7 +367,7 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
       for (let j = 0; j < 6; j++)
         K[dofs[i]][dofs[j]] += Kg[i][j]
 
-    fefStore[member.id] = FEF
+    memberStore[member.id] = { ia, ib, k, T, FEF, q1, q2, qx1, qx2 }
 
     const FEF_global = matVec(Tt, FEF)
     for (let i = 0; i < 6; i++) F[dofs[i]] += FEF_global[i]
@@ -353,11 +386,7 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
     F[3*i + 1] += load.fy   // Fy, positive = upward
   }
 
-  // Save unmodified K and F for reaction recovery
-  const K_orig: number[][] = K.map(row => [...row])
-  const F_orig: number[]   = [...F]
-
-  // Apply boundary conditions (zero row/col → exact enforcement of d[i]=0)
+  // Boundary conditions (zero row/col → exact enforcement of d[i]=0)
   const constrained = new Set<number>()
   for (const sup of supports) {
     const i = nodeIdx[sup.nodeId]
@@ -387,87 +416,42 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
     }
   }
 
-  for (const dof of constrained) {
-    for (let j = 0; j < ndof; j++) { K[dof][j] = 0; K[j][dof] = 0 }
-    K[dof][dof] = 1
-    F[dof] = 0
-  }
+  return { nodeList, nodeIdx, ndof, K, F, constrained, members: memberStore }
+}
 
-  const gs = gaussSolve(K, F)
-  if ("singular" in gs) {
-    return { ok: false, reason: "Singular stiffness matrix", singularDof: gs.dofIndex }
-  }
-  const d = gs.x
+/**
+ * Recover displacements, member end forces and reactions from a global
+ * displacement vector `d`. `K` and `F` of `sys` must be the unconstrained
+ * (original) ones — reactions are R = K·d − F at the supported DOFs.
+ *
+ * Also used by the response-spectrum pass, which builds `d` per mode directly
+ * from the mode shape (d = Γ·Sd·φ) and never calls the static solve.
+ */
+export function recoverResults(
+  model: StructureModel,
+  sys: AssembledSystem,
+  d: number[],
+): AnalysisResult {
+  const { nodeList, nodeIdx, K, F } = sys
 
   // Node displacements
   const nodeDisplacements: Record<string, NodeDisplacement> = {}
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < nodeList.length; i++) {
     nodeDisplacements[nodeList[i]] = { u: d[3*i], v: d[3*i+1], theta: d[3*i+2] }
   }
 
-  // Member end forces
+  // Member end forces. Uses the SAME stiffness used in assembly (condensed for
+  // trusses, full for frames). Pairing K and FEF consistently is critical:
+  // f_raw = K · d_loc, then f = f_raw − FEF.
   const memberEndForces: Record<string, MemberEndForces> = {}
-  for (const member of members) {
-    const nA  = model.nodes[member.a]
-    const nB  = model.nodes[member.b]
-    const sec = model.sections[member.section]
-    if (!nA || !nB || !sec) continue
-
-    const ia = nodeIdx[member.a]
-    const ib = nodeIdx[member.b]
-    if (ia === undefined || ib === undefined) continue
-
-    const dx = nB.x - nA.x, dy = nB.y - nA.y
-    const L  = Math.hypot(dx, dy)
-    if (L < 1e-9) continue
-
-    const E  = sec.E * 1000; const I = sec.I33 * 1e-12; const Ar = sec.A * 1e-6
-    const EA = E * Ar; const EI = E * I
-    const c = dx / L, s = dy / L
-    const isTruss = member.memberType === "truss"
-
-    // Distributed load for interpolation — same q values used in assembly (no flip).
-    // Now applies to trusses too (released-end frame element carries transverse load
-    // simply-supported between its end nodes).
-    let q1 = 0, q2 = 0
-    let qx1 = 0, qx2 = 0
-    for (const load of loads) {
-      if (load.type === "distributed" && load.memberId === member.id) {
-        const mode = load.mode ?? "local-axis"
-        if (mode === "local-axis") {
-          q1 = load.wStart ?? 0; q2 = load.wEnd ?? 0
-        } else {
-          const qxStart = load.wxStart ?? 0, qxEnd = load.wxEnd ?? 0
-          const qyStart = load.wyStart ?? 0, qyEnd = load.wyEnd ?? 0
-          qx1 = qxStart * c + qyStart * s
-          qx2 = qxEnd   * c + qyEnd   * s
-          q1  = -qxStart * s + qyStart * c
-          q2  = -qxEnd   * s + qyEnd   * c
-        }
-        break
-      }
-    }
-
-    // Use the SAME stiffness used in assembly (condensed for trusses, full for frames).
-    // Pairing K and FEF consistently is critical: f_raw = K · d_loc, then f = f_raw − FEF.
-    let k: number[][]
-    const GAs = memberGAs(sec)
-    if (isTruss) {
-      const cond = condensedTrussElement(EA, EI, L, q1, q2, qx1, qx2, GAs)
-      if (!cond) return { ok: false, reason: "Truss condensation failed (EI must be > 0)" }
-      k = cond.K_loc
-    } else {
-      k = localStiffness(EA, EI, L, GAs)
-    }
-    const T  = transformMatrix(c, s)
-
+  for (const [id, ms] of Object.entries(sys.members)) {
+    const { ia, ib, k, T, FEF, q1, q2, qx1, qx2 } = ms
     const d_elem = [d[3*ia], d[3*ia+1], d[3*ia+2], d[3*ib], d[3*ib+1], d[3*ib+2]]
     const d_loc  = matVec(T, d_elem)
     const f_raw  = matVec(k, d_loc)
-    const FEF    = fefStore[member.id] ?? [0,0,0,0,0,0]
     const f      = f_raw.map((v, i) => v - FEF[i])   // element end forces (local)
 
-    memberEndForces[member.id] = {
+    memberEndForces[id] = {
       N1: -f[0],   // tension positive
       V1: -f[1],   // positive = force on +face in +local-2 direction
       M1: -f[2],   // sagging positive — tension on −local-2 side; ~0 for truss by construction
@@ -481,16 +465,38 @@ export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverRes
 
   // Reactions: R = K_orig · d − F_orig at constrained DOFs
   const reactions: Record<string, { Rx: number; Ry: number; Mz: number }> = {}
-  for (const sup of supports) {
+  for (const sup of Object.values(model.supports)) {
     const i = nodeIdx[sup.nodeId]
     if (i === undefined) continue
-    const Rx  = K_orig[3*i].reduce((s, k, j) => s + k * d[j], 0) - F_orig[3*i]
-    const Ry  = K_orig[3*i+1].reduce((s, k, j) => s + k * d[j], 0) - F_orig[3*i+1]
-    const Mz  = K_orig[3*i+2].reduce((s, k, j) => s + k * d[j], 0) - F_orig[3*i+2]
+    const Rx  = K[3*i].reduce((s, k, j) => s + k * d[j], 0) - F[3*i]
+    const Ry  = K[3*i+1].reduce((s, k, j) => s + k * d[j], 0) - F[3*i+1]
+    const Mz  = K[3*i+2].reduce((s, k, j) => s + k * d[j], 0) - F[3*i+2]
     reactions[sup.nodeId] = { Rx, Ry, Mz }
   }
 
   return { ok: true, nodeDisplacements, memberEndForces, reactions }
+}
+
+export function analyze(model: StructureModel, opts?: AnalyzeOptions): SolverResult {
+  const sys = assembleSystem(model, opts)
+  if ("ok" in sys) return sys
+
+  // Work on copies so `sys.K` / `sys.F` stay the unmodified ones used for
+  // reaction recovery.
+  const { ndof, constrained } = sys
+  const K = sys.K.map(row => [...row])
+  const F = [...sys.F]
+  for (const dof of constrained) {
+    for (let j = 0; j < ndof; j++) { K[dof][j] = 0; K[j][dof] = 0 }
+    K[dof][dof] = 1
+    F[dof] = 0
+  }
+
+  const gs = gaussSolve(K, F)
+  if ("singular" in gs) {
+    return { ok: false, reason: "Singular stiffness matrix", singularDof: gs.dofIndex }
+  }
+  return recoverResults(model, sys, gs.x)
 }
 
 // ── Internal force interpolation ──────────────────────────────────────────────
