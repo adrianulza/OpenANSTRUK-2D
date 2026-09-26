@@ -166,9 +166,9 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 
 ### Current (v1.0.1)
 - [ ] Add undo/redo system (currently no history)
-- [ ] Memoize solver results (recomputed every render)
+- [x] Memoize solver results (Web Worker, modal and per-case caches)
 - [ ] Code-split bundle (if performance issues emerge)
-- [ ] Add unit tests (currently manual testing only)
+- [x] Closed-form engine benchmarks: `npm run verify:dynamics` (docs/VALIDATION_DYNAMICS.md). UI tests are still manual.
 - [ ] Improve error messages (solver failures are cryptic)
 
 ### Near Future

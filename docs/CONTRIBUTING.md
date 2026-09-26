@@ -57,6 +57,7 @@ npm run build        # Type-check + production build
 npm run lint         # ESLint
 npm run format       # Prettier (auto-fix)
 npm run format:check # Prettier (check only)
+npm run verify:dynamics # Closed-form benchmarks (docs/VALIDATION_DYNAMICS.md)
 ```
 
 ### Tech Stack
