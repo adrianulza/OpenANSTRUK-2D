@@ -88,6 +88,34 @@ The locked **Selfweight** load case (visible in the LOAD CASE tool) applies a bo
 - **Trusses**: self-weight is applied to truss members too. Each truss member shows a parabolic moment diagram from its own weight (simply-supported between its end nodes), and the reactions at supports correctly include the truss self-weight.
 - **γ = 0 warning** (v1.0.6+): when Selfweight is enabled but at least one referenced section has γ = 0, an amber warning appears at the bottom of the Load Case panel — and also at the bottom of the Load Combination panel when any combination references Selfweight. Open the MATERIAL tool and set Unit Weight on the offending section to include it in self-weight.
 
+### VIBRATION ANALYSIS (Modal)
+The locked **Vibration analysis** case sits at the top of the LOAD CASE table, above the gravity cases. It carries no loads; it asks for the free-vibration modes of the frame. It is **unchecked by default**, and its row is dimmed while off.
+
+- **Settings**: click its **MOD** chip in the Abbr column. The window sets the **mass source**: which load cases become mass, and at what factor. Only dead and live cases are eligible. The defaults are 1.0 for Dead (Selfweight and SIDL) and 0.25 for any Live or Roof Live case. Each case contributes its downward loads, lumped at the nodes (m = W/g), acting in both X and Y. The window shows the weight of every case and the total, live.
+- **Mode count**: automatic. Every mode of the structure is extracted, one per free massed degree of freedom, so the cumulative mass participation reaches 100 % in X and Y.
+- **Independent of the case checkboxes**: unticking Dead in the table removes its loads from the static solve but not from the mass. Mass inclusion is set in this window alone.
+- **Results**: tick the case, go to Analyze, choose **Load Case → Vibration analysis**. A mode picker appears beside it and the canvas draws the selected mode shape (the Deformation tool opens automatically). The table in the bottom-right corner lists T, f, the X and Y participation of each mode and their running sums; click a row to draw that mode.
+
+### EARTHQUAKE (Seismic cases)
+Set a case's Type to **Seismic** and the earthquake window opens. Its **E** chip reopens it at any time. The layout follows OpenANSTRUK-3D:
+
+- **Code**: SNI 1726:2019 (default) or ASCE 7-16.
+- **Analysis method**: **Static equivalent (ELF)** or **Response spectrum (MRS)**. The chip reads **EM** for a response-spectrum case.
+- **Direction**: always global X, the frame's own plane.
+- **Period**: *Auto* (the dominant X mode of the vibration analysis, capped at Cu·Ta), *Empirical* (Ta = Ct·hₙˣ), or *User defined* (used as given, not capped).
+- **Earthquake parameters**: Ss, S1, TL and site class. **Building system**: risk category (sets Ie), building type (sets Ct and x), R, Ω0 and Cd.
+- **Output**: the design spectrum with the design period marked, and Fa, Fv, T0, SMS, SM1, Cu·Ta, SDS, SD1, Cs, SDC, W and V_ELF.
+
+How the loads are generated:
+
+- **ELF**: V = Cs·W, distributed to every massed node above the base as Fx = V·w·hᵏ / Σw·hᵏ, with h measured from the lowest support. The forces join any loads you placed in the case.
+- **MRS**: every mode is used. Modal responses are combined by CQC (damping ζ set in the window, default 5 %), and the result is scaled up to V_ELF where it falls short (§12.9.1.4). Displacements are scaled only where Cs is set by Eq. 12.8-6. The combined values carry the sign of the dominant mode, so diagrams keep their shape; the ±E code combinations bracket both directions. Loads placed in an MRS case are ignored.
+- **W** always comes from the Vibration analysis mass source, whether or not that case is ticked. The modal solve runs automatically when a seismic case needs it.
+
+On the Analyze tab, a generated seismic case shows a summary card with W, T, Cs, k, V_ELF and, for MRS, V_MRS, the scale factor and the design base shear.
+
+A Seismic case you never define (Cancel on the first open) stays a manual case: its loads are the ones you placed, as before.
+
 ---
 
 ## Analyze Tab

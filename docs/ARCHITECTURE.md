@@ -350,6 +350,22 @@ It returns a typed `DiagnosticsReport { status, issues[] }` with three statuses 
 
 ---
 
+### Modal and seismic analysis (`src/lib/seismic/`, v1.4)
+
+`solver.ts` is split into `assembleSystem` (K, F, boundary conditions, per-member k/T/FEF) and `recoverResults` (displacements → end forces and reactions); `analyze` is those two around the Gaussian solve, with byte-identical results. The dynamic side reuses both, so modal, spectrum and static passes can never disagree about elements or supports.
+
+| File | Role |
+|---|---|
+| `mass-source.ts` | Mass source on the Modal case: eligible kinds (Dead 1.0, Live / Roof Live 0.25), reconciliation with the case list |
+| `mass.ts` | Lumped nodal weight from the downward load of each mass-source case (Selfweight from γ·A·L) |
+| `modal.ts` | Guyan condensation onto the massed DOFs (exact for lumped mass), then M^−½K̂M^−½ solved with Householder + QL. All modes kept, so participation sums to 100 % |
+| `site.ts`, `spectrum.ts`, `period.ts`, `elf.ts`, `sdc.ts` | Ported unchanged from OpenANSTRUK-3D: Fa/Fv, the design spectrum, Ta and Cu, Cs and k, SDC |
+| `definition.ts` | `SeismicDefinition` on `LoadCase.seismic` (2D subset: no direction, eccentricity or time history) |
+| `run.ts` | `seismicLadder`, ELF per node (h from the lowest support), MRS with signed CQC and ELF scaling |
+| `solve.ts` | `prepareSeismic`: mass → modes (only when something needs them) → a run per enabled generated seismic case |
+
+`analysis-pipeline.ts::solveCase` takes the prepared context: an ELF case solves its own loads plus the generated nodal forces, an MRS case returns its combined result, and the Modal case never enters the static map. App memoises the context under the same Analyze/Design lazy gate as `caseResults`.
+
 ## Canvas Rendering (`src/canvas/structural-canvas.tsx`)
 
 The app uses the browser Canvas 2D API for all structural drawing — no SVG, no WebGL.

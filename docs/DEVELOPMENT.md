@@ -107,9 +107,9 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
    - Parametric 3D templates (simple building, tower, truss)
 
 2. **Dynamic Analysis**
-   - Modal analysis (eigenvalue problem for natural frequencies)
-   - Response spectrum analysis (ASCE 7 earthquake response)
-   - Basic seismic design outputs
+   - ✅ Modal analysis (eigenvalue problem for natural frequencies) — plane frame, v1.4
+   - ✅ Response spectrum analysis (ASCE 7-16 / SNI 1726:2019) and static equivalent (ELF) — plane frame, v1.4
+   - Basic seismic design outputs (drift check with Cd, Ω0 combinations)
 
 3. **3D Visualization**
    - 3D member diagram rendering (SFD/BMD on 3D members)
@@ -157,7 +157,7 @@ OpenAnstruk-2D is a **web-based 2D structural analysis tool** for students, educ
 | **P2** | File save/load (JSON) | Medium | High |
 | **P2** | Timoshenko beam mode | Medium | Low |
 | **P3** | PDF / Report export | Medium | Medium |
-| **P3** | Modal analysis | High | Medium |
+| **P3** | Modal analysis ✅ (2D, with ELF / MRS) | High | Medium |
 | **P4** | 3D viewer prototype | High | Medium |
 
 ---
